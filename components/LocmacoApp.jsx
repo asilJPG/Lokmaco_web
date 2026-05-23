@@ -1,59 +1,48 @@
+"use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 
-/*
- ╔══════════════════════════════════════════════════════════════════════╗
- ║  The Lokmaco — iiko Warehouse Web Interface                        ║
- ║  Built from actual Telegram bot logic (bot.py + users.py)          ║
- ║                                                                     ║
- ║  Data sources (via Next.js API routes):                             ║
- ║  • iiko Server /resto/api — products, suppliers, stores, invoices  ║
- ║  • iikoWeb /api — transfers (INTERNAL_TRANSFER documents)          ║
- ║  • Supabase — users, roles, auth                                   ║
- ║  • OpenRouter AI — natural language → structured items parsing     ║
- ╚══════════════════════════════════════════════════════════════════════╝
-*/
-
-// ─── Real constants from users.py ───
-const MAIN_STORE_ID = "1239d270-1bbe-f64f-b7ea-5f00518ef508";
-const ALLOWED_SUPPLIERS = [
-  "16c6e655-945c-4002-a117-934749aea133",
-  "3bdcfdbb-e66c-4b16-9025-03dedb7905fa",
+// Фолбэк поставщиков — если API не вернёт
+const FALLBACK_SUPPLIERS = [
+  { id: "16c6e655-945c-4002-a117-934749aea133", name: "КПК" },
+  {
+    id: "3bdcfdbb-e66c-4b16-9025-03dedb7905fa",
+    name: "Наличка без поставщика",
+  },
 ];
-const STORES_STATIC = {
-  "1239d270-1bbe-f64f-b7ea-5f00518ef508": "Основной склад",
-  "6be6e519-c4d8-4461-9333-7810062486ed": "Кухня",
-  "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f": "Бар",
-  "6da08473-087b-4efb-ad9e-ba14e8999fae": "Мойка",
-  "0cf0f2c5-891c-412c-8ab7-7b2bacdd2b01": "Посуда",
-  "9101f69e-ab51-44b6-8c1a-f80e84d8eec3": "Хоз товары",
-};
-const TRANSFER_TARGETS = {
-  "6be6e519-c4d8-4461-9333-7810062486ed": { name: "Кухня", icon: "👨‍🍳" },
-  "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f": { name: "Бар", icon: "🍸" },
-};
-const ROLES = {
-  admin: "Админ",
-  director: "Руководитель",
-  supplier: "Снабженец",
-  kitchen: "Шеф-повар",
-  bar: "Бармен",
+
+// Фолбэк складов — если API не вернёт
+const FALLBACK_STORES = [
+  { id: "1239d270-1bbe-f64f-b7ea-5f00518ef508", name: "Основной склад" },
+  { id: "6be6e519-c4d8-4461-9333-7810062486ed", name: "Кухня" },
+  { id: "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f", name: "Бар" },
+  { id: "6da08473-087b-4efb-ad9e-ba14e8999fae", name: "Мойка" },
+  { id: "0cf0f2c5-891c-412c-8ab7-7b2bacdd2b01", name: "Посуда" },
+  { id: "9101f69e-ab51-44b6-8c1a-f80e84d8eec3", name: "Хоз товары" },
+];
+
+const STORE_ICONS = {
+  "1239d270-1bbe-f64f-b7ea-5f00518ef508": "🏭",
+  "6be6e519-c4d8-4461-9333-7810062486ed": "👨‍🍳",
+  "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f": "🍸",
+  "6da08473-087b-4efb-ad9e-ba14e8999fae": "🧹",
+  "0cf0f2c5-891c-412c-8ab7-7b2bacdd2b01": "🍽",
+  "9101f69e-ab51-44b6-8c1a-f80e84d8eec3": "🧰",
 };
 
-// ─── API helpers (calls to Next.js /api/* proxy routes) ───
 const API = {
-  async get(endpoint) {
+  async get(ep) {
     try {
-      const r = await fetch(`/api/iiko${endpoint}`);
+      const r = await fetch(`/api/iiko${ep}`);
       if (!r.ok) throw new Error(`${r.status}`);
       return await r.json();
     } catch (e) {
-      console.error(`API GET ${endpoint}:`, e);
+      console.error(`API GET ${ep}:`, e);
       return null;
     }
   },
-  async post(endpoint, body) {
+  async post(ep, body) {
     try {
-      const r = await fetch(`/api/iiko${endpoint}`, {
+      const r = await fetch(`/api/iiko${ep}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -61,49 +50,30 @@ const API = {
       if (!r.ok) throw new Error(`${r.status}`);
       return await r.json();
     } catch (e) {
-      console.error(`API POST ${endpoint}:`, e);
+      console.error(`API POST ${ep}:`, e);
       return null;
     }
   },
-  // Real endpoints mapped from bot.py:
-  async getProducts() {
-    // GET /resto/api/v2/entities/products/list → filter type=GOODS
-    return await this.get("/products");
+  getProducts() {
+    return this.get("/products");
   },
-  async getSuppliers() {
-    // GET /resto/api/suppliers → XML parse, filter supplier=true & allowed IDs
-    return await this.get("/suppliers");
+  getSuppliers() {
+    return this.get("/suppliers");
   },
-  async getStores() {
-    // GET /resto/api/corporation/stores → XML parse
-    return await this.get("/stores");
+  getStores() {
+    return this.get("/stores");
   },
-  async parseItems(text) {
-    // OpenRouter AI parsing (same prompt as bot.py)
-    return await this.post("/parse", { text });
+  createInvoice(data) {
+    return this.post("/invoice", data);
   },
-  async createInvoice(data) {
-    // POST /resto/api/documents/import/incomingInvoice → XML body
-    return await this.post("/invoice", data);
-  },
-  async createTransfer(data) {
-    // iikoWeb: auth → create INTERNAL_TRANSFER → save as PROCESSED
-    return await this.post("/transfer", data);
+  createTransfer(data) {
+    return this.post("/transfer", data);
   },
 };
 
-// ─── Formatting ───
 const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
 const fmtPrice = (n) => fmt(n) + " сум";
-const fmtDate = (d) => new Date(d).toLocaleDateString("ru-RU");
-const nowStr = () =>
-  new Date().toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 
-// ─── SVG Icons ───
 const I = {
   search: (
     <svg
@@ -219,47 +189,6 @@ const I = {
       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
     </svg>
   ),
-  check: (
-    <svg
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      viewBox="0 0 24 24"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  ),
-  clock: (
-    <svg
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      viewBox="0 0 24 24"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  ),
-  arrow: (
-    <svg
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      viewBox="0 0 24 24"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  ),
   send: (
     <svg
       width="18"
@@ -288,19 +217,6 @@ const I = {
       <path d="m6 6 12 12" />
     </svg>
   ),
-  sparkle: (
-    <svg
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      viewBox="0 0 24 24"
-    >
-      <path d="m12 3-1.9 5.8a2 2 0 01-1.3 1.3L3 12l5.8 1.9a2 2 0 011.3 1.3L12 21l1.9-5.8a2 2 0 011.3-1.3L21 12l-5.8-1.9a2 2 0 01-1.3-1.3Z" />
-    </svg>
-  ),
   loader: (
     <svg
       width="18"
@@ -315,145 +231,66 @@ const I = {
       <path d="M21 12a9 9 0 11-6.219-8.56" />
     </svg>
   ),
-};
-
-// ─── Status Badge ───
-function Badge({ status }) {
-  const m = {
-    completed: { l: "Проведён", c: "#059669", bg: "#05966912" },
-    pending: { l: "Ожидание", c: "#d97706", bg: "#d9770612" },
-    in_transit: { l: "В пути", c: "#7c3aed", bg: "#7c3aed12" },
-    draft: { l: "Черновик", c: "#94a3b8", bg: "#94a3b812" },
-    error: { l: "Ошибка", c: "#ef4444", bg: "#ef444412" },
-  };
-  const s = m[status] || m.draft;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "3px 10px",
-        borderRadius: 20,
-        fontSize: 11,
-        fontWeight: 600,
-        color: s.c,
-        background: s.bg,
-        letterSpacing: 0.2,
-      }}
+  refresh: (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
     >
-      {status === "completed" && I.check}
-      {status === "pending" && I.clock}
-      {s.l}
-    </span>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  DEMO DATA — remove when connecting real API routes
-// ═══════════════════════════════════════════════════════════════
-
-const DEMO_PRODUCTS = [
-  { id: "a1", name: "Помидоры", type: "GOODS", mainUnit: "кг" },
-  { id: "a2", name: "Огурцы", type: "GOODS", mainUnit: "кг" },
-  { id: "a3", name: "Лук репчатый", type: "GOODS", mainUnit: "кг" },
-  { id: "a4", name: "Картофель", type: "GOODS", mainUnit: "кг" },
-  { id: "a5", name: "Перец болгарский", type: "GOODS", mainUnit: "кг" },
-  { id: "a6", name: "Куриное филе", type: "GOODS", mainUnit: "кг" },
-  { id: "a7", name: "Говядина (вырезка)", type: "GOODS", mainUnit: "кг" },
-  { id: "a8", name: "Баранина", type: "GOODS", mainUnit: "кг" },
-  { id: "a9", name: "Молоко 3.2%", type: "GOODS", mainUnit: "л" },
-  { id: "a10", name: "Сметана 20%", type: "GOODS", mainUnit: "кг" },
-  { id: "a11", name: "Сыр Моцарелла", type: "GOODS", mainUnit: "кг" },
-  { id: "a12", name: "Масло подсолнечное", type: "GOODS", mainUnit: "л" },
-  { id: "a13", name: "Мука в/с", type: "GOODS", mainUnit: "кг" },
-  { id: "a14", name: "Рис длиннозёрный", type: "GOODS", mainUnit: "кг" },
-  { id: "a15", name: "Сахар", type: "GOODS", mainUnit: "кг" },
-  { id: "a16", name: "Лимон", type: "GOODS", mainUnit: "шт" },
-  { id: "a17", name: "Coca-Cola 1л", type: "GOODS", mainUnit: "шт" },
-  { id: "a18", name: "Вода минеральная", type: "GOODS", mainUnit: "л" },
-  { id: "a19", name: "Креветки тигровые", type: "GOODS", mainUnit: "кг" },
-  { id: "a20", name: "Масло сливочное 82%", type: "GOODS", mainUnit: "кг" },
-];
-
-const DEMO_SUPPLIERS = [
-  { id: "16c6e655-945c-4002-a117-934749aea133", name: "ООО «ФрешМаркет»" },
-  { id: "3bdcfdbb-e66c-4b16-9025-03dedb7905fa", name: "ИП Каримов" },
-];
-
-const DEMO_HISTORY = {
-  invoices: [
-    {
-      id: "inv1",
-      number: "TG-20260521-143022",
-      date: "2026-05-21",
-      supplier: "ООО «ФрешМаркет»",
-      store: "Основной склад",
-      items: 6,
-      status: "completed",
-    },
-    {
-      id: "inv2",
-      number: "TG-20260520-091544",
-      date: "2026-05-20",
-      supplier: "ИП Каримов",
-      store: "Основной склад",
-      items: 4,
-      status: "completed",
-    },
-    {
-      id: "inv3",
-      number: "TG-20260519-164233",
-      date: "2026-05-19",
-      supplier: "ООО «ФрешМаркет»",
-      store: "Основной склад",
-      items: 9,
-      status: "pending",
-    },
-  ],
-  transfers: [
-    {
-      id: "tr1",
-      number: "PM-00234",
-      date: "2026-05-21",
-      from: "Основной склад",
-      to: "Кухня",
-      items: 5,
-      status: "completed",
-    },
-    {
-      id: "tr2",
-      number: "PM-00233",
-      date: "2026-05-20",
-      from: "Основной склад",
-      to: "Бар",
-      items: 3,
-      status: "completed",
-    },
-  ],
+      <path d="M21 12a9 9 0 00-9-9 9.75 9.75 0 00-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 009 9 9.75 9.75 0 006.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  ),
+  arrow: (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  ),
 };
-
-// ═══════════════════════════════════════════════════════════════
-//  MAIN APP
-// ═══════════════════════════════════════════════════════════════
 
 export default function LocmacoApp() {
   const [tab, setTab] = useState("products");
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [products, setProducts] = useState(DEMO_PRODUCTS);
-  const [suppliers, setSuppliers] = useState(DEMO_SUPPLIERS);
-  const [stores] = useState(STORES_STATIC);
-  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState(FALLBACK_SUPPLIERS);
+  const [stores, setStores] = useState(FALLBACK_STORES);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Load real data on mount (falls back to demo)
+  const loadData = async () => {
+    setProductsLoading(true);
+    setProductsError(false);
+    const [p, sup, st] = await Promise.all([
+      API.getProducts(),
+      API.getSuppliers(),
+      API.getStores(),
+    ]);
+    if (p && Array.isArray(p) && p.length > 0) setProducts(p);
+    else setProductsError(true);
+    if (sup && Array.isArray(sup) && sup.length > 0) setSuppliers(sup);
+    if (st && Array.isArray(st) && st.length > 0) setStores(st);
+    setProductsLoading(false);
+  };
+
   useEffect(() => {
-    (async () => {
-      const [p, s] = await Promise.all([API.getProducts(), API.getSuppliers()]);
-      if (p?.length) setProducts(p);
-      if (s?.length) setSuppliers(s);
-    })();
+    loadData();
   }, []);
 
   const showToast = (msg, type = "success") => {
@@ -491,13 +328,12 @@ export default function LocmacoApp() {
   return (
     <div
       style={{
-        fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif",
+        fontFamily: "'DM Sans','Segoe UI',system-ui,sans-serif",
         minHeight: "100vh",
         background: "#f5f7fa",
         color: "#0f1729",
       }}
     >
-      {/* Header */}
       <header
         style={{
           background: "#0f1729",
@@ -535,14 +371,7 @@ export default function LocmacoApp() {
               L
             </div>
             <div>
-              <div
-                style={{
-                  color: "#fff",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  letterSpacing: -0.3,
-                }}
-              >
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
                 The Lokmaco
               </div>
               <div
@@ -572,7 +401,6 @@ export default function LocmacoApp() {
               color: "#fff",
               fontSize: 13,
               fontWeight: 600,
-              transition: "all 0.15s",
             }}
           >
             {I.cart}
@@ -603,7 +431,6 @@ export default function LocmacoApp() {
         </div>
       </header>
 
-      {/* Tabs */}
       <nav
         style={{
           background: "#fff",
@@ -638,7 +465,6 @@ export default function LocmacoApp() {
                 color: tab === t.id ? "#6366f1" : "#64748b",
                 borderBottom:
                   tab === t.id ? "2px solid #6366f1" : "2px solid transparent",
-                transition: "all 0.15s",
               }}
             >
               {t.icon}
@@ -648,12 +474,17 @@ export default function LocmacoApp() {
         </div>
       </nav>
 
-      {/* Content */}
       <main
         style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 20px 100px" }}
       >
         {tab === "products" && (
-          <ProductsView products={products} addToCart={addToCart} />
+          <ProductsView
+            products={products}
+            loading={productsLoading}
+            error={productsError}
+            onRetry={loadData}
+            addToCart={addToCart}
+          />
         )}
         {tab === "incoming" && (
           <IncomingView
@@ -662,7 +493,6 @@ export default function LocmacoApp() {
             stores={stores}
             showToast={showToast}
             cart={cart}
-            setCart={setCart}
           />
         )}
         {tab === "transfer" && (
@@ -671,12 +501,10 @@ export default function LocmacoApp() {
             stores={stores}
             showToast={showToast}
             cart={cart}
-            setCart={setCart}
           />
         )}
       </main>
 
-      {/* Cart Drawer */}
       {cartOpen && (
         <CartDrawer
           cart={cart}
@@ -686,8 +514,6 @@ export default function LocmacoApp() {
           setTab={setTab}
         />
       )}
-
-      {/* Toast */}
       {toast && (
         <div
           style={{
@@ -713,19 +539,21 @@ export default function LocmacoApp() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  PRODUCTS VIEW  — search + grid (from /resto/api/v2/entities/products/list)
-// ═══════════════════════════════════════════════════════════════
-
-function ProductsView({ products, addToCart }) {
+function ProductsView({ products, loading, error, onRetry, addToCart }) {
   const [q, setQ] = useState("");
   const filtered = products.filter(
     (p) => !q || p.name.toLowerCase().includes(q.toLowerCase())
   );
-
+  if (loading) return <LoadingBlock text="Загрузка товаров из iiko..." />;
+  if (error || products.length === 0)
+    return (
+      <ErrorBlock
+        text="Не удалось подтянуть товары из iiko"
+        onRetry={onRetry}
+      />
+    );
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
-      {/* Search bar */}
       <div style={{ position: "relative", marginBottom: 20 }}>
         <span
           style={{
@@ -741,7 +569,7 @@ function ProductsView({ products, addToCart }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Поиск по номенклатуре iiko..."
+          placeholder="Поиск по номенклатуре..."
           style={{
             width: "100%",
             padding: "12px 14px 12px 42px",
@@ -751,8 +579,6 @@ function ProductsView({ products, addToCart }) {
             outline: "none",
             background: "#fff",
           }}
-          onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
-          onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
         />
         <div
           style={{
@@ -767,8 +593,6 @@ function ProductsView({ products, addToCart }) {
           {filtered.length} из {products.length}
         </div>
       </div>
-
-      {/* Grid */}
       <div
         style={{
           display: "grid",
@@ -784,45 +608,14 @@ function ProductsView({ products, addToCart }) {
               borderRadius: 14,
               padding: "16px 18px",
               border: "1px solid #eef1f5",
-              transition: "box-shadow .15s, transform .15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.05)";
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = "none";
-              e.currentTarget.style.transform = "none";
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                marginBottom: 14,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>
-                  {p.name}
-                </div>
-                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
-                  {p.mainUnit || p.unit || "шт"} · {p.type}
-                </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>
+                {p.name}
               </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: "#6366f1",
-                  background: "#6366f10a",
-                  padding: "2px 7px",
-                  borderRadius: 5,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                ID: {p.id.slice(0, 6)}…
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
+                {p.mainUnit || "шт"}
               </div>
             </div>
             <button
@@ -830,7 +623,7 @@ function ProductsView({ products, addToCart }) {
                 addToCart({
                   id: p.id,
                   name: p.name,
-                  unit: p.mainUnit || p.unit || "шт",
+                  unit: p.mainUnit || "шт",
                   qty: 1,
                 })
               }
@@ -855,26 +648,14 @@ function ProductsView({ products, addToCart }) {
           </div>
         ))}
       </div>
-      {filtered.length === 0 && <Empty icon="🔍" text="Товары не найдены" />}
+      {filtered.length === 0 && <Empty icon="🔍" text="Ничего не найдено" />}
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  INCOMING INVOICE (Приход) — mirrors bot.py InvoiceFSM
-//  supplier → store → items (AI parse or manual) → confirm → POST XML
-// ═══════════════════════════════════════════════════════════════
-
-function IncomingView({
-  products,
-  suppliers,
-  stores,
-  showToast,
-  cart,
-  setCart,
-}) {
-  const [mode, setMode] = useState("list"); // list | new
-  const [step, setStep] = useState(0); // 0: supplier, 1: store, 2: items, 3: confirm
+function IncomingView({ products, suppliers, stores, showToast, cart }) {
+  const [mode, setMode] = useState("idle");
+  const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     supplierId: "",
     supplierName: "",
@@ -883,8 +664,6 @@ function IncomingView({
     comment: "",
   });
   const [items, setItems] = useState([]);
-  const [aiText, setAiText] = useState("");
-  const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const startFromCart = () => {
@@ -901,41 +680,24 @@ function IncomingView({
     setMode("new");
   };
 
-  const handleAIParse = async () => {
-    if (!aiText.trim()) return;
-    setParsing(true);
-    // In production: calls OpenRouter via /api/iiko/parse
-    // Same prompt as bot.py parse_with_ai()
-    const result = await API.parseItems(aiText);
-    if (result?.length) {
-      setItems(result);
-      setStep(3);
-    } else {
-      // Fallback: basic local parse
-      const lines = aiText.split("\n").filter(Boolean);
-      const parsed = lines.map((line) => {
-        const parts = line.trim().split(/\s+/);
-        const name = parts[0] || "?";
-        const qty = parseFloat(parts[1]) || 1;
-        const unit = (parts[2] || "шт").replace(/[0-9]/g, "") || "шт";
-        const totalOrPrice = parseFloat(parts[parts.length - 1]) || 0;
-        const price =
-          totalOrPrice > qty * 1000 ? totalOrPrice / qty : totalOrPrice;
-        const match = products.find((p) =>
-          p.name.toLowerCase().includes(name.toLowerCase())
+  const addItem = (p) => {
+    setItems((prev) => {
+      const ex = prev.find((i) => i.product_id === p.id);
+      if (ex)
+        return prev.map((i) =>
+          i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i
         );
-        return {
-          product_id: match?.id || "",
-          product_name: match?.name || name,
-          quantity: qty,
-          unit,
-          price,
-        };
-      });
-      setItems(parsed);
-      setStep(3);
-    }
-    setParsing(false);
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          product_name: p.name,
+          quantity: 1,
+          unit: p.mainUnit || "шт",
+          price: 0,
+        },
+      ];
+    });
   };
 
   const handleSubmit = async () => {
@@ -952,8 +714,8 @@ function IncomingView({
     });
     setSubmitting(false);
     if (result?.success) {
-      showToast("Накладная создана в iiko!");
-      setMode("list");
+      showToast("Накладная создана!");
+      setMode("idle");
       setStep(0);
       setItems([]);
       setForm({
@@ -963,16 +725,13 @@ function IncomingView({
         storeName: "",
         comment: "",
       });
-    } else {
-      showToast("Ошибка создания накладной", "error");
-    }
+    } else showToast("Ошибка создания накладной", "error");
   };
 
   const total = items.reduce(
     (s, i) => s + (i.quantity || 0) * (i.price || 0),
     0
   );
-  const storeEntries = Object.entries(stores);
 
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
@@ -984,21 +743,16 @@ function IncomingView({
           marginBottom: 20,
         }}
       >
-        <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
-            Приходные накладные
-          </h2>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
-            POST /resto/api/documents/import/incomingInvoice
-          </p>
-        </div>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Приходная накладная
+        </h2>
         <div style={{ display: "flex", gap: 8 }}>
-          {cart.length > 0 && mode === "list" && (
+          {cart.length > 0 && mode === "idle" && (
             <Btn outline onClick={startFromCart}>
               {I.cart} Из корзины ({cart.length})
             </Btn>
           )}
-          {mode === "list" ? (
+          {mode === "idle" ? (
             <Btn
               onClick={() => {
                 setMode("new");
@@ -1011,7 +765,7 @@ function IncomingView({
             <Btn
               outline
               onClick={() => {
-                setMode("list");
+                setMode("idle");
                 setStep(0);
                 setItems([]);
               }}
@@ -1021,50 +775,23 @@ function IncomingView({
           )}
         </div>
       </div>
-
-      {mode === "new" ? (
+      {mode === "idle" && <Empty icon="📄" text="Нажмите «Новый приход»" />}
+      {mode === "new" && (
         <div
           style={{
             background: "#fff",
             borderRadius: 14,
             border: "1px solid #e8ecf0",
             padding: 24,
-            animation: "fadeIn .2s ease",
           }}
         >
-          {/* Steps indicator */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
-            {["Поставщик", "Склад", "Товары", "Подтверждение"].map((s, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                <div
-                  style={{
-                    height: 3,
-                    borderRadius: 2,
-                    background: i <= step ? "#6366f1" : "#e2e8f0",
-                    marginBottom: 6,
-                    transition: "all .2s",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: i === step ? 700 : 400,
-                    color: i <= step ? "#6366f1" : "#94a3b8",
-                  }}
-                >
-                  {s}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Step 0: Supplier */}
+          <StepBar
+            steps={["Поставщик", "Склад", "Товары", "Подтверждение"]}
+            current={step}
+          />
           {step === 0 && (
             <div>
-              <label style={lbl}>Поставщик *</label>
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 10px" }}>
-                Только из ALLOWED_SUPPLIERS ({ALLOWED_SUPPLIERS.length} шт.)
-              </p>
+              <label style={lbl}>Выберите поставщика</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {suppliers.map((s) => (
                   <button
@@ -1077,344 +804,96 @@ function IncomingView({
                       });
                       setStep(1);
                     }}
-                    style={{
-                      padding: "14px 16px",
-                      borderRadius: 10,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: 14,
-                      fontWeight: 500,
-                      transition: "all .15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#818cf8";
-                      e.currentTarget.style.background = "#f8f7ff";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#e2e8f0";
-                      e.currentTarget.style.background = "#fff";
-                    }}
+                    style={storeBtn}
                   >
-                    <div>{s.name}</div>
-                    <div
-                      style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}
-                    >
-                      ID: {s.id}
-                    </div>
+                    <span style={{ fontSize: 20 }}>🏢</span>
+                    <div style={{ fontWeight: 600 }}>{s.name}</div>
                   </button>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Step 1: Store */}
           {step === 1 && (
             <div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
-                ✅ Поставщик: <b>{form.supplierName}</b>
-              </div>
-              <label style={lbl}>Склад приёмки *</label>
+              <div style={crumb}>✅ {form.supplierName}</div>
+              <label style={lbl}>Склад приёмки</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {storeEntries.map(([id, name]) => (
+                {stores.map((s) => (
                   <button
-                    key={id}
+                    key={s.id}
                     onClick={() => {
-                      setForm({ ...form, storeId: id, storeName: name });
+                      setForm({ ...form, storeId: s.id, storeName: s.name });
                       setStep(2);
                     }}
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: 10,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: 14,
-                      fontWeight: 500,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#818cf8";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#e2e8f0";
-                    }}
+                    style={storeBtn}
                   >
-                    {name}
+                    <span style={{ fontSize: 20 }}>
+                      {STORE_ICONS[s.id] || "📦"}
+                    </span>
+                    <div>{s.name}</div>
                   </button>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Step 2: Items input (AI parse — same as bot) */}
           {step === 2 && (
             <div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+              <div style={crumb}>
                 ✅ {form.supplierName} → {form.storeName}
               </div>
-              <label style={{ ...lbl, marginTop: 16 }}>Введите товары</label>
-              <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 8px" }}>
-                Как в боте — AI (OpenRouter) распарсит текст. Пример:
-              </p>
-              <div
-                style={{
-                  background: "#f8f9fb",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontSize: 12,
-                  color: "#64748b",
-                  marginBottom: 12,
-                  fontStyle: "italic",
-                  lineHeight: 1.6,
-                }}
-              >
-                помидоры 50кг 600000
-                <br />
-                лук 30 кг 150000
-                <br />
-                молоко 20л 900000
-              </div>
-              <p style={{ fontSize: 11, color: "#d97706", margin: "0 0 10px" }}>
-                ⚠️ Число после количества = ОБЩАЯ СУММА (делится на кол-во →
-                цена за ед.)
-              </p>
-              <textarea
-                value={aiText}
-                onChange={(e) => setAiText(e.target.value)}
-                rows={5}
-                placeholder="помидоры 50кг 600000&#10;лук 30 кг 150000"
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e2e8f0",
-                  fontSize: 14,
-                  outline: "none",
-                  resize: "vertical",
-                  lineHeight: 1.5,
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
-                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <Btn outline onClick={() => setStep(1)}>
-                  ← Назад
-                </Btn>
-                <Btn
-                  onClick={handleAIParse}
-                  disabled={parsing || !aiText.trim()}
-                >
-                  {parsing ? I.loader : I.sparkle}{" "}
-                  {parsing ? "Парсинг..." : "Распарсить AI"}
-                </Btn>
-                <Btn outline onClick={() => setStep(3)}>
-                  Ручной ввод →
-                </Btn>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Confirm */}
-          {step === 3 && (
-            <div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
-                ✅ {form.supplierName} → {form.storeName}
-              </div>
-
-              {/* Items table */}
+              <label style={{ ...lbl, marginTop: 12 }}>Добавьте товары</label>
+              <ProductSearch products={products} onSelect={addItem} />
+              {items.length > 0 && (
+                <ItemsTable items={items} setItems={setItems} showPrice />
+              )}
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 10,
+                  gap: 8,
+                  marginTop: 16,
+                  justifyContent: "flex-end",
                 }}
               >
-                <span style={{ fontSize: 14, fontWeight: 700 }}>
-                  Позиции ({items.length})
-                </span>
-                <ProductPicker
-                  products={products}
-                  onAdd={(p) => {
-                    setItems((prev) => {
-                      const ex = prev.find((i) => i.product_id === p.id);
-                      if (ex)
-                        return prev.map((i) =>
-                          i.product_id === p.id
-                            ? { ...i, quantity: i.quantity + 1 }
-                            : i
-                        );
-                      return [
-                        ...prev,
-                        {
-                          product_id: p.id,
-                          product_name: p.name,
-                          quantity: 1,
-                          unit: p.mainUnit || "шт",
-                          price: 0,
-                        },
-                      ];
-                    });
-                  }}
-                />
+                <Btn outline onClick={() => setStep(1)}>
+                  ← Назад
+                </Btn>
+                <Btn onClick={() => setStep(3)} disabled={items.length === 0}>
+                  Далее →
+                </Btn>
               </div>
-
-              {items.length > 0 && (
-                <div
-                  style={{
-                    border: "1px solid #e8ecf0",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    marginBottom: 16,
-                  }}
-                >
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: 12,
-                    }}
-                  >
-                    <thead>
-                      <tr style={{ background: "#f8fafb" }}>
-                        <th style={th}>Товар</th>
-                        <th style={{ ...th, textAlign: "center" }}>Кол-во</th>
-                        <th style={{ ...th, textAlign: "right" }}>Цена/ед</th>
-                        <th style={{ ...th, textAlign: "right" }}>Сумма</th>
-                        <th style={{ ...th, width: 36 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((it, idx) => (
-                        <tr
-                          key={idx}
-                          style={{ borderTop: "1px solid #f0f2f5" }}
-                        >
-                          <td style={td}>
-                            <div style={{ fontWeight: 500 }}>
-                              {it.product_name}
-                            </div>
-                            {!it.product_id && (
-                              <div style={{ fontSize: 10, color: "#ef4444" }}>
-                                ⚠ не найден в iiko
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ ...td, textAlign: "center" }}>
-                            <QtyControl
-                              value={it.quantity}
-                              unit={it.unit}
-                              onChange={(v) =>
-                                setItems((p) =>
-                                  p.map((x, i) =>
-                                    i === idx ? { ...x, quantity: v } : x
-                                  )
-                                )
-                              }
-                            />
-                          </td>
-                          <td style={{ ...td, textAlign: "right" }}>
-                            <input
-                              type="number"
-                              value={it.price}
-                              onChange={(e) =>
-                                setItems((p) =>
-                                  p.map((x, i) =>
-                                    i === idx
-                                      ? {
-                                          ...x,
-                                          price:
-                                            parseFloat(e.target.value) || 0,
-                                        }
-                                      : x
-                                  )
-                                )
-                              }
-                              style={{
-                                width: 80,
-                                padding: "4px 6px",
-                                borderRadius: 6,
-                                border: "1px solid #e2e8f0",
-                                fontSize: 12,
-                                textAlign: "right",
-                                outline: "none",
-                              }}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              ...td,
-                              textAlign: "right",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {fmt(it.quantity * it.price)}
-                          </td>
-                          <td style={td}>
-                            <button
-                              onClick={() =>
-                                setItems((p) => p.filter((_, i) => i !== idx))
-                              }
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#ef4444",
-                                display: "flex",
-                              }}
-                            >
-                              {I.trash}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop: "2px solid #e8ecf0" }}>
-                        <td
-                          colSpan={3}
-                          style={{ ...td, fontWeight: 700, textAlign: "right" }}
-                        >
-                          Итого:
-                        </td>
-                        <td
-                          style={{
-                            ...td,
-                            fontWeight: 800,
-                            fontSize: 14,
-                            textAlign: "right",
-                          }}
-                        >
-                          {fmtPrice(total)}
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-
-              {/* Comment */}
+            </div>
+          )}
+          {step === 3 && (
+            <div>
+              <div style={crumb}>
+                ✅ {form.supplierName} → {form.storeName} · {items.length} поз.
+              </div>
+              <ItemsTable items={items} setItems={setItems} showPrice />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  margin: "12px 0",
+                }}
+              >
+                Итого: {fmtPrice(total)}
+              </div>
               <label style={lbl}>Комментарий</label>
               <input
                 value={form.comment}
                 onChange={(e) => setForm({ ...form, comment: e.target.value })}
                 placeholder="Необязательно"
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  border: "1px solid #e2e8f0",
-                  fontSize: 13,
-                  outline: "none",
-                  marginBottom: 16,
-                }}
+                style={inp}
               />
-
               <div
-                style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  justifyContent: "flex-end",
+                }}
               >
                 <Btn outline onClick={() => setStep(2)}>
                   ← Назад
@@ -1430,39 +909,22 @@ function IncomingView({
             </div>
           )}
         </div>
-      ) : (
-        /* Invoice History */
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {DEMO_HISTORY.invoices.map((inv) => (
-            <DocCard
-              key={inv.id}
-              icon={I.inbox}
-              iconBg="#eff0ff"
-              iconColor="#6366f1"
-              title={inv.number}
-              subtitle={`${inv.supplier} → ${inv.store}`}
-              meta={`${fmtDate(inv.date)} · ${inv.items} позиций`}
-              status={inv.status}
-            />
-          ))}
-        </div>
       )}
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TRANSFER VIEW — mirrors bot.py TransferFSM
-//  Main store → Kitchen/Bar, via iikoWeb API
-// ═══════════════════════════════════════════════════════════════
-
-function TransferView({ products, stores, showToast, cart, setCart }) {
-  const [mode, setMode] = useState("list");
-  const [step, setStep] = useState(0); // 0: target, 1: items, 2: confirm
-  const [form, setForm] = useState({ toId: "", toName: "", comment: "" });
+function TransferView({ products, stores, showToast, cart }) {
+  const [mode, setMode] = useState("idle");
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    fromId: "",
+    fromName: "",
+    toId: "",
+    toName: "",
+    comment: "",
+  });
   const [items, setItems] = useState([]);
-  const [aiText, setAiText] = useState("");
-  const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const startFromCart = () => {
@@ -1478,60 +940,48 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
     setMode("new");
   };
 
-  const handleAIParse = async () => {
-    if (!aiText.trim()) return;
-    setParsing(true);
-    const result = await API.parseItems(aiText);
-    if (result?.length) {
-      setItems(result);
-      setStep(2);
-    } else {
-      const lines = aiText.split("\n").filter(Boolean);
-      const parsed = lines.map((line) => {
-        const parts = line.trim().split(/\s+/);
-        const name = parts[0] || "?";
-        const qty = parseFloat(parts[1]) || 1;
-        const unit = (parts[2] || "шт").replace(/[0-9]/g, "") || "шт";
-        const match = products.find((p) =>
-          p.name.toLowerCase().includes(name.toLowerCase())
+  const addItem = (p) => {
+    setItems((prev) => {
+      const ex = prev.find((i) => i.product_id === p.id);
+      if (ex)
+        return prev.map((i) =>
+          i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i
         );
-        return {
-          product_id: match?.id || "",
-          product_name: match?.name || name,
-          quantity: qty,
-          unit,
-        };
-      });
-      setItems(parsed);
-      setStep(2);
-    }
-    setParsing(false);
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          product_name: p.name,
+          quantity: 1,
+          unit: p.mainUnit || "шт",
+        },
+      ];
+    });
   };
 
   const handleSubmit = async () => {
-    if (!form.toId || items.length === 0) {
+    if (!form.fromId || !form.toId || items.length === 0) {
       showToast("Заполните все поля", "error");
       return;
     }
     setSubmitting(true);
-    // Calls iikoWeb: create INTERNAL_TRANSFER → save as PROCESSED
     const result = await API.createTransfer({
-      store_from: MAIN_STORE_ID,
+      store_from: form.fromId,
       store_to: form.toId,
       items,
       comment: form.comment,
     });
     setSubmitting(false);
     if (result?.success) {
-      showToast("Перемещение проведено в iiko!");
-      setMode("list");
+      showToast("Перемещение проведено!");
+      setMode("idle");
       setStep(0);
       setItems([]);
-      setForm({ toId: "", toName: "", comment: "" });
-    } else {
-      showToast("Ошибка перемещения", "error");
-    }
+      setForm({ fromId: "", fromName: "", toId: "", toName: "", comment: "" });
+    } else showToast("Ошибка перемещения", "error");
   };
+
+  const availableTo = stores.filter((s) => s.id !== form.fromId);
 
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
@@ -1543,21 +993,16 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
           marginBottom: 20,
         }}
       >
-        <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
-            Перемещения
-          </h2>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
-            iikoWeb API → INTERNAL_TRANSFER (Основной склад → Кухня/Бар)
-          </p>
-        </div>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Перемещение
+        </h2>
         <div style={{ display: "flex", gap: 8 }}>
-          {cart.length > 0 && mode === "list" && (
+          {cart.length > 0 && mode === "idle" && (
             <Btn outline onClick={startFromCart}>
               {I.cart} Из корзины ({cart.length})
             </Btn>
           )}
-          {mode === "list" ? (
+          {mode === "idle" ? (
             <Btn
               onClick={() => {
                 setMode("new");
@@ -1570,7 +1015,7 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
             <Btn
               outline
               onClick={() => {
-                setMode("list");
+                setMode("idle");
                 setStep(0);
                 setItems([]);
               }}
@@ -1580,313 +1025,134 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
           )}
         </div>
       </div>
-
-      {mode === "new" ? (
+      {mode === "idle" && <Empty icon="📦" text="Нажмите «Новое»" />}
+      {mode === "new" && (
         <div
           style={{
             background: "#fff",
             borderRadius: 14,
             border: "1px solid #e8ecf0",
             padding: 24,
-            animation: "fadeIn .2s ease",
           }}
         >
-          {/* Steps */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
-            {["Куда", "Товары", "Подтверждение"].map((s, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                <div
-                  style={{
-                    height: 3,
-                    borderRadius: 2,
-                    background: i <= step ? "#6366f1" : "#e2e8f0",
-                    marginBottom: 6,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: i === step ? 700 : 400,
-                    color: i <= step ? "#6366f1" : "#94a3b8",
-                  }}
-                >
-                  {s}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Step 0: Target store */}
+          <StepBar
+            steps={["Откуда", "Куда", "Товары", "Подтверждение"]}
+            current={step}
+          />
           {step === 0 && (
             <div>
-              <div
-                style={{
-                  background: "#f8f9fb",
-                  borderRadius: 10,
-                  padding: 14,
-                  marginBottom: 16,
-                  fontSize: 13,
-                }}
-              >
-                <b>Откуда:</b> Основной склад{" "}
-                <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  ({MAIN_STORE_ID})
-                </span>
-              </div>
-              <label style={lbl}>Куда переместить *</label>
+              <label style={lbl}>Откуда</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {Object.entries(TRANSFER_TARGETS).map(([id, t]) => (
+                {stores.map((s) => (
                   <button
-                    key={id}
+                    key={s.id}
                     onClick={() => {
-                      setForm({ ...form, toId: id, toName: t.name });
+                      setForm({ ...form, fromId: s.id, fromName: s.name });
                       setStep(1);
                     }}
-                    style={{
-                      padding: "14px 16px",
-                      borderRadius: 10,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      fontSize: 14,
-                      fontWeight: 500,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#818cf8";
-                      e.currentTarget.style.background = "#f8f7ff";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#e2e8f0";
-                      e.currentTarget.style.background = "#fff";
-                    }}
+                    style={storeBtn}
                   >
-                    <span style={{ fontSize: 22 }}>{t.icon}</span>
-                    <div>
-                      <div>{t.name}</div>
-                      <div style={{ fontSize: 10, color: "#94a3b8" }}>{id}</div>
-                    </div>
+                    <span style={{ fontSize: 20 }}>
+                      {STORE_ICONS[s.id] || "📦"}
+                    </span>
+                    <div>{s.name}</div>
                   </button>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Step 1: Items */}
           {step === 1 && (
             <div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
-                ✅ Основной склад → <b>{form.toName}</b>
+              <div style={crumb}>
+                ✅ Откуда: <b>{form.fromName}</b>
               </div>
-              <label style={lbl}>Введите товары для перемещения</label>
-              <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 8px" }}>
-                Как в боте — без цен:
-              </p>
+              <label style={lbl}>Куда</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {availableTo.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setForm({ ...form, toId: s.id, toName: s.name });
+                      setStep(2);
+                    }}
+                    style={storeBtn}
+                  >
+                    <span style={{ fontSize: 20 }}>
+                      {STORE_ICONS[s.id] || "📦"}
+                    </span>
+                    <div>{s.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {step === 2 && (
+            <div>
               <div
                 style={{
-                  background: "#f8f9fb",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontSize: 12,
-                  color: "#64748b",
-                  marginBottom: 12,
-                  fontStyle: "italic",
-                  lineHeight: 1.6,
+                  ...crumb,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
-                молоко 10л
-                <br />
-                сахар 5кг
-                <br />
-                лимон 20шт
+                ✅ {form.fromName}{" "}
+                <span style={{ color: "#6366f1" }}>{I.arrow}</span>{" "}
+                {form.toName}
               </div>
-              <textarea
-                value={aiText}
-                onChange={(e) => setAiText(e.target.value)}
-                rows={4}
-                placeholder="молоко 10л&#10;сахар 5кг&#10;лимон 20шт"
+              <label style={{ ...lbl, marginTop: 12 }}>Добавьте товары</label>
+              <ProductSearch products={products} onSelect={addItem} />
+              {items.length > 0 && (
+                <ItemsTable items={items} setItems={setItems} />
+              )}
+              <div
                 style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e2e8f0",
-                  fontSize: 14,
-                  outline: "none",
-                  resize: "vertical",
-                  lineHeight: 1.5,
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  justifyContent: "flex-end",
                 }}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <Btn outline onClick={() => setStep(0)}>
+              >
+                <Btn outline onClick={() => setStep(1)}>
                   ← Назад
                 </Btn>
-                <Btn
-                  onClick={handleAIParse}
-                  disabled={parsing || !aiText.trim()}
-                >
-                  {parsing ? I.loader : I.sparkle}{" "}
-                  {parsing ? "Парсинг..." : "Распарсить AI"}
-                </Btn>
-                <Btn outline onClick={() => setStep(2)}>
-                  Ручной ввод →
+                <Btn onClick={() => setStep(3)} disabled={items.length === 0}>
+                  Далее →
                 </Btn>
               </div>
             </div>
           )}
-
-          {/* Step 2: Confirm */}
-          {step === 2 && (
+          {step === 3 && (
             <div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
-                ✅ Основной склад → <b>{form.toName}</b>
-              </div>
               <div
                 style={{
+                  ...crumb,
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 10,
+                  gap: 6,
                 }}
               >
-                <span style={{ fontSize: 14, fontWeight: 700 }}>
-                  Позиции ({items.length})
-                </span>
-                <ProductPicker
-                  products={products}
-                  onAdd={(p) => {
-                    setItems((prev) => {
-                      const ex = prev.find((i) => i.product_id === p.id);
-                      if (ex)
-                        return prev.map((i) =>
-                          i.product_id === p.id
-                            ? { ...i, quantity: i.quantity + 1 }
-                            : i
-                        );
-                      return [
-                        ...prev,
-                        {
-                          product_id: p.id,
-                          product_name: p.name,
-                          quantity: 1,
-                          unit: p.mainUnit || "шт",
-                        },
-                      ];
-                    });
-                  }}
-                />
+                ✅ {form.fromName}{" "}
+                <span style={{ color: "#6366f1" }}>{I.arrow}</span>{" "}
+                {form.toName} · {items.length} поз.
               </div>
-              {items.length > 0 && (
-                <div
-                  style={{
-                    border: "1px solid #e8ecf0",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    marginBottom: 16,
-                  }}
-                >
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: 12,
-                    }}
-                  >
-                    <thead>
-                      <tr style={{ background: "#f8fafb" }}>
-                        <th style={th}>Товар</th>
-                        <th style={{ ...th, textAlign: "center" }}>Кол-во</th>
-                        <th style={{ ...th, textAlign: "right" }}>Ед.</th>
-                        <th style={{ ...th, width: 36 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((it, idx) => (
-                        <tr
-                          key={idx}
-                          style={{ borderTop: "1px solid #f0f2f5" }}
-                        >
-                          <td style={td}>
-                            <span style={{ fontWeight: 500 }}>
-                              {it.product_name}
-                            </span>
-                            {!it.product_id && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  color: "#ef4444",
-                                  marginLeft: 6,
-                                }}
-                              >
-                                ⚠
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ ...td, textAlign: "center" }}>
-                            <QtyControl
-                              value={it.quantity}
-                              unit={it.unit}
-                              onChange={(v) =>
-                                setItems((p) =>
-                                  p.map((x, i) =>
-                                    i === idx ? { ...x, quantity: v } : x
-                                  )
-                                )
-                              }
-                            />
-                          </td>
-                          <td
-                            style={{
-                              ...td,
-                              textAlign: "right",
-                              color: "#94a3b8",
-                            }}
-                          >
-                            {it.unit}
-                          </td>
-                          <td style={td}>
-                            <button
-                              onClick={() =>
-                                setItems((p) => p.filter((_, i) => i !== idx))
-                              }
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#ef4444",
-                                display: "flex",
-                              }}
-                            >
-                              {I.trash}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <label style={lbl}>Комментарий</label>
+              <ItemsTable items={items} setItems={setItems} />
+              <label style={{ ...lbl, marginTop: 12 }}>Комментарий</label>
               <input
                 value={form.comment}
                 onChange={(e) => setForm({ ...form, comment: e.target.value })}
                 placeholder="Необязательно"
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  border: "1px solid #e2e8f0",
-                  fontSize: 13,
-                  outline: "none",
-                  marginBottom: 16,
-                }}
+                style={inp}
               />
               <div
-                style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  justifyContent: "flex-end",
+                }}
               >
-                <Btn outline onClick={() => setStep(1)}>
+                <Btn outline onClick={() => setStep(2)}>
                   ← Назад
                 </Btn>
                 <Btn
@@ -1900,24 +1166,120 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
             </div>
           )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {DEMO_HISTORY.transfers.map((tr) => (
-            <DocCard
-              key={tr.id}
-              icon={I.transfer}
-              iconBg="#fef3f2"
-              iconColor="#ef4444"
-              title={tr.number}
-              subtitle={
-                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  {tr.from} <span style={{ color: "#6366f1" }}>{I.arrow}</span>{" "}
-                  {tr.to}
-                </span>
+      )}
+    </div>
+  );
+}
+
+function ProductSearch({ products, onSelect }) {
+  const [q, setQ] = useState("");
+  const [focused, setFocused] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setFocused(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const filtered =
+    q.length >= 1
+      ? products
+          .filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
+          .slice(0, 10)
+      : [];
+  return (
+    <div ref={ref} style={{ position: "relative", marginBottom: 12 }}>
+      <div style={{ position: "relative" }}>
+        <span
+          style={{
+            position: "absolute",
+            left: 12,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "#94a3b8",
+          }}
+        >
+          {I.search}
+        </span>
+        <input
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setFocused(true);
+          }}
+          onFocus={() => setFocused(true)}
+          placeholder="Начните вводить название товара..."
+          style={{
+            width: "100%",
+            padding: "11px 14px 11px 40px",
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            fontSize: 14,
+            outline: "none",
+            background: "#fff",
+          }}
+        />
+      </div>
+      {focused && q.length >= 1 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "#fff",
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+            zIndex: 50,
+            maxHeight: 260,
+            overflow: "auto",
+          }}
+        >
+          {filtered.length === 0 && (
+            <div
+              style={{
+                padding: 16,
+                textAlign: "center",
+                fontSize: 13,
+                color: "#94a3b8",
+              }}
+            >
+              Ничего не найдено
+            </div>
+          )}
+          {filtered.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                onSelect(p);
+                setQ("");
+                setFocused(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                border: "none",
+                borderTop: "1px solid #f5f7f9",
+                background: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: 13,
+                textAlign: "left",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#f8f7ff")
               }
-              meta={`${fmtDate(tr.date)} · ${tr.items} позиций`}
-              status={tr.status}
-            />
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+            >
+              <span style={{ fontWeight: 500 }}>{p.name}</span>
+              <span style={{ color: "#94a3b8", fontSize: 11 }}>
+                {p.mainUnit || "шт"}
+              </span>
+            </button>
           ))}
         </div>
       )}
@@ -1925,12 +1287,127 @@ function TransferView({ products, stores, showToast, cart, setCart }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  SHARED COMPONENTS
-// ═══════════════════════════════════════════════════════════════
+function ItemsTable({ items, setItems, showPrice }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e8ecf0",
+        borderRadius: 10,
+        overflow: "hidden",
+        marginTop: 12,
+      }}
+    >
+      <table
+        style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+      >
+        <thead>
+          <tr style={{ background: "#f8fafb" }}>
+            <th style={th}>Товар</th>
+            <th style={{ ...th, textAlign: "center" }}>Кол-во</th>
+            {showPrice && <th style={{ ...th, textAlign: "right" }}>Цена</th>}
+            {showPrice && <th style={{ ...th, textAlign: "right" }}>Сумма</th>}
+            <th style={{ ...th, width: 36 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={idx} style={{ borderTop: "1px solid #f0f2f5" }}>
+              <td style={td}>
+                <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+              </td>
+              <td style={{ ...td, textAlign: "center" }}>
+                <QtyControl
+                  value={it.quantity}
+                  onChange={(v) =>
+                    setItems((p) =>
+                      p.map((x, i) => (i === idx ? { ...x, quantity: v } : x))
+                    )
+                  }
+                />
+              </td>
+              {showPrice && (
+                <td style={{ ...td, textAlign: "right" }}>
+                  <input
+                    type="number"
+                    value={it.price}
+                    onChange={(e) =>
+                      setItems((p) =>
+                        p.map((x, i) =>
+                          i === idx
+                            ? { ...x, price: parseFloat(e.target.value) || 0 }
+                            : x
+                        )
+                      )
+                    }
+                    style={{
+                      width: 80,
+                      padding: "4px 6px",
+                      borderRadius: 6,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 12,
+                      textAlign: "right",
+                      outline: "none",
+                    }}
+                  />
+                </td>
+              )}
+              {showPrice && (
+                <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>
+                  {fmt(it.quantity * (it.price || 0))}
+                </td>
+              )}
+              <td style={td}>
+                <button
+                  onClick={() => setItems((p) => p.filter((_, i) => i !== idx))}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#ef4444",
+                    display: "flex",
+                  }}
+                >
+                  {I.trash}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StepBar({ steps, current }) {
+  return (
+    <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
+      {steps.map((s, i) => (
+        <div key={i} style={{ flex: 1, textAlign: "center" }}>
+          <div
+            style={{
+              height: 3,
+              borderRadius: 2,
+              background: i <= current ? "#6366f1" : "#e2e8f0",
+              marginBottom: 6,
+            }}
+          />
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: i === current ? 700 : 400,
+              color: i <= current ? "#6366f1" : "#94a3b8",
+            }}
+          >
+            {s}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function CartDrawer({ cart, updateQty, removeItem, onClose, setTab }) {
-  const total = cart.reduce((s, i) => s + (i.price || 0) * i.qty, 0);
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200 }}>
       <div
@@ -2079,112 +1556,7 @@ function CartDrawer({ cart, updateQty, removeItem, onClose, setTab }) {
   );
 }
 
-function ProductPicker({ products, onAdd }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const ref = useRef(null);
-  useEffect(() => {
-    const h = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  const filtered = products
-    .filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()))
-    .slice(0, 8);
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          padding: "6px 12px",
-          borderRadius: 7,
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          color: "#6366f1",
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-        }}
-      >
-        {I.plus} Добавить
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            right: 0,
-            width: 300,
-            background: "#fff",
-            borderRadius: 10,
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
-            zIndex: 50,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ padding: 8 }}>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Найти товар..."
-              autoFocus
-              style={{
-                width: "100%",
-                padding: "7px 10px",
-                borderRadius: 7,
-                border: "1px solid #e8ecf0",
-                fontSize: 12,
-                outline: "none",
-              }}
-            />
-          </div>
-          <div style={{ maxHeight: 220, overflow: "auto" }}>
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  onAdd(p);
-                  setQ("");
-                }}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  border: "none",
-                  borderTop: "1px solid #f5f7f9",
-                  background: "#fff",
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 12,
-                  textAlign: "left",
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "#f8fafb")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "#fff")
-                }
-              >
-                <span style={{ fontWeight: 500 }}>{p.name}</span>
-                <span style={{ color: "#94a3b8", fontSize: 11 }}>
-                  {p.mainUnit || "шт"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QtyControl({ value, unit, onChange }) {
+function QtyControl({ value, onChange }) {
   return (
     <div
       style={{
@@ -2216,54 +1588,59 @@ function QtyControl({ value, unit, onChange }) {
   );
 }
 
-function DocCard({ icon, iconBg, iconColor, title, subtitle, meta, status }) {
+function LoadingBlock({ text }) {
   return (
     <div
-      style={{
-        background: "#fff",
-        borderRadius: 12,
-        border: "1px solid #eef1f5",
-        padding: "16px 20px",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        transition: "box-shadow .15s",
-      }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,0,0,0.03)")
-      }
-      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
+      style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}
     >
-      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: iconBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: iconColor,
-          }}
-        >
-          {icon}
-        </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-            {subtitle}
-          </div>
-          <div style={{ fontSize: 11, color: "#b0b8c4", marginTop: 2 }}>
-            {meta}
-          </div>
-        </div>
+      <div
+        style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}
+      >
+        {I.loader}
       </div>
-      <Badge status={status} />
+      <div style={{ fontSize: 14, fontWeight: 500 }}>{text}</div>
     </div>
   );
 }
-
+function ErrorBlock({ text, onRetry }) {
+  return (
+    <div
+      style={{ textAlign: "center", padding: "50px 20px", color: "#94a3b8" }}
+    >
+      <div style={{ fontSize: 44, marginBottom: 8 }}>⚠️</div>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: "#ef4444",
+          marginBottom: 12,
+        }}
+      >
+        {text}
+      </div>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "1px solid #e2e8f0",
+            background: "#fff",
+            color: "#6366f1",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          {I.refresh} Повторить
+        </button>
+      )}
+    </div>
+  );
+}
 function Empty({ icon, text, sub }) {
   return (
     <div
@@ -2275,7 +1652,6 @@ function Empty({ icon, text, sub }) {
     </div>
   );
 }
-
 function Btn({ children, outline, onClick, disabled }) {
   return (
     <button
@@ -2301,7 +1677,6 @@ function Btn({ children, outline, onClick, disabled }) {
   );
 }
 
-// ─── Style helpers ───
 const lbl = {
   fontSize: 12,
   fontWeight: 600,
@@ -2324,4 +1699,27 @@ const qtyBtn = {
   padding: 3,
   color: "#64748b",
   display: "flex",
+};
+const crumb = { fontSize: 12, color: "#64748b", marginBottom: 12 };
+const inp = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 9,
+  border: "1px solid #e2e8f0",
+  fontSize: 13,
+  outline: "none",
+};
+const storeBtn = {
+  padding: "14px 16px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#fff",
+  cursor: "pointer",
+  textAlign: "left",
+  fontSize: 14,
+  fontWeight: 500,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
 };

@@ -1,10 +1,6 @@
 /**
  * GET /api/iiko/stores
- *
- * Mirrors bot.py get_stores_list():
- *   GET /resto/api/corporation/stores → XML
- *   Parse: find <corporateItemDto> with <id> and <name>
- *   Returns: [{id, name}]
+ * GET /resto/api/corporation/stores → XML → [{id, name}]
  */
 
 import { withIikoSession, iikoGetRaw } from "@/lib/iiko";
@@ -15,20 +11,48 @@ export async function GET() {
       const xml = await iikoGetRaw("corporation/stores", token);
       if (!xml) return [];
 
-      const results = [];
-      // bot.py tries both corporateItemDto and .//*
-      const itemRegex = /<corporateItemDto>([\s\S]*?)<\/corporateItemDto>/g;
-      let match;
+      console.log("[stores] XML length:", xml.length);
+      console.log("[stores] XML preview:", xml.substring(0, 500));
 
-      while ((match = itemRegex.exec(xml)) !== null) {
-        const block = match[1];
-        const id = extractTag(block, "id");
-        const name = extractTag(block, "name");
-        if (id && name) {
-          results.push({ id, name });
+      const results = [];
+
+      // Try multiple tag patterns — iiko XML structure varies
+      const patterns = [
+        /<corporateItemDto>([\s\S]*?)<\/corporateItemDto>/g,
+        /<store>([\s\S]*?)<\/store>/g,
+        /<item>([\s\S]*?)<\/item>/g,
+      ];
+
+      for (const regex of patterns) {
+        let match;
+        while ((match = regex.exec(xml)) !== null) {
+          const block = match[1];
+          const id = extractTag(block, "id");
+          const name = extractTag(block, "name");
+          if (id && name && !results.find((r) => r.id === id)) {
+            results.push({ id, name });
+          }
+        }
+        if (results.length > 0) break;
+      }
+
+      // Fallback: grab ALL <id>...</id> and <name>...</name> pairs
+      if (results.length === 0) {
+        const ids = [...xml.matchAll(/<id>([^<]+)<\/id>/g)].map((m) =>
+          m[1].trim()
+        );
+        const names = [...xml.matchAll(/<name>([^<]+)<\/name>/g)].map((m) =>
+          m[1].trim()
+        );
+        const count = Math.min(ids.length, names.length);
+        for (let i = 0; i < count; i++) {
+          if (ids[i] && names[i]) {
+            results.push({ id: ids[i], name: names[i] });
+          }
         }
       }
 
+      console.log("[stores] Found:", results.length);
       return results;
     });
 
@@ -40,6 +64,6 @@ export async function GET() {
 }
 
 function extractTag(xml, tag) {
-  const m = xml.match(new RegExp(`<${tag}>(.*?)</${tag}>`));
+  const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
   return m ? m[1].trim() : "";
 }
