@@ -1,70 +1,77 @@
-/**
- * GET /api/iiko/suppliers
- * GET /resto/api/suppliers → XML → [{id, name}]
- * Filter: supplier=true, deleted=false, only ALLOWED_SUPPLIERS
- */
-
+export const dynamic = "force-dynamic";
 import { withIikoSession, iikoGetRaw } from "@/lib/iiko";
+import { parseStringPromise } from "xml2js";
 
-const ALLOWED_SUPPLIERS = new Set([
+const ALLOWED = new Set([
   "16c6e655-945c-4002-a117-934749aea133",
   "3bdcfdbb-e66c-4b16-9025-03dedb7905fa",
 ]);
+
+// Рекурсивно ищем объекты с id из ALLOWED_SUPPLIERS
+function findSuppliers(obj, results = []) {
+  if (!obj || typeof obj !== "object") return results;
+  if (Array.isArray(obj)) {
+    for (const item of obj) findSuppliers(item, results);
+    return results;
+  }
+  const id = Array.isArray(obj.id) ? obj.id[0] : obj.id;
+  const name = Array.isArray(obj.name) ? obj.name[0] : obj.name;
+  const supplier = Array.isArray(obj.supplier) ? obj.supplier[0] : obj.supplier;
+  const deleted = Array.isArray(obj.deleted) ? obj.deleted[0] : obj.deleted;
+
+  if (id && name && typeof id === "string") {
+    // Если есть поля supplier/deleted — фильтруем как в боте
+    const supplierOk = !supplier || supplier === "true";
+    const deletedOk = !deleted || deleted === "false";
+    if (
+      supplierOk &&
+      deletedOk &&
+      ALLOWED.has(id.trim()) &&
+      !results.find((r) => r.id === id.trim())
+    ) {
+      results.push({
+        id: id.trim(),
+        name: (typeof name === "string" ? name : name[0]).trim(),
+      });
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    findSuppliers(obj[key], results);
+  }
+  return results;
+}
 
 export async function GET() {
   try {
     const suppliers = await withIikoSession(async (token) => {
       const xml = await iikoGetRaw("suppliers", token);
-      if (!xml) return [];
-
-      console.log("[suppliers] XML length:", xml.length);
-      console.log("[suppliers] XML preview:", xml.substring(0, 500));
-
-      const results = [];
-
-      // Try multiple patterns
-      const patterns = [
-        /<employee>([\s\S]*?)<\/employee>/g,
-        /<supplier>([\s\S]*?)<\/supplier>/g,
-        /<item>([\s\S]*?)<\/item>/g,
-      ];
-
-      for (const regex of patterns) {
-        let match;
-        while ((match = regex.exec(xml)) !== null) {
-          const block = match[1];
-          const id = extractTag(block, "id");
-          const name = extractTag(block, "name");
-          const isSupplier = extractTag(block, "supplier");
-          const isDeleted = extractTag(block, "deleted");
-
-          if (id && name) {
-            // If it has supplier/deleted fields, filter
-            if (isSupplier && isSupplier !== "true") continue;
-            if (isDeleted && isDeleted === "true") continue;
-            if (
-              ALLOWED_SUPPLIERS.has(id) &&
-              !results.find((r) => r.id === id)
-            ) {
-              results.push({ id, name });
-            }
-          }
-        }
-        if (results.length > 0) break;
+      if (!xml) {
+        console.log("[suppliers] no xml");
+        return [];
       }
 
-      console.log("[suppliers] Found:", results.length);
-      return results;
+      console.log("[suppliers] xml length:", xml.length);
+      console.log("[suppliers] xml sample:", xml.substring(0, 300));
+
+      try {
+        const parsed = await parseStringPromise(xml, {
+          explicitArray: true,
+          ignoreAttrs: false,
+        });
+        console.log("[suppliers] parsed keys:", Object.keys(parsed));
+        const results = findSuppliers(parsed);
+        console.log("[suppliers] found:", results.length, results);
+        return results;
+      } catch (parseErr) {
+        console.error("[suppliers] xml2js error:", parseErr.message);
+        return [];
+      }
     });
 
     return Response.json(suppliers);
   } catch (e) {
     console.error("[/api/iiko/suppliers]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json([]);
   }
-}
-
-function extractTag(xml, tag) {
-  const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-  return m ? m[1].trim() : "";
 }

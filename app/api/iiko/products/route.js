@@ -7,6 +7,7 @@
  *   Returns: [{id, name, type, mainUnit}]
  */
 
+export const dynamic = "force-dynamic";
 import { withIikoSession, iikoGetJson } from "@/lib/iiko";
 
 export async function GET() {
