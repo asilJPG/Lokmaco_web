@@ -1010,15 +1010,20 @@ function IncomingView({
                                 </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
-                                <input
-                                  type="number"
-                                  value={it.quantity}
-                                  onChange={(e) =>
-                                    updateItem(idx, "quantity", e.target.value)
-                                  }
-                                  placeholder="0"
-                                  style={numInput}
-                                />
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                                  <input
+                                    type="number"
+                                    value={it.quantity}
+                                    onChange={(e) =>
+                                      updateItem(idx, "quantity", e.target.value)
+                                    }
+                                    placeholder="0"
+                                    style={numInput}
+                                  />
+                                  <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "left", fontWeight: 600 }}>
+                                    {it.unit || "шт"}
+                                  </span>
+                                </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
                                 <input
@@ -1367,15 +1372,20 @@ function TransferView({
                                 </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
-                                <input
-                                  type="number"
-                                  value={it.quantity}
-                                  onChange={(e) =>
-                                    updateItem(idx, "quantity", e.target.value)
-                                  }
-                                  placeholder="0"
-                                  style={numInput}
-                                />
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                                  <input
+                                    type="number"
+                                    value={it.quantity}
+                                    onChange={(e) =>
+                                      updateItem(idx, "quantity", e.target.value)
+                                    }
+                                    placeholder="0"
+                                    style={numInput}
+                                  />
+                                  <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "left", fontWeight: 600 }}>
+                                    {it.unit || "шт"}
+                                  </span>
+                                </div>
                               </td>
                               <td style={td}>
                                 <button
@@ -1775,11 +1785,11 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                       {isInvoice ? "Приход" : "Перемещение"}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
-                      {act.document_number}
+                      {act.document_number || "Без номера"}
                     </span>
                   </div>
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                    👤 Выполнил: <b style={{ color: "#475569" }}>{act.user_name}</b> (через {act.document_number.startsWith("TG-") ? "ТГ-Бот" : "Сайт"})
+                    👤 Выполнил: <b style={{ color: "#475569" }}>{act.user_name || "Неизвестный"}</b> (через {(act.document_number && String(act.document_number).startsWith("TG-")) ? "ТГ-Бот" : "Сайт"})
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
@@ -1790,9 +1800,9 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
               <div style={{ fontSize: 12 }}>
                 <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
                   {isInvoice ? (
-                    <span>🏭 Поставщик: <b>{details.supplier_name}</b> → 📦 Склад: <b>{details.store_name}</b></span>
+                    <span>🏭 Поставщик: <b>{details.supplier_name || "Неизвестный"}</b> → 📦 Склад: <b>{details.store_name || "Неизвестный"}</b></span>
                   ) : (
-                    <span>📦 Склад: <b>{details.store_from_name}</b> → 📦 Склад: <b>{details.store_to_name}</b></span>
+                    <span>📦 Склад: <b>{details.store_from_name || "Неизвестный склад"}</b> → 📦 Склад: <b>{details.store_to_name || "Неизвестный склад"}</b></span>
                   )}
                 </div>
 
@@ -1808,10 +1818,10 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                         color: "#334155",
                       }}
                     >
-                      <span>{it.product_name}</span>
+                      <span>{it.product_name || "Товар"}</span>
                       <span style={{ fontWeight: 600 }}>
                         {it.quantity} {it.unit || "шт"}
-                        {isInvoice && it.price > 0 && ` × ${fmt(it.price)} сум`}
+                        {isInvoice && Number(it.price) > 0 && ` × ${fmt(Number(it.price))} сум`}
                       </span>
                     </div>
                   ))}
