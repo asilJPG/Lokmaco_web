@@ -14,10 +14,11 @@
  */
 
 import { withIikoSession, iikoPostXml } from "@/lib/iiko";
+import { logAction } from "@/lib/supabase.js";
 
 export async function POST(request) {
   try {
-    const { supplier_id, store_id, items, comment } = await request.json();
+    const { supplier_id, supplier_name, store_id, store_name, items, comment, user } = await request.json();
 
     if (!supplier_id || !store_id || !items?.length) {
       return Response.json({ error: "Missing supplier_id, store_id or items" }, { status: 400 });
@@ -49,6 +50,20 @@ export async function POST(request) {
     });
 
     if (success) {
+      if (user) {
+        const details = {
+          supplier_name: supplier_name || "Неизвестный поставщик",
+          store_name: store_name || "Неизвестный склад",
+          items: items.map(it => ({
+            product_name: it.product_name || "Товар",
+            quantity: it.quantity,
+            price: it.price,
+            unit: it.unit || "шт"
+          })),
+          comment: comment || "",
+        };
+        await logAction(user.tg_id, user.name, "invoice", dn, details);
+      }
       return Response.json({ success: true, documentNumber: dn });
     } else {
       return Response.json({ success: false, error: "iiko rejected the document" }, { status: 500 });

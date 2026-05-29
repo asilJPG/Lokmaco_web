@@ -67,6 +67,12 @@ const API = {
   createTransfer(data) {
     return this.post("/transfer", data);
   },
+  getHistory() {
+    return this.get("/history");
+  },
+  login(code) {
+    return this.post("/login", { code });
+  },
 };
 
 const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
@@ -215,15 +221,49 @@ const I = {
       <path d="m12 5 7 7-7 7" />
     </svg>
   ),
+  history: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
 };
 
 export default function LocmacoApp() {
+  const [loggedInUser, setLoggedInUser] = useState(null);
+  const [loginCode, setLoginCode] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [tab, setTab] = useState("incoming");
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState(FALLBACK_SUPPLIERS);
   const [stores, setStores] = useState(FALLBACK_STORES);
   const [productsLoading, setProductsLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Check localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      try {
+        setLoggedInUser(JSON.parse(saved));
+      } catch (e) {
+        localStorage.removeItem("user");
+      }
+    }
+  }, []);
 
   const loadData = async () => {
     setProductsLoading(true);
@@ -238,9 +278,21 @@ export default function LocmacoApp() {
     setProductsLoading(false);
   };
 
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    const res = await API.getHistory();
+    if (res && res.success && Array.isArray(res.history)) {
+      setHistory(res.history);
+    }
+    setHistoryLoading(false);
+  };
+
   useEffect(() => {
-    loadData();
-  }, []);
+    if (loggedInUser) {
+      loadData();
+      loadHistory();
+    }
+  }, [loggedInUser]);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -252,6 +304,238 @@ export default function LocmacoApp() {
     { id: "transfer", label: "Перемещение", icon: I.transfer },
   ];
 
+  const ROLE_NAMES = {
+    admin: "Админ",
+    director: "Руководитель",
+    supplier: "Снабженец",
+    kitchen: "Шеф-повар",
+    bar: "Бармен",
+  };
+
+  if (!loggedInUser) {
+    const handleLogin = async (e) => {
+      if (e) e.preventDefault();
+      if (loginCode.length < 4) {
+        setLoginError("Введите 4-значный код");
+        return;
+      }
+      setLoginLoading(true);
+      setLoginError("");
+      const res = await API.login(loginCode);
+      setLoginLoading(false);
+      if (res && res.success && res.user) {
+        setLoggedInUser(res.user);
+        localStorage.setItem("user", JSON.stringify(res.user));
+      } else {
+        setLoginError(res?.error || "Неверный код доступа");
+      }
+    };
+
+    const pressPin = (num) => {
+      setLoginError("");
+      if (loginCode.length < 4) {
+        setLoginCode(prev => prev + num);
+      }
+    };
+
+    const deletePin = () => {
+      setLoginError("");
+      setLoginCode(prev => prev.slice(0, -1));
+    };
+
+    const pinBtn = {
+      background: "rgba(255, 255, 255, 0.05)",
+      border: "1px solid rgba(255, 255, 255, 0.1)",
+      borderRadius: 16,
+      height: 55,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 20,
+      fontWeight: 700,
+      color: "#fff",
+      cursor: "pointer",
+      transition: "all 0.15s ease",
+      outline: "none",
+    };
+
+    return (
+      <div
+        style={{
+          fontFamily: "'DM Sans','Segoe UI',system-ui,sans-serif",
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
+          color: "#fff",
+          padding: "20px",
+        }}
+      >
+        <style>{`
+          @keyframes spin { 100% { transform: rotate(360deg); } }
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+          }
+          .pin-btn:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.2) !important;
+          }
+          .pin-btn:hover {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+          }
+        `}</style>
+
+        <div
+          style={{
+            maxWidth: 400,
+            width: "100%",
+            background: "rgba(30, 41, 59, 0.7)",
+            backdropFilter: "blur(16px)",
+            borderRadius: 24,
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            padding: "40px 30px",
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 18,
+              background: "linear-gradient(135deg,#22d3ee,#818cf8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 24,
+              color: "#fff",
+              margin: "0 auto 20px",
+              boxShadow: "0 8px 16px rgba(129, 140, 248, 0.3)",
+            }}
+          >
+            L
+          </div>
+          <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>
+            The Lokmaco
+          </h2>
+          <p style={{ margin: "0 0 32px", fontSize: 13, color: "#94a3b8" }}>
+            Введите 4-значный пин-код доступа
+          </p>
+
+          <form onSubmit={handleLogin}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 16,
+                marginBottom: 32,
+              }}
+            >
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 14,
+                    border: loginCode[i]
+                      ? "2px solid #818cf8"
+                      : "2px solid rgba(255,255,255,0.15)",
+                    background: loginCode[i] ? "rgba(129, 140, 248, 0.15)" : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 24,
+                    fontWeight: 700,
+                    color: "#fff",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {loginCode[i] ? "•" : ""}
+                </div>
+              ))}
+            </div>
+
+            {loginError && (
+              <div
+                style={{
+                  color: "#f87171",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  marginBottom: 20,
+                  animation: "shake 0.3s ease",
+                }}
+              >
+                ⚠️ {loginError}
+              </div>
+            )}
+
+            {/* Premium PIN Pad */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 16,
+                maxWidth: 280,
+                margin: "0 auto 30px",
+              }}
+            >
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => pressPin(num)}
+                  className="pin-btn"
+                  style={pinBtn}
+                >
+                  {num}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={deletePin}
+                className="pin-btn"
+                style={{ ...pinBtn, fontSize: 14, fontWeight: 500, color: "#94a3b8" }}
+              >
+                Стереть
+              </button>
+              <button
+                type="button"
+                onClick={() => pressPin(0)}
+                className="pin-btn"
+                style={pinBtn}
+              >
+                0
+              </button>
+              <button
+                type="submit"
+                disabled={loginLoading}
+                className="pin-btn"
+                style={{
+                  ...pinBtn,
+                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: "none",
+                  boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)",
+                }}
+              >
+                {loginLoading ? I.loader : "Войти"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -261,6 +545,12 @@ export default function LocmacoApp() {
         color: "#0f1729",
       }}
     >
+      <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+      `}</style>
+
       <header
         style={{
           background: "#0f1729",
@@ -275,41 +565,77 @@ export default function LocmacoApp() {
             margin: "0 auto",
             display: "flex",
             alignItems: "center",
+            justifyContent: "space-between",
             height: 60,
             padding: "0 20px",
-            gap: 10,
           }}
         >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 9,
-              background: "linear-gradient(135deg,#22d3ee,#818cf8)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 15,
-              color: "#fff",
-            }}
-          >
-            L
-          </div>
-          <div>
-            <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
-              The Lokmaco
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
               style={{
-                color: "#64748b",
-                fontSize: 10,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
+                width: 34,
+                height: 34,
+                borderRadius: 9,
+                background: "linear-gradient(135deg,#22d3ee,#818cf8)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 15,
+                color: "#fff",
               }}
             >
-              iiko warehouse
+              L
             </div>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                The Lokmaco
+              </div>
+              <div
+                style={{
+                  color: "#64748b",
+                  fontSize: 10,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                }}
+              >
+                iiko warehouse
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>
+                {loggedInUser.name}
+              </div>
+              <div style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                {ROLE_NAMES[loggedInUser.role] || loggedInUser.role}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.removeItem("user");
+                setLoggedInUser(null);
+              }}
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: 8,
+                padding: "6px",
+                color: "#f87171",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s ease",
+              }}
+              title="Выйти"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -368,6 +694,10 @@ export default function LocmacoApp() {
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "invoice")}
+            historyLoading={historyLoading}
           />
         )}
         {tab === "transfer" && (
@@ -377,6 +707,10 @@ export default function LocmacoApp() {
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "transfer")}
+            historyLoading={historyLoading}
           />
         )}
       </main>
@@ -417,6 +751,10 @@ function IncomingView({
   showToast,
   loading,
   onRetry,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
   const [step, setStep] = useState(0);
@@ -478,13 +816,20 @@ function IncomingView({
     setSubmitting(true);
     const result = await API.createInvoice({
       supplier_id: form.supplierId,
+      supplier_name: form.supplierName,
       store_id: form.storeId,
+      store_name: form.storeName,
       items: prepared,
       comment: form.comment,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name
+      }
     });
     setSubmitting(false);
     if (result?.success) {
       showToast("Накладная создана!");
+      loadHistory();
       setMode("idle");
       setStep(0);
       setItems([]);
@@ -538,7 +883,14 @@ function IncomingView({
           </Btn>
         )}
       </div>
-      {mode === "idle" && <Empty icon="📄" text="Нажмите «Новый приход»" />}
+      {mode === "idle" && (
+        <HistoryList
+          history={history}
+          loading={historyLoading}
+          onRefresh={loadHistory}
+          emptyText="История приходов пуста"
+        />
+      )}
       {mode === "new" && (
         <div
           style={{
@@ -762,7 +1114,17 @@ function IncomingView({
 //  TRANSFER — откуда → куда → товары (поиск + кол-во) → провести
 // ═══════════════════════════════════════════════════════════════
 
-function TransferView({ products, stores, showToast, loading, onRetry }) {
+function TransferView({
+  products,
+  stores,
+  showToast,
+  loading,
+  onRetry,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
   const [mode, setMode] = useState("idle");
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -816,13 +1178,20 @@ function TransferView({ products, stores, showToast, loading, onRetry }) {
     setSubmitting(true);
     const result = await API.createTransfer({
       store_from: form.fromId,
+      store_from_name: form.fromName,
       store_to: form.toId,
+      store_to_name: form.toName,
       items: prepared,
       comment: form.comment,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name
+      }
     });
     setSubmitting(false);
     if (result?.success) {
       showToast("Перемещение проведено!");
+      loadHistory();
       setMode("idle");
       setStep(0);
       setItems([]);
@@ -867,7 +1236,14 @@ function TransferView({ products, stores, showToast, loading, onRetry }) {
           </Btn>
         )}
       </div>
-      {mode === "idle" && <Empty icon="📦" text="Нажмите «Новое»" />}
+      {mode === "idle" && (
+        <HistoryList
+          history={history}
+          loading={historyLoading}
+          onRefresh={loadHistory}
+          emptyText="История перемещений пуста"
+        />
+      )}
       {mode === "new" && (
         <div
           style={{
@@ -1271,7 +1647,7 @@ function Empty({ icon, text }) {
     </div>
   );
 }
-function Btn({ children, outline, onClick, disabled }) {
+function Btn({ children, outline, onClick, disabled, style }) {
   return (
     <button
       onClick={onClick}
@@ -1289,10 +1665,169 @@ function Btn({ children, outline, onClick, disabled }) {
         alignItems: "center",
         gap: 5,
         opacity: disabled ? 0.5 : 1,
+        ...style,
       }}
     >
       {children}
     </button>
+  );
+}
+
+function HistoryList({ history, loading, onRefresh, emptyText }) {
+  if (loading && history.length === 0) {
+    return <LoadingBlock text="Загрузка истории..." />;
+  }
+
+  if (history.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "40px 20px" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>📜</div>
+        <div style={{ fontWeight: 600, color: "#64748b" }}>{emptyText || "История действий пуста"}</div>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+          <Btn outline onClick={onRefresh}>
+            {I.refresh} Обновить
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+          marginTop: 10,
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#475569" }}>
+          История операций
+        </h3>
+        <button
+          onClick={onRefresh}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#6366f1",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {I.refresh} Обновить
+        </button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {history.map((act) => {
+          const isInvoice = act.action_type === "invoice";
+          const date = new Date(act.created_at);
+          const formattedDate = date.toLocaleDateString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          const details = act.details || {};
+          const items = details.items || [];
+
+          return (
+            <div
+              key={act.id}
+              style={{
+                background: "#fff",
+                borderRadius: 14,
+                border: "1px solid #e8ecf0",
+                padding: 18,
+                boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  borderBottom: "1px dashed #e8ecf0",
+                  paddingBottom: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: isInvoice ? "#ecfdf5" : "#e0e7ff",
+                        color: isInvoice ? "#059669" : "#4f46e5",
+                      }}
+                    >
+                      {isInvoice ? "Приход" : "Перемещение"}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
+                      {act.document_number}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                    👤 Выполнил: <b style={{ color: "#475569" }}>{act.user_name}</b> (через {act.document_number.startsWith("TG-") ? "ТГ-Бот" : "Сайт"})
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
+                  {formattedDate}
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12 }}>
+                <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
+                  {isInvoice ? (
+                    <span>🏭 Поставщик: <b>{details.supplier_name}</b> → 📦 Склад: <b>{details.store_name}</b></span>
+                  ) : (
+                    <span>📦 Склад: <b>{details.store_from_name}</b> → 📦 Склад: <b>{details.store_to_name}</b></span>
+                  )}
+                </div>
+
+                <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
+                  {items.map((it, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "4px 0",
+                        borderBottom: idx < items.length - 1 ? "1px solid #f1f5f9" : "none",
+                        color: "#334155",
+                      }}
+                    >
+                      <span>{it.product_name}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {it.quantity} {it.unit || "шт"}
+                        {isInvoice && it.price > 0 && ` × ${fmt(it.price)} сум`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {details.comment && (
+                  <div style={{ marginTop: 8, fontStyle: "italic", color: "#64748b", fontSize: 11 }}>
+                    💬 Комментарий: {details.comment}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -14,10 +14,11 @@
  */
 
 import { createTransfer } from "@/lib/iiko-web";
+import { logAction } from "@/lib/supabase.js";
 
 export async function POST(request) {
   try {
-    const { store_from, store_to, items, comment } = await request.json();
+    const { store_from, store_from_name, store_to, store_to_name, items, comment, user } = await request.json();
 
     if (!store_from || !store_to || !items?.length) {
       return Response.json({ error: "Missing store_from, store_to or items" }, { status: 400 });
@@ -26,6 +27,19 @@ export async function POST(request) {
     const result = await createTransfer(store_from, store_to, items, comment || "");
 
     if (result.success) {
+      if (user) {
+        const details = {
+          store_from_name: store_from_name || "Неизвестный склад",
+          store_to_name: store_to_name || "Неизвестный склад",
+          items: items.map(it => ({
+            product_name: it.product_name || "Товар",
+            quantity: it.quantity,
+            unit: it.unit || "шт"
+          })),
+          comment: comment || "",
+        };
+        await logAction(user.tg_id, user.name, "transfer", result.documentNumber, details);
+      }
       return Response.json({ success: true, documentNumber: result.documentNumber });
     } else {
       return Response.json({ success: false, error: result.error }, { status: 500 });
