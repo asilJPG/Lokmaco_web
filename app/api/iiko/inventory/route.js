@@ -5,6 +5,20 @@ export async function POST(request) {
   try {
     const { store_id, store_name, items, comment, user } = await request.json();
 
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const [baseRole, userStoreId] = (user.role || "").split(":");
+    const allowedRoles = ["admin", "director", "kitchen", "prep_chef", "bar"];
+    if (!allowedRoles.includes(baseRole)) {
+      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    }
+
+    if (userStoreId && store_id !== userStoreId) {
+      return Response.json({ error: "Вы можете проводить инвентаризацию только на своем складе" }, { status: 403 });
+    }
+
     if (!store_id || !items?.length) {
       return Response.json({ error: "Missing store_id or items" }, { status: 400 });
     }

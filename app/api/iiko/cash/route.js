@@ -8,6 +8,12 @@ export async function POST(request) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const [baseRole] = (user.role || "").split(":");
+    const allowedRoles = ["admin", "director", "bar", "cashier"];
+    if (!allowedRoles.includes(baseRole)) {
+      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    }
+
     const now = new Date();
     const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
     const dn = `CSH-${formatCompact(tashkent)}`;

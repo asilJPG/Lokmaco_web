@@ -20,6 +20,20 @@ export async function POST(request) {
   try {
     const { store_from, store_from_name, store_to, store_to_name, items, comment, user } = await request.json();
 
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const [baseRole, userStoreId] = (user.role || "").split(":");
+    const allowedRoles = ["admin", "director", "supplier", "kitchen", "prep_chef", "bar"];
+    if (!allowedRoles.includes(baseRole)) {
+      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    }
+
+    if (userStoreId && store_from !== userStoreId && store_to !== userStoreId) {
+      return Response.json({ error: "Вы можете перемещать товары только со своего или на свой склад" }, { status: 403 });
+    }
+
     if (!store_from || !store_to || !items?.length) {
       return Response.json({ error: "Missing store_from, store_to or items" }, { status: 400 });
     }

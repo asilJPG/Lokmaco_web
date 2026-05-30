@@ -292,7 +292,14 @@ export default function LocmacoApp() {
     const saved = localStorage.getItem("user");
     if (saved) {
       try {
-        setLoggedInUser(JSON.parse(saved));
+        const u = JSON.parse(saved);
+        const rawRole = u.role || "";
+        const [baseRole, storeId] = rawRole.split(":");
+        setLoggedInUser({
+          ...u,
+          baseRole: baseRole || "",
+          storeId: storeId || null
+        });
       } catch (e) {
         localStorage.removeItem("user");
       }
@@ -328,6 +335,12 @@ export default function LocmacoApp() {
     }
   }, [loggedInUser]);
 
+  useEffect(() => {
+    if (loggedInUser && tab !== "menu" && !hasAccess(loggedInUser.baseRole, tab)) {
+      setTab("menu");
+    }
+  }, [tab, loggedInUser]);
+
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2500);
@@ -345,7 +358,25 @@ export default function LocmacoApp() {
     director: "Руководитель",
     supplier: "Снабженец",
     kitchen: "Шеф-повар",
+    prep_chef: "Смесь-повар",
     bar: "Бармен",
+    cashier: "Кассир",
+  };
+
+  const hasAccess = (role, tabId) => {
+    if (role === "admin" || role === "director") return true;
+    switch (tabId) {
+      case "incoming":
+        return role === "supplier";
+      case "transfer":
+        return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
+      case "inventory":
+        return ["kitchen", "prep_chef", "bar"].includes(role);
+      case "cash":
+        return role === "bar" || role === "cashier";
+      default:
+        return false;
+    }
   };
 
   if (!loggedInUser) {
@@ -360,8 +391,15 @@ export default function LocmacoApp() {
       const res = await API.login(loginCode);
       setLoginLoading(false);
       if (res && res.success && res.user) {
-        setLoggedInUser(res.user);
-        localStorage.setItem("user", JSON.stringify(res.user));
+        const rawRole = res.user.role || "";
+        const [baseRole, storeId] = rawRole.split(":");
+        const parsedUser = {
+          ...res.user,
+          baseRole: baseRole || "",
+          storeId: storeId || null
+        };
+        setLoggedInUser(parsedUser);
+        localStorage.setItem("user", JSON.stringify(parsedUser));
       } else {
         setLoginError(res?.error || "Неверный код доступа");
       }
@@ -662,7 +700,14 @@ export default function LocmacoApp() {
                 {loggedInUser.name}
               </div>
               <div style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                {ROLE_NAMES[loggedInUser.role] || loggedInUser.role}
+                {(() => {
+                  const baseName = ROLE_NAMES[loggedInUser.baseRole] || loggedInUser.baseRole;
+                  if (loggedInUser.storeId) {
+                    const st = stores.find(s => s.id === loggedInUser.storeId);
+                    if (st) return `${baseName} (${st.name})`;
+                  }
+                  return baseName;
+                })()}
               </div>
             </div>
             <button
@@ -711,7 +756,7 @@ export default function LocmacoApp() {
             padding: "0 20px",
           }}
         >
-          {tabs.map((t) => (
+          {tabs.filter(t => hasAccess(loggedInUser.baseRole, t.id)).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -771,85 +816,93 @@ export default function LocmacoApp() {
               Выберите операцию
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
-              <button
-                onClick={() => setTab("incoming")}
-                style={{
-                  textAlign: "left",
-                  padding: 24,
-                  borderRadius: 20,
-                  border: "none",
-                  background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
-                  outline: "none",
-                }}
-                className="dashboard-card"
-              >
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Приход накладных</div>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Оформление новых поставок товаров в iiko</div>
-              </button>
+              {hasAccess(loggedInUser.baseRole, "incoming") && (
+                <button
+                  onClick={() => setTab("incoming")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Приход накладных</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Оформление новых поставок товаров в iiko</div>
+                </button>
+              )}
 
-              <button
-                onClick={() => setTab("transfer")}
-                style={{
-                  textAlign: "left",
-                  padding: 24,
-                  borderRadius: 20,
-                  border: "none",
-                  background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  boxShadow: "0 10px 25px rgba(6, 182, 212, 0.25)",
-                  outline: "none",
-                }}
-                className="dashboard-card"
-              >
-                <div style={{ fontSize: 32, marginBottom: 12 }}>🔁</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Перемещение</div>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Внутреннее перемещение продуктов между складами</div>
-              </button>
+              {hasAccess(loggedInUser.baseRole, "transfer") && (
+                <button
+                  onClick={() => setTab("transfer")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(6, 182, 212, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>🔁</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Перемещение</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Внутреннее перемещение продуктов между складами</div>
+                </button>
+              )}
 
-              <button
-                onClick={() => setTab("inventory")}
-                style={{
-                  textAlign: "left",
-                  padding: 24,
-                  borderRadius: 20,
-                  border: "none",
-                  background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  boxShadow: "0 10px 25px rgba(124, 58, 237, 0.25)",
-                  outline: "none",
-                }}
-                className="dashboard-card"
-              >
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Инвентаризация</div>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Фактический пересчет остатков с автосохранением</div>
-              </button>
+              {hasAccess(loggedInUser.baseRole, "inventory") && (
+                <button
+                  onClick={() => setTab("inventory")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(124, 58, 237, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Инвентаризация</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Фактический пересчет остатков с автосохранением</div>
+                </button>
+              )}
 
-              <button
-                onClick={() => setTab("cash")}
-                style={{
-                  textAlign: "left",
-                  padding: 24,
-                  borderRadius: 20,
-                  border: "none",
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  boxShadow: "0 10px 25px rgba(16, 185, 129, 0.25)",
-                  outline: "none",
-                }}
-                className="dashboard-card"
-              >
-                <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Сдать кассу</div>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>Отчет кассовой смены и расходов для руководства</div>
-              </button>
+              {hasAccess(loggedInUser.baseRole, "cash") && (
+                <button
+                  onClick={() => setTab("cash")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(16, 185, 129, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Сдать кассу</div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>Отчет кассовой смены и расходов для руководства</div>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1358,6 +1411,10 @@ function TransferView({
       showToast("Заполните все поля", "error");
       return;
     }
+    if (loggedInUser?.storeId && form.fromId !== loggedInUser.storeId && form.toId !== loggedInUser.storeId) {
+      showToast("Вы можете перемещать товары только со своего или на свой склад", "error");
+      return;
+    }
     const prepared = items
       .map((it) => ({
         product_id: it.product_id,
@@ -1394,7 +1451,13 @@ function TransferView({
     } else showToast("Ошибка перемещения", "error");
   };
 
-  const availableTo = stores.filter((s) => s.id !== form.fromId);
+  const availableTo = stores.filter((s) => {
+    if (s.id === form.fromId) return false;
+    if (loggedInUser?.storeId && form.fromId !== loggedInUser.storeId) {
+      return s.id === loggedInUser.storeId;
+    }
+    return true;
+  });
 
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
@@ -1665,6 +1728,16 @@ function InventoryView({
   const [submitting, setSubmitting] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
+  useEffect(() => {
+    if (loggedInUser && loggedInUser.storeId && stores.length > 0) {
+      const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+      if (boundStore) {
+        setForm(f => ({ ...f, storeId: boundStore.id, storeName: boundStore.name }));
+        setStep(1);
+      }
+    }
+  }, [loggedInUser, stores]);
+
   // Load draft when store is selected
   useEffect(() => {
     if (form.storeId) {
@@ -1766,9 +1839,19 @@ function InventoryView({
       localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
       loadHistory();
       setMode("idle");
-      setStep(0);
       setItems([]);
-      setForm({ storeId: "", storeName: "", comment: "" });
+      if (loggedInUser?.storeId) {
+        setStep(1);
+        const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+        setForm({
+          storeId: boundStore?.id || "",
+          storeName: boundStore?.name || "",
+          comment: "",
+        });
+      } else {
+        setStep(0);
+        setForm({ storeId: "", storeName: "", comment: "" });
+      }
     } else {
       showToast("Ошибка создания", "error");
     }
@@ -1791,7 +1874,17 @@ function InventoryView({
           <Btn
             onClick={() => {
               setMode("new");
-              setStep(0);
+              if (loggedInUser?.storeId) {
+                setStep(1);
+                const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+                setForm({
+                  storeId: boundStore?.id || "",
+                  storeName: boundStore?.name || "",
+                  comment: "",
+                });
+              } else {
+                setStep(0);
+              }
             }}
           >
             {I.plus} Пересчет
@@ -1801,8 +1894,19 @@ function InventoryView({
             outline
             onClick={() => {
               setMode("idle");
-              setStep(0);
               setItems([]);
+              if (loggedInUser?.storeId) {
+                setStep(1);
+                const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+                setForm({
+                  storeId: boundStore?.id || "",
+                  storeName: boundStore?.name || "",
+                  comment: "",
+                });
+              } else {
+                setStep(0);
+                setForm({ storeId: "", storeName: "", comment: "" });
+              }
             }}
           >
             {I.x} Отмена
