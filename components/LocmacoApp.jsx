@@ -277,7 +277,7 @@ export default function LocmacoApp() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const [tab, setTab] = useState("incoming");
+  const [tab, setTab] = useState("menu");
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState(FALLBACK_SUPPLIERS);
   const [stores, setStores] = useState(FALLBACK_STORES);
@@ -585,6 +585,22 @@ export default function LocmacoApp() {
         @keyframes spin { 100% { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fadeUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        @media (max-width: 767px) {
+          .desktop-nav {
+            display: none !important;
+          }
+        }
+        .dashboard-card {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        .dashboard-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 16px 30px rgba(0, 0, 0, 0.15) !important;
+          filter: brightness(1.05);
+        }
+        .dashboard-card:active {
+          transform: translateY(0);
+        }
       `}</style>
 
       <header
@@ -677,12 +693,14 @@ export default function LocmacoApp() {
       </header>
 
       <nav
+        className="desktop-nav"
         style={{
           background: "#fff",
           borderBottom: "1px solid #e5e8ee",
           position: "sticky",
           top: 60,
           zIndex: 90,
+          display: tab === "menu" ? "none" : "block",
         }}
       >
         <div
@@ -719,9 +737,123 @@ export default function LocmacoApp() {
         </div>
       </nav>
 
+      {tab !== "menu" && (
+        <div style={{ maxWidth: 1120, margin: "16px auto 0", padding: "0 20px" }}>
+          <button
+            onClick={() => setTab("menu")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 18px",
+              borderRadius: 12,
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#6366f1",
+              cursor: "pointer",
+              boxShadow: "0 4px 6px rgba(0,0,0,0.02)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            ← Назад в меню
+          </button>
+        </div>
+      )}
+
       <main
         style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 20px 100px" }}
       >
+        {tab === "menu" && (
+          <div style={{ animation: "fadeIn .25s ease" }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", marginBottom: 24, letterSpacing: "-0.5px" }}>
+              Выберите операцию
+            </h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
+              <button
+                onClick={() => setTab("incoming")}
+                style={{
+                  textAlign: "left",
+                  padding: 24,
+                  borderRadius: 20,
+                  border: "none",
+                  background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
+                  outline: "none",
+                }}
+                className="dashboard-card"
+              >
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
+                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Приход накладных</div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Оформление новых поставок товаров в iiko</div>
+              </button>
+
+              <button
+                onClick={() => setTab("transfer")}
+                style={{
+                  textAlign: "left",
+                  padding: 24,
+                  borderRadius: 20,
+                  border: "none",
+                  background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  boxShadow: "0 10px 25px rgba(6, 182, 212, 0.25)",
+                  outline: "none",
+                }}
+                className="dashboard-card"
+              >
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🔁</div>
+                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Перемещение</div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Внутреннее перемещение продуктов между складами</div>
+              </button>
+
+              <button
+                onClick={() => setTab("inventory")}
+                style={{
+                  textAlign: "left",
+                  padding: 24,
+                  borderRadius: 20,
+                  border: "none",
+                  background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  boxShadow: "0 10px 25px rgba(124, 58, 237, 0.25)",
+                  outline: "none",
+                }}
+                className="dashboard-card"
+              >
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Инвентаризация</div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Фактический пересчет остатков с автосохранением</div>
+              </button>
+
+              <button
+                onClick={() => setTab("cash")}
+                style={{
+                  textAlign: "left",
+                  padding: 24,
+                  borderRadius: 20,
+                  border: "none",
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  boxShadow: "0 10px 25px rgba(16, 185, 129, 0.25)",
+                  outline: "none",
+                }}
+                className="dashboard-card"
+              >
+                <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
+                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Сдать кассу</div>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Отчет кассовой смены и расходов для руководства</div>
+              </button>
+            </div>
+          </div>
+        )}
+
         {tab === "incoming" && (
           <IncomingView
             products={products}
@@ -1924,29 +2056,57 @@ function CashView({
 }) {
   const [form, setForm] = useState({
     cash: "",
-    card: "",
+    uzcard: "",
+    humo: "",
     online: "",
+    rahmat: "",
+    uzum: "",
+    yandex: "",
     surplus: "",
     shortage: "",
     comment: "",
   });
+  const [expenses, setExpenses] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
   const handleFieldChange = (field, val) => {
     setForm((p) => ({ ...p, [field]: val }));
   };
 
+  const addExpense = () => {
+    setExpenses((p) => [...p, { id: Date.now(), name: "", amount: "" }]);
+  };
+
+  const updateExpense = (id, field, value) => {
+    setExpenses((p) => p.map((exp) => (exp.id === id ? { ...exp, [field]: value } : exp)));
+  };
+
+  const removeExpense = (id) => {
+    setExpenses((p) => p.filter((exp) => exp.id !== id));
+  };
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!form.cash && !form.card && !form.online && !form.surplus && !form.shortage) {
+    const hasValues = Object.values(form).some((v) => v !== "") || expenses.length > 0;
+    if (!hasValues) {
       showToast("Заполните хотя бы одно поле", "error");
       return;
     }
     setSubmitting(true);
     const result = await API.createCash({
-      cash: form.cash,
-      card: form.card,
-      online: form.online,
+      payments: {
+        cash: form.cash,
+        uzcard: form.uzcard,
+        humo: form.humo,
+        online: form.online,
+        rahmat: form.rahmat,
+        uzum: form.uzum,
+        yandex: form.yandex,
+      },
+      expenses: expenses.map((exp) => ({
+        name: exp.name || "Расход",
+        amount: parseFloat(exp.amount) || 0,
+      })),
       surplus: form.surplus,
       shortage: form.shortage,
       comment: form.comment,
@@ -1960,17 +2120,33 @@ function CashView({
       showToast("Отчет кассы сохранен!");
       setForm({
         cash: "",
-        card: "",
+        uzcard: "",
+        humo: "",
         online: "",
+        rahmat: "",
+        uzum: "",
+        yandex: "",
         surplus: "",
         shortage: "",
         comment: "",
       });
+      setExpenses([]);
       loadHistory();
     } else {
       showToast("Ошибка сохранения", "error");
     }
   };
+
+  const totalSales =
+    (parseFloat(form.cash) || 0) +
+    (parseFloat(form.uzcard) || 0) +
+    (parseFloat(form.humo) || 0) +
+    (parseFloat(form.online) || 0) +
+    (parseFloat(form.rahmat) || 0) +
+    (parseFloat(form.uzum) || 0) +
+    (parseFloat(form.yandex) || 0);
+
+  const totalExpenses = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
 
   const isManager = loggedInUser.role === "admin" || loggedInUser.role === "director";
 
@@ -1997,6 +2173,9 @@ function CashView({
         }}
       >
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}>
+            💵 Выручка по типам оплат
+          </h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16 }}>
             <div>
               <label style={lbl}>Наличные (сум)</label>
@@ -2009,11 +2188,21 @@ function CashView({
               />
             </div>
             <div>
-              <label style={lbl}>Карта / Терминал (сум)</label>
+              <label style={lbl}>Uzcard (сум)</label>
               <input
                 type="number"
-                value={form.card}
-                onChange={(e) => handleFieldChange("card", e.target.value)}
+                value={form.uzcard}
+                onChange={(e) => handleFieldChange("uzcard", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Humo (сум)</label>
+              <input
+                type="number"
+                value={form.humo}
+                onChange={(e) => handleFieldChange("humo", e.target.value)}
                 placeholder="0"
                 style={inp}
               />
@@ -2028,9 +2217,144 @@ function CashView({
                 style={inp}
               />
             </div>
+            <div>
+              <label style={lbl}>RAHMAT (сум)</label>
+              <input
+                type="number"
+                value={form.rahmat}
+                onChange={(e) => handleFieldChange("rahmat", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Uzum (сум)</label>
+              <input
+                type="number"
+                value={form.uzum}
+                onChange={(e) => handleFieldChange("uzum", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Яндекс Еда (сум)</label>
+              <input
+                type="number"
+                value={form.yandex}
+                onChange={(e) => handleFieldChange("yandex", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div
+            style={{
+              background: "#f8fafc",
+              padding: 12,
+              borderRadius: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              fontWeight: 800,
+              fontSize: 14,
+            }}
+          >
+            <span>Итого выручка:</span>
+            <span>{fmtPrice(totalSales)}</span>
+          </div>
+
+          {/* DYNAMIC EXPENSES */}
+          <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}>
+                💸 Расходы из кассы
+              </h3>
+              <button
+                type="button"
+                onClick={addExpense}
+                style={{
+                  background: "none",
+                  border: "1px solid #6366f1",
+                  borderRadius: 8,
+                  padding: "5px 10px",
+                  color: "#6366f1",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                {I.plus} Добавить расход
+              </button>
+            </div>
+
+            {expenses.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {expenses.map((exp) => (
+                  <div key={exp.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <input
+                      value={exp.name}
+                      onChange={(e) => updateExpense(exp.id, "name", e.target.value)}
+                      placeholder="Название (например: лимоны, хозтовары)"
+                      style={{ ...inp, flex: 2 }}
+                    />
+                    <input
+                      type="number"
+                      value={exp.amount}
+                      onChange={(e) => updateExpense(exp.id, "amount", e.target.value)}
+                      placeholder="Сумма (сум)"
+                      style={{ ...inp, flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeExpense(exp.id)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#ef4444",
+                        display: "flex",
+                      }}
+                    >
+                      {I.trash}
+                    </button>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    padding: 10,
+                    borderRadius: 8,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontWeight: 700,
+                    color: "#991b1b",
+                    fontSize: 13,
+                    marginTop: 4,
+                  }}
+                >
+                  <span>Всего расходов:</span>
+                  <span>{fmtPrice(totalExpenses)}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>
+                Расходов по смене не зафиксировано
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div>
               <label style={{ ...lbl, color: "#166534" }}>Излишки (сум)</label>
               <input
@@ -2065,19 +2389,78 @@ function CashView({
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Btn onClick={handleSubmit} disabled={submitting}>
-              {submitting ? I.loader : I.send} {submitting ? "Сохранение..." : "Сохранить отчет"}
+              {submitting ? I.loader : I.send} {submitting ? "Сдача..." : "Сдать кассу"}
             </Btn>
           </div>
         </form>
       </div>
 
       {isManager ? (
-        <HistoryList
-          history={history}
-          loading={historyLoading}
-          onRefresh={loadHistory}
-          emptyText="История отчетов кассы пуста"
-        />
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#475569" }}>
+            📊 Сводная таблица расхождений (Админ)
+          </h3>
+          {historyLoading && history.length === 0 ? (
+            <LoadingBlock text="Загрузка сводной таблицы..." />
+          ) : history.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 20, color: "#94a3b8", fontSize: 13 }}>Сводная таблица пуста</div>
+          ) : (
+            <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, border: "1px solid #e8ecf0", marginBottom: 24 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafb" }}>
+                    <th style={th}>Дата</th>
+                    <th style={th}>Кассир</th>
+                    <th style={{ ...th, textAlign: "right" }}>Сумма кассира</th>
+                    <th style={{ ...th, textAlign: "right" }}>Сумма из iiko</th>
+                    <th style={{ ...th, textAlign: "right" }}>Расхождение</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((act) => {
+                    const det = act.details || {};
+                    const repCash = det.total_sales || ((det.cash || 0) + (det.card || 0) + (det.online || 0));
+                    const diff = det.difference || 0;
+                    const iiko = det.iiko_cash || (repCash - diff);
+                    const hasDiscrepancy = Math.abs(diff) > 0;
+                    const dateStr = new Date(act.created_at).toLocaleDateString("ru-RU", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
+                    return (
+                      <tr key={act.id} style={{ borderTop: "1px solid #f0f2f5" }}>
+                        <td style={td}>{dateStr}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>{act.user_name}</td>
+                        <td style={{ ...td, textAlign: "right", fontWeight: 500 }}>{fmtPrice(repCash)}</td>
+                        <td style={{ ...td, textAlign: "right" }}>{fmtPrice(iiko)}</td>
+                        <td
+                          style={{
+                            ...td,
+                            textAlign: "right",
+                            fontWeight: 700,
+                            color: diff < 0 ? "#991b1b" : diff > 0 ? "#166534" : "#475569",
+                            background: hasDiscrepancy ? (diff < 0 ? "#fef2f2" : "#f0fdf4") : "transparent",
+                          }}
+                        >
+                          {diff > 0 ? "+" : ""}{fmtPrice(diff)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <HistoryList
+            history={history}
+            loading={historyLoading}
+            onRefresh={loadHistory}
+            emptyText="История отчетов кассы пуста"
+          />
+        </div>
       ) : (
         <div
           style={{
@@ -2471,16 +2854,51 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: "#64748b" }}>💵 Наличные:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.cash || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.cash || details.cash || 0)}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>💳 Карта / Терминал:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.card || 0)}</span>
+                        <span style={{ color: "#64748b" }}>💳 Uzcard:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.uzcard || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>💳 Humo:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.humo || 0)}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: "#64748b" }}>📱 Click / Payme:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.online || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.online || details.online || 0)}</span>
                       </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>💳 RAHMAT:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.rahmat || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>💳 Uzum:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.uzum || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>🛵 Яндекс Еда:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.yandex || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e2e8f0", paddingTop: 6, fontWeight: 700 }}>
+                        <span>💰 Итого выручка:</span>
+                        <span>{fmtPrice(details.total_sales || ((details.cash || 0) + (details.card || 0) + (details.online || 0)))}</span>
+                      </div>
+                      {details.expenses?.length > 0 && (
+                        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span style={{ color: "#64748b", fontWeight: 700, fontSize: 11 }}>💸 Расходы из кассы:</span>
+                          {details.expenses.map((exp, idx) => (
+                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingLeft: 8 }}>
+                              <span>• {exp.name}:</span>
+                              <span style={{ fontWeight: 600 }}>{fmtPrice(exp.amount)}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, paddingLeft: 8 }}>
+                            <span>Сумма расходов:</span>
+                            <span>{fmtPrice(details.total_expenses || 0)}</span>
+                          </div>
+                        </div>
+                      )}
                       {(details.surplus > 0 || details.shortage > 0) && (
                         <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 6, marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
                           {details.surplus > 0 && (

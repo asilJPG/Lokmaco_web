@@ -1,8 +1,8 @@
-import { logAction } from "@/lib/supabase.js";
+import { logAction, createCashReport } from "@/lib/supabase.js";
 
 export async function POST(request) {
   try {
-    const { cash, card, online, surplus, shortage, comment, user } = await request.json();
+    const { payments, expenses, surplus, shortage, comment, user } = await request.json();
 
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -12,22 +12,54 @@ export async function POST(request) {
     const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
     const dn = `CSH-${formatCompact(tashkent)}`;
 
+    const pay = payments || {};
+    const exp = expenses || [];
+
+    const cashVal = parseFloat(pay.cash) || 0;
+    const uzcardVal = parseFloat(pay.uzcard) || 0;
+    const humoVal = parseFloat(pay.humo) || 0;
+    const onlineVal = parseFloat(pay.online) || 0;
+    const rahmatVal = parseFloat(pay.rahmat) || 0;
+    const uzumVal = parseFloat(pay.uzum) || 0;
+    const yandexVal = parseFloat(pay.yandex) || 0;
+
+    const totalSales = cashVal + uzcardVal + humoVal + onlineVal + rahmatVal + uzumVal + yandexVal;
+    const totalExpenses = exp.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+
+    const surp = parseFloat(surplus) || 0;
+    const short = parseFloat(shortage) || 0;
+
+    // Discrepancy = surplus - shortage
+    const diff = surp - short;
+    const iikoCash = totalSales - diff;
+
+    // Log to custom cash_reports table
+    await createCashReport(user.tg_id, user.name, totalSales, iikoCash, diff);
+
+    // Detailed JSON for bot_actions
     const details = {
-      cash: parseFloat(cash) || 0,
-      card: parseFloat(card) || 0,
-      online: parseFloat(online) || 0,
-      surplus: parseFloat(surplus) || 0,
-      shortage: parseFloat(shortage) || 0,
+      payments: {
+        cash: cashVal,
+        uzcard: uzcardVal,
+        humo: humoVal,
+        online: onlineVal,
+        rahmat: rahmatVal,
+        uzum: uzumVal,
+        yandex: yandexVal,
+      },
+      expenses: exp,
+      total_sales: totalSales,
+      total_expenses: totalExpenses,
+      surplus: surp,
+      shortage: short,
+      difference: diff,
+      iiko_cash: iikoCash,
       comment: comment || "",
     };
 
-    const success = await logAction(user.tg_id, user.name, "cash", dn, details);
+    await logAction(user.tg_id, user.name, "cash", dn, details);
 
-    if (success) {
-      return Response.json({ success: true, documentNumber: dn });
-    } else {
-      return Response.json({ success: false, error: "Failed to save cash report" }, { status: 500 });
-    }
+    return Response.json({ success: true, documentNumber: dn });
   } catch (e) {
     console.error("[/api/iiko/cash]", e.message);
     return Response.json({ error: e.message }, { status: 500 });
