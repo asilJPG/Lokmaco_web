@@ -380,15 +380,10 @@ export default function LocmacoApp() {
   };
 
   if (!loggedInUser) {
-    const handleLogin = async (e) => {
-      if (e) e.preventDefault();
-      if (loginCode.length < 4) {
-        setLoginError("Введите 4-значный код");
-        return;
-      }
+    const triggerLogin = async (code) => {
       setLoginLoading(true);
       setLoginError("");
-      const res = await API.login(loginCode);
+      const res = await API.login(code);
       setLoginLoading(false);
       if (res && res.success && res.user) {
         const rawRole = res.user.role || "";
@@ -402,13 +397,27 @@ export default function LocmacoApp() {
         localStorage.setItem("user", JSON.stringify(parsedUser));
       } else {
         setLoginError(res?.error || "Неверный код доступа");
+        setLoginCode(""); // Clear pin so they can re-type immediately
       }
+    };
+
+    const handleLogin = async (e) => {
+      if (e) e.preventDefault();
+      if (loginCode.length < 4) {
+        setLoginError("Введите 4-значный код");
+        return;
+      }
+      await triggerLogin(loginCode);
     };
 
     const pressPin = (num) => {
       setLoginError("");
       if (loginCode.length < 4) {
-        setLoginCode(prev => prev + num);
+        const nextCode = loginCode + num;
+        setLoginCode(nextCode);
+        if (nextCode.length === 4) {
+          triggerLogin(nextCode);
+        }
       }
     };
 
@@ -714,6 +723,7 @@ export default function LocmacoApp() {
               onClick={() => {
                 localStorage.removeItem("user");
                 setLoggedInUser(null);
+                setLoginCode("");
               }}
               style={{
                 background: "rgba(255, 255, 255, 0.05)",
