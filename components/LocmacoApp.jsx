@@ -1073,7 +1073,7 @@ function IncomingView({
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", e.target.value)
+                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
                                     }
                                     placeholder="0"
                                     style={numInput}
@@ -1435,7 +1435,7 @@ function TransferView({
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", e.target.value)
+                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
                                     }
                                     placeholder="0"
                                     style={numInput}
@@ -1829,7 +1829,7 @@ function InventoryView({
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", e.target.value)
+                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
                                     }
                                     placeholder="0"
                                     style={numInput}
