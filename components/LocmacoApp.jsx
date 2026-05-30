@@ -70,6 +70,9 @@ const API = {
   createInventory(data) {
     return this.post("/inventory", data);
   },
+  createCash(data) {
+    return this.post("/cash", data);
+  },
   getHistory() {
     return this.get("/history");
   },
@@ -121,6 +124,21 @@ const I = {
       viewBox="0 0 24 24"
     >
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  ),
+  cash: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
+    >
+      <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+      <line x1="12" y1="18" x2="12" y2="18" />
+      <path d="M17 9H7" />
     </svg>
   ),
   search: (
@@ -319,6 +337,7 @@ export default function LocmacoApp() {
     { id: "incoming", label: "Приход", icon: I.inbox },
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
+    { id: "cash", label: "Касса", icon: I.cash },
   ];
 
   const ROLE_NAMES = {
@@ -740,6 +759,15 @@ export default function LocmacoApp() {
             loggedInUser={loggedInUser}
             loadHistory={loadHistory}
             history={history.filter((h) => h.action_type === "inventory")}
+            historyLoading={historyLoading}
+          />
+        )}
+        {tab === "cash" && (
+          <CashView
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "cash")}
             historyLoading={historyLoading}
           />
         )}
@@ -1884,6 +1912,192 @@ function InventoryView({
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  CASH — отчет кассы (наличные, терминал, Click/Payme, излишки/недостачи)
+// ═══════════════════════════════════════════════════════════════
+
+function CashView({
+  showToast,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
+  const [form, setForm] = useState({
+    cash: "",
+    card: "",
+    online: "",
+    surplus: "",
+    shortage: "",
+    comment: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleFieldChange = (field, val) => {
+    setForm((p) => ({ ...p, [field]: val }));
+  };
+
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!form.cash && !form.card && !form.online && !form.surplus && !form.shortage) {
+      showToast("Заполните хотя бы одно поле", "error");
+      return;
+    }
+    setSubmitting(true);
+    const result = await API.createCash({
+      cash: form.cash,
+      card: form.card,
+      online: form.online,
+      surplus: form.surplus,
+      shortage: form.shortage,
+      comment: form.comment,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name,
+      },
+    });
+    setSubmitting(false);
+    if (result?.success) {
+      showToast("Отчет кассы сохранен!");
+      setForm({
+        cash: "",
+        card: "",
+        online: "",
+        surplus: "",
+        shortage: "",
+        comment: "",
+      });
+      loadHistory();
+    } else {
+      showToast("Ошибка сохранения", "error");
+    }
+  };
+
+  const isManager = loggedInUser.role === "admin" || loggedInUser.role === "director";
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Отчет кассы</h2>
+      </div>
+
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 14,
+          border: "1px solid #e8ecf0",
+          padding: 24,
+          marginBottom: 24,
+        }}
+      >
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16 }}>
+            <div>
+              <label style={lbl}>Наличные (сум)</label>
+              <input
+                type="number"
+                value={form.cash}
+                onChange={(e) => handleFieldChange("cash", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Карта / Терминал (сум)</label>
+              <input
+                type="number"
+                value={form.card}
+                onChange={(e) => handleFieldChange("card", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Click / Payme (сум)</label>
+              <input
+                type="number"
+                value={form.online}
+                onChange={(e) => handleFieldChange("online", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div>
+              <label style={{ ...lbl, color: "#166534" }}>Излишки (сум)</label>
+              <input
+                type="number"
+                value={form.surplus}
+                onChange={(e) => handleFieldChange("surplus", e.target.value)}
+                placeholder="0"
+                style={{ ...inp, borderColor: "#bbf7d0" }}
+              />
+            </div>
+            <div>
+              <label style={{ ...lbl, color: "#991b1b" }}>Недостача (сум)</label>
+              <input
+                type="number"
+                value={form.shortage}
+                onChange={(e) => handleFieldChange("shortage", e.target.value)}
+                placeholder="0"
+                style={{ ...inp, borderColor: "#fca5a5" }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={lbl}>Комментарий</label>
+            <input
+              value={form.comment}
+              onChange={(e) => handleFieldChange("comment", e.target.value)}
+              placeholder="Необязательно"
+              style={inp}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Btn onClick={handleSubmit} disabled={submitting}>
+              {submitting ? I.loader : I.send} {submitting ? "Сохранение..." : "Сохранить отчет"}
+            </Btn>
+          </div>
+        </form>
+      </div>
+
+      {isManager ? (
+        <HistoryList
+          history={history}
+          loading={historyLoading}
+          onRefresh={loadHistory}
+          emptyText="История отчетов кассы пуста"
+        />
+      ) : (
+        <div
+          style={{
+            background: "#f8fafc",
+            border: "1px dashed #e2e8f0",
+            borderRadius: 12,
+            padding: 20,
+            textAlign: "center",
+            color: "#64748b",
+            fontSize: 13,
+          }}
+        >
+          🔒 Просмотр истории отчетов доступен только Администраторам и Руководителям.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  PRODUCT SEARCH
 // ═══════════════════════════════════════════════════════════════
 
@@ -2172,6 +2386,7 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
         {history.map((act) => {
           const isInvoice = act.action_type === "invoice";
           const isInventory = act.action_type === "inventory";
+          const isCash = act.action_type === "cash";
           const date = new Date(act.created_at);
           const formattedDate = date.toLocaleDateString("ru-RU", {
             day: "2-digit",
@@ -2217,11 +2432,15 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                           ? "#ecfdf5"
                           : isInventory
                           ? "#faf5ff"
+                          : isCash
+                          ? "#f0fdf4"
                           : "#e0e7ff",
                         color: isInvoice
                           ? "#059669"
                           : isInventory
                           ? "#7c3aed"
+                          : isCash
+                          ? "#166534"
                           : "#4f46e5",
                       }}
                     >
@@ -2229,6 +2448,8 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                         ? "Приход"
                         : isInventory
                         ? "Инвентаризация"
+                        : isCash
+                        ? "Отчет кассы"
                         : "Перемещение"}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
@@ -2245,36 +2466,73 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
               </div>
 
               <div style={{ fontSize: 12 }}>
-                <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
-                  {isInvoice ? (
-                    <span>🏭 Поставщик: <b>{details.supplier_name || "Неизвестный"}</b> → 📦 Склад: <b>{details.store_name || "Неизвестный"}</b></span>
-                  ) : isInventory ? (
-                    <span>📦 Склад: <b>{details.store_name || "Неизвестный склад"}</b></span>
-                  ) : (
-                    <span>📦 Склад: <b>{details.store_from_name || "Неизвестный склад"}</b> → 📦 Склад: <b>{details.store_to_name || "Неизвестный склад"}</b></span>
-                  )}
-                </div>
-
-                <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
-                  {items.map((it, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "4px 0",
-                        borderBottom: idx < items.length - 1 ? "1px solid #f1f5f9" : "none",
-                        color: "#334155",
-                      }}
-                    >
-                      <span>{it.product_name || "Товар"}</span>
-                      <span style={{ fontWeight: 600 }}>
-                        {it.quantity} {it.unit || "шт"}
-                        {isInvoice && Number(it.price) > 0 && ` × ${fmt(Number(it.price))} сум`}
-                      </span>
+                {isCash ? (
+                  <div>
+                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>💵 Наличные:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.cash || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>💳 Карта / Терминал:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.card || 0)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#64748b" }}>📱 Click / Payme:</span>
+                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.online || 0)}</span>
+                      </div>
+                      {(details.surplus > 0 || details.shortage > 0) && (
+                        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 6, marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {details.surplus > 0 && (
+                            <div style={{ display: "flex", justifyContent: "space-between", color: "#166534" }}>
+                              <span>🟢 Излишки:</span>
+                              <span style={{ fontWeight: 700 }}>+{fmtPrice(details.surplus)}</span>
+                            </div>
+                          )}
+                          {details.shortage > 0 && (
+                            <div style={{ display: "flex", justifyContent: "space-between", color: "#991b1b" }}>
+                              <span>🔴 Недостача:</span>
+                              <span style={{ fontWeight: 700 }}>-{fmtPrice(details.shortage)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
+                      {isInvoice ? (
+                        <span>🏭 Поставщик: <b>{details.supplier_name || "Неизвестный"}</b> → 📦 Склад: <b>{details.store_name || "Неизвестный"}</b></span>
+                      ) : isInventory ? (
+                        <span>📦 Склад: <b>{details.store_name || "Неизвестный склад"}</b></span>
+                      ) : (
+                        <span>📦 Склад: <b>{details.store_from_name || "Неизвестный склад"}</b> → 📦 Склад: <b>{details.store_to_name || "Неизвестный склад"}</b></span>
+                      )}
+                    </div>
+
+                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
+                      {items.map((it, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            padding: "4px 0",
+                            borderBottom: idx < items.length - 1 ? "1px solid #f1f5f9" : "none",
+                            color: "#334155",
+                          }}
+                        >
+                          <span>{it.product_name || "Товар"}</span>
+                          <span style={{ fontWeight: 600 }}>
+                            {it.quantity} {it.unit || "шт"}
+                            {isInvoice && Number(it.price) > 0 && ` × ${fmt(Number(it.price))} сум`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {details.comment && (
                   <div style={{ marginTop: 8, fontStyle: "italic", color: "#64748b", fontSize: 11 }}>
