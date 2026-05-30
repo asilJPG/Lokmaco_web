@@ -1076,7 +1076,8 @@ function IncomingView({
       comment: form.comment,
       user: {
         tg_id: loggedInUser.tg_id,
-        name: loggedInUser.name
+        name: loggedInUser.name,
+        role: loggedInUser.role,
       }
     });
     setSubmitting(false);
@@ -1447,7 +1448,8 @@ function TransferView({
       comment: form.comment,
       user: {
         tg_id: loggedInUser.tg_id,
-        name: loggedInUser.name
+        name: loggedInUser.name,
+        role: loggedInUser.role,
       }
     });
     setSubmitting(false);
@@ -1841,6 +1843,7 @@ function InventoryView({
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
+        role: loggedInUser.role,
       },
     });
     setSubmitting(false);
@@ -2235,6 +2238,7 @@ function CashView({
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
+        role: loggedInUser.role,
       },
     });
     setSubmitting(false);
