@@ -47,21 +47,17 @@ export async function GET() {
     const suppliers = await withIikoSession(async (token) => {
       const xml = await iikoGetRaw("suppliers", token);
       if (!xml) {
-        console.log("[suppliers] no xml");
         return [];
       }
 
-      console.log("[suppliers] xml length:", xml.length);
-      console.log("[suppliers] xml sample:", xml.substring(0, 300));
 
       try {
         const parsed = await parseStringPromise(xml, {
           explicitArray: true,
           ignoreAttrs: false,
         });
-        console.log("[suppliers] parsed keys:", Object.keys(parsed));
+
         const results = findSuppliers(parsed);
-        console.log("[suppliers] found:", results.length, results);
         return results;
       } catch (parseErr) {
         console.error("[suppliers] xml2js error:", parseErr.message);

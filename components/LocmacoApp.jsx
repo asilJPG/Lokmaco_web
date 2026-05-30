@@ -76,6 +76,12 @@ const API = {
   getHistory() {
     return this.get("/history");
   },
+  getIikoDocuments() {
+    return this.get("/documents");
+  },
+  getIikoDocumentDetail(id, type) {
+    return this.get(`/documents/detail?id=${id}&type=${type}`);
+  },
   login(code) {
     return this.post("/login", { code });
   },
@@ -269,6 +275,21 @@ const I = {
       <polyline points="12 6 12 12 16 14" />
     </svg>
   ),
+  analytics: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
+    >
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  ),
 };
 
 export default function LocmacoApp() {
@@ -298,7 +319,7 @@ export default function LocmacoApp() {
         setLoggedInUser({
           ...u,
           baseRole: baseRole || "",
-          storeId: storeId || null
+          storeId: storeId || null,
         });
       } catch (e) {
         localStorage.removeItem("user");
@@ -336,7 +357,11 @@ export default function LocmacoApp() {
   }, [loggedInUser]);
 
   useEffect(() => {
-    if (loggedInUser && tab !== "menu" && !hasAccess(loggedInUser.baseRole, tab)) {
+    if (
+      loggedInUser &&
+      tab !== "menu" &&
+      !hasAccess(loggedInUser.baseRole, tab)
+    ) {
       setTab("menu");
     }
   }, [tab, loggedInUser]);
@@ -351,6 +376,7 @@ export default function LocmacoApp() {
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
     { id: "cash", label: "Касса", icon: I.cash },
+    { id: "analytics", label: "Аналитика", icon: I.analytics },
   ];
 
   const ROLE_NAMES = {
@@ -374,6 +400,8 @@ export default function LocmacoApp() {
         return ["kitchen", "prep_chef", "bar"].includes(role);
       case "cash":
         return role === "bar" || role === "cashier";
+      case "analytics":
+        return false; // Only admin/director
       default:
         return false;
     }
@@ -391,7 +419,7 @@ export default function LocmacoApp() {
         const parsedUser = {
           ...res.user,
           baseRole: baseRole || "",
-          storeId: storeId || null
+          storeId: storeId || null,
         };
         setLoggedInUser(parsedUser);
         localStorage.setItem("user", JSON.stringify(parsedUser));
@@ -423,7 +451,7 @@ export default function LocmacoApp() {
 
     const deletePin = () => {
       setLoginError("");
-      setLoginCode(prev => prev.slice(0, -1));
+      setLoginCode((prev) => prev.slice(0, -1));
     };
 
     const pinBtn = {
@@ -504,7 +532,14 @@ export default function LocmacoApp() {
           >
             L
           </div>
-          <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px" }}>
+          <h2
+            style={{
+              margin: "0 0 8px",
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: "-0.5px",
+            }}
+          >
             The Lokmaco
           </h2>
           <p style={{ margin: "0 0 32px", fontSize: 13, color: "#94a3b8" }}>
@@ -530,7 +565,9 @@ export default function LocmacoApp() {
                     border: loginCode[i]
                       ? "2px solid #818cf8"
                       : "2px solid rgba(255,255,255,0.15)",
-                    background: loginCode[i] ? "rgba(129, 140, 248, 0.15)" : "transparent",
+                    background: loginCode[i]
+                      ? "rgba(129, 140, 248, 0.15)"
+                      : "transparent",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -584,7 +621,12 @@ export default function LocmacoApp() {
                 type="button"
                 onClick={deletePin}
                 className="pin-btn"
-                style={{ ...pinBtn, fontSize: 14, fontWeight: 500, color: "#94a3b8" }}
+                style={{
+                  ...pinBtn,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: "#94a3b8",
+                }}
               >
                 Стереть
               </button>
@@ -708,11 +750,21 @@ export default function LocmacoApp() {
               <div style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>
                 {loggedInUser.name}
               </div>
-              <div style={{ color: "#64748b", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <div
+                style={{
+                  color: "#64748b",
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
                 {(() => {
-                  const baseName = ROLE_NAMES[loggedInUser.baseRole] || loggedInUser.baseRole;
+                  const baseName =
+                    ROLE_NAMES[loggedInUser.baseRole] || loggedInUser.baseRole;
                   if (loggedInUser.storeId) {
-                    const st = stores.find(s => s.id === loggedInUser.storeId);
+                    const st = stores.find(
+                      (s) => s.id === loggedInUser.storeId
+                    );
                     if (st) return `${baseName} (${st.name})`;
                   }
                   return baseName;
@@ -739,8 +791,15 @@ export default function LocmacoApp() {
               }}
               title="Выйти"
             >
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
               </svg>
             </button>
           </div>
@@ -766,34 +825,40 @@ export default function LocmacoApp() {
             padding: "0 20px",
           }}
         >
-          {tabs.filter(t => hasAccess(loggedInUser.baseRole, t.id)).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "12px 18px",
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: tab === t.id ? 700 : 500,
-                color: tab === t.id ? "#6366f1" : "#64748b",
-                borderBottom:
-                  tab === t.id ? "2px solid #6366f1" : "2px solid transparent",
-              }}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
+          {tabs
+            .filter((t) => hasAccess(loggedInUser.baseRole, t.id))
+            .map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "12px 18px",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: tab === t.id ? 700 : 500,
+                  color: tab === t.id ? "#6366f1" : "#64748b",
+                  borderBottom:
+                    tab === t.id
+                      ? "2px solid #6366f1"
+                      : "2px solid transparent",
+                }}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
         </div>
       </nav>
 
       {tab !== "menu" && (
-        <div style={{ maxWidth: 1120, margin: "16px auto 0", padding: "0 20px" }}>
+        <div
+          style={{ maxWidth: 1120, margin: "16px auto 0", padding: "0 20px" }}
+        >
           <button
             onClick={() => setTab("menu")}
             style={{
@@ -822,10 +887,24 @@ export default function LocmacoApp() {
       >
         {tab === "menu" && (
           <div style={{ animation: "fadeIn .25s ease" }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", marginBottom: 24, letterSpacing: "-0.5px" }}>
+            <h2
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: "#1e293b",
+                marginBottom: 24,
+                letterSpacing: "-0.5px",
+              }}
+            >
               Выберите операцию
             </h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: 20,
+              }}
+            >
               {hasAccess(loggedInUser.baseRole, "incoming") && (
                 <button
                   onClick={() => setTab("incoming")}
@@ -834,7 +913,8 @@ export default function LocmacoApp() {
                     padding: 24,
                     borderRadius: 20,
                     border: "none",
-                    background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                    background:
+                      "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
                     color: "#fff",
                     cursor: "pointer",
                     boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
@@ -843,8 +923,14 @@ export default function LocmacoApp() {
                   className="dashboard-card"
                 >
                   <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Приход накладных</div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Оформление новых поставок товаров в iiko</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Приход накладных
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Оформление новых поставок товаров в iiko
+                  </div>
                 </button>
               )}
 
@@ -856,7 +942,8 @@ export default function LocmacoApp() {
                     padding: 24,
                     borderRadius: 20,
                     border: "none",
-                    background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                    background:
+                      "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
                     color: "#fff",
                     cursor: "pointer",
                     boxShadow: "0 10px 25px rgba(6, 182, 212, 0.25)",
@@ -865,8 +952,14 @@ export default function LocmacoApp() {
                   className="dashboard-card"
                 >
                   <div style={{ fontSize: 32, marginBottom: 12 }}>🔁</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Перемещение</div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Внутреннее перемещение продуктов между складами</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Перемещение
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Внутреннее перемещение продуктов между складами
+                  </div>
                 </button>
               )}
 
@@ -878,7 +971,8 @@ export default function LocmacoApp() {
                     padding: 24,
                     borderRadius: 20,
                     border: "none",
-                    background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                    background:
+                      "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
                     color: "#fff",
                     cursor: "pointer",
                     boxShadow: "0 10px 25px rgba(124, 58, 237, 0.25)",
@@ -887,8 +981,14 @@ export default function LocmacoApp() {
                   className="dashboard-card"
                 >
                   <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Инвентаризация</div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Фактический пересчет остатков с автосохранением</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Инвентаризация
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Фактический пересчет остатков с автосохранением
+                  </div>
                 </button>
               )}
 
@@ -900,7 +1000,8 @@ export default function LocmacoApp() {
                     padding: 24,
                     borderRadius: 20,
                     border: "none",
-                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    background:
+                      "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     color: "#fff",
                     cursor: "pointer",
                     boxShadow: "0 10px 25px rgba(16, 185, 129, 0.25)",
@@ -909,8 +1010,43 @@ export default function LocmacoApp() {
                   className="dashboard-card"
                 >
                   <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Сдать кассу</div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>Отчет кассовой смены и расходов для руководства</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Сдать кассу
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Отчет кассовой смены и расходов для руководства
+                  </div>
+                </button>
+              )}
+
+              {hasAccess(loggedInUser.baseRole, "analytics") && (
+                <button
+                  onClick={() => setTab("analytics")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background:
+                      "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(236, 72, 153, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Аналитика
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    P&L отчет, кассовая выручка и лидеры продаж
+                  </div>
                 </button>
               )}
             </div>
@@ -966,6 +1102,7 @@ export default function LocmacoApp() {
             historyLoading={historyLoading}
           />
         )}
+        {tab === "analytics" && <AnalyticsView showToast={showToast} />}
       </main>
 
       {toast && (
@@ -994,6 +1131,628 @@ export default function LocmacoApp() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  IIKO HISTORY LIST — Live iiko documents tracker (incoming / transfers)
+// ═══════════════════════════════════════════════════════════════
+
+function IikoHistoryList({ type, showToast }) {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const loadIikoDocs = async () => {
+    try {
+      setLoading(true);
+      const res = await API.getIikoDocuments();
+      if (res && Array.isArray(res.data)) {
+        // Filter by document type
+        const filtered = res.data.filter((d) => d.type === type);
+        // Sort by date descending
+        filtered.sort(
+          (a, b) => new Date(b.dateIncoming) - new Date(a.dateIncoming)
+        );
+        setDocs(filtered);
+      } else {
+        showToast(res?.error || "Ошибка загрузки истории iiko", "error");
+      }
+    } catch (e) {
+      showToast("Ошибка сети при загрузке истории iiko", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIikoDocs();
+  }, [type]);
+
+  const loadDetails = async (doc) => {
+    setSelectedDoc(doc);
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const res = await API.getIikoDocumentDetail(doc.id, type);
+      if (res && res.data) {
+        setDetailData(res.data);
+      } else {
+        showToast(
+          res?.error || "Не удалось загрузить состав документа",
+          "error"
+        );
+      }
+    } catch (e) {
+      showToast("Ошибка при получении деталей документа", "error");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const formatDateString = (dateStr) => {
+    if (!dateStr) return "—";
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  if (loading && docs.length === 0) {
+    return <LoadingBlock text="Загрузка документов из iiko..." />;
+  }
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <h3
+          style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}
+        >
+          🚚 Документы в iiko за текущий месяц
+        </h3>
+        <button
+          onClick={loadIikoDocs}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#10b981",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {I.refresh} Обновить iiko
+        </button>
+      </div>
+
+      {docs.length === 0 ? (
+        <div
+          style={{
+            padding: "30px 20px",
+            textAlign: "center",
+            background: "#f8fafc",
+            borderRadius: 12,
+            border: "1px dashed #e2e8f0",
+          }}
+        >
+          <div style={{ fontSize: 24, marginBottom: 8 }}>📦</div>
+          <div style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>
+            Документов этого типа за текущий месяц в iiko не найдено.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {docs.map((doc) => {
+            const isProcessed = doc.status === "PROCESSED";
+            const date = formatDateString(doc.dateIncoming);
+
+            return (
+              <div
+                key={doc.id}
+                onClick={() => loadDetails(doc)}
+                style={{
+                  background: "#fff",
+                  borderRadius: 12,
+                  border: "1px solid #e2e8f0",
+                  padding: 14,
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  transition: "all 0.15s ease",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.01)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#10b981";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 10px rgba(16, 185, 129, 0.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                  e.currentTarget.style.boxShadow =
+                    "0 2px 5px rgba(0,0,0,0.01)";
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <span
+                      style={{
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        background: isProcessed ? "#d1fae5" : "#f3f4f6",
+                        color: isProcessed ? "#065f46" : "#4b5563",
+                      }}
+                    >
+                      {doc.status}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#1e293b",
+                      }}
+                    >
+                      № {doc.documentNumber || "—"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: "#64748b",
+                    }}
+                  >
+                    {type === "INCOMING_INVOICE" ? (
+                      <>
+                        <span>
+                          🏢 Поставщик:{" "}
+                          <strong>{doc.supplierName || "—"}</strong>
+                        </span>
+                        <span>
+                          📦 Склад:{" "}
+                          <strong>
+                            {doc.storageToName || doc.storageName || "—"}
+                          </strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          📤 Откуда:{" "}
+                          <strong>
+                            {doc.storageFromName ||
+                              doc.storageFrom?.name ||
+                              "—"}
+                          </strong>
+                        </span>
+                        <span>
+                          📥 Куда:{" "}
+                          <strong>
+                            {doc.storageToName || doc.storageTo?.name || "—"}
+                          </strong>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {doc.comment && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#94a3b8",
+                        fontStyle: "italic",
+                        marginTop: 4,
+                      }}
+                    >
+                      💬 {doc.comment}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: "right", marginLeft: 16 }}>
+                  {type === "INCOMING_INVOICE" && doc.sum && (
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        color: "#065f46",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {fmtPrice(doc.sum)}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{date}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Detailed Modal/Drawer */}
+      {selectedDoc && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            background: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "flex-end",
+            zIndex: 250,
+            animation: "fadeIn .25s ease",
+          }}
+          onClick={() => setSelectedDoc(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 550,
+              background: "#fff",
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "-10px 0 30px rgba(0,0,0,0.1)",
+              animation: "slideLeft .25s cubic-bezier(0.16, 1, 0.3, 1)",
+              padding: 24,
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                borderBottom: "1px solid #f1f5f9",
+                paddingBottom: 16,
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background:
+                        type === "INCOMING_INVOICE" ? "#ecfdf5" : "#e0e7ff",
+                      color:
+                        type === "INCOMING_INVOICE" ? "#059669" : "#4f46e5",
+                    }}
+                  >
+                    {type === "INCOMING_INVOICE"
+                      ? "Приходная накладная"
+                      : "Внутреннее перемещение"}
+                  </span>
+                  <span
+                    style={{ fontSize: 14, fontWeight: 800, color: "#0f1729" }}
+                  >
+                    № {selectedDoc.documentNumber || "—"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  📅 Дата:{" "}
+                  <strong>{formatDateString(selectedDoc.dateIncoming)}</strong>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedDoc(null)}
+                style={{
+                  background: "#f1f5f9",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: 32,
+                  height: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "#64748b",
+                }}
+              >
+                {I.x}
+              </button>
+            </div>
+
+            {/* Document Meta Info */}
+            <div
+              style={{
+                background: "#f8fafc",
+                borderRadius: 12,
+                padding: 16,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginBottom: 20,
+                fontSize: 13,
+              }}
+            >
+              {type === "INCOMING_INVOICE" ? (
+                <>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "#64748b" }}>🏢 Поставщик:</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {selectedDoc.supplierName || "—"}
+                    </span>
+                  </div>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "#64748b" }}>
+                      📥 Склад получения:
+                    </span>
+                    <span style={{ fontWeight: 600 }}>
+                      {selectedDoc.storageToName ||
+                        selectedDoc.storageName ||
+                        "—"}
+                    </span>
+                  </div>
+                  {selectedDoc.sum && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        borderTop: "1px dashed #e2e8f0",
+                        paddingTop: 8,
+                        marginTop: 4,
+                      }}
+                    >
+                      <span style={{ color: "#64748b", fontWeight: 700 }}>
+                        💵 Итоговая сумма:
+                      </span>
+                      <span style={{ fontWeight: 800, color: "#059669" }}>
+                        {fmtPrice(selectedDoc.sum)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "#64748b" }}>📤 Склад списания:</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {selectedDoc.storageFromName ||
+                        selectedDoc.storageFrom?.name ||
+                        "—"}
+                    </span>
+                  </div>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "#64748b" }}>
+                      📥 Склад получения:
+                    </span>
+                    <span style={{ fontWeight: 600 }}>
+                      {selectedDoc.storageToName ||
+                        selectedDoc.storageTo?.name ||
+                        "—"}
+                    </span>
+                  </div>
+                </>
+              )}
+              {selectedDoc.comment && (
+                <div
+                  style={{
+                    borderTop: "1px dashed #e2e8f0",
+                    paddingTop: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <span style={{ color: "#64748b" }}>💬 Комментарий:</span>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontStyle: "italic",
+                      background: "#fff",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f0",
+                    }}
+                  >
+                    {selectedDoc.comment}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Items Content */}
+            <h4
+              style={{
+                margin: "0 0 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#475569",
+              }}
+            >
+              📦 Состав документа
+            </h4>
+
+            {detailLoading && <LoadingBlock text="Загрузка состава..." />}
+
+            {!detailLoading && detailData && (
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                  }}
+                >
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          background: "#f8fafc",
+                          borderBottom: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <th
+                          style={{
+                            padding: "10px 14px",
+                            fontWeight: 700,
+                            color: "#475569",
+                          }}
+                        >
+                          Товар
+                        </th>
+                        <th
+                          style={{
+                            padding: "10px 14px",
+                            fontWeight: 700,
+                            color: "#475569",
+                            textAlign: "right",
+                          }}
+                        >
+                          Кол-во
+                        </th>
+                        {type === "INCOMING_INVOICE" && (
+                          <>
+                            <th
+                              style={{
+                                padding: "10px 14px",
+                                fontWeight: 700,
+                                color: "#475569",
+                                textAlign: "right",
+                              }}
+                            >
+                              Цена
+                            </th>
+                            <th
+                              style={{
+                                padding: "10px 14px",
+                                fontWeight: 700,
+                                color: "#475569",
+                                textAlign: "right",
+                              }}
+                            >
+                              Сумма
+                            </th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailData.items?.map((it, idx) => {
+                        const qty = parseFloat(it.amount || it.count || 0);
+                        const price = parseFloat(it.price || 0);
+                        const sum = parseFloat(it.sum || qty * price || 0);
+
+                        return (
+                          <tr
+                            key={idx}
+                            style={{
+                              borderBottom:
+                                idx === detailData.items.length - 1
+                                  ? "none"
+                                  : "1px solid #f1f5f9",
+                            }}
+                          >
+                            <td
+                              style={{
+                                padding: "10px 14px",
+                                fontWeight: 600,
+                                color: "#0f1729",
+                              }}
+                            >
+                              {it.productName || it.product?.name || "Товар"}
+                            </td>
+                            <td
+                              style={{
+                                padding: "10px 14px",
+                                fontWeight: 700,
+                                color: "#1e293b",
+                                textAlign: "right",
+                              }}
+                            >
+                              {qty} {it.productUnitName || it.unitName || "шт"}
+                            </td>
+                            {type === "INCOMING_INVOICE" && (
+                              <>
+                                <td
+                                  style={{
+                                    padding: "10px 14px",
+                                    color: "#64748b",
+                                    textAlign: "right",
+                                  }}
+                                >
+                                  {fmtPrice(price)}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "10px 14px",
+                                    fontWeight: 700,
+                                    color: "#059669",
+                                    textAlign: "right",
+                                  }}
+                                >
+                                  {fmtPrice(sum)}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  INCOMING — поставщик → склад → товары (поиск + кол-во + сумма) → провести
 // ═══════════════════════════════════════════════════════════════
 
@@ -1010,6 +1769,7 @@ function IncomingView({
   historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     supplierId: "",
@@ -1078,7 +1838,7 @@ function IncomingView({
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
         role: loggedInUser.role,
-      }
+      },
     });
     setSubmitting(false);
     if (result?.success) {
@@ -1138,12 +1898,9 @@ function IncomingView({
         )}
       </div>
       {mode === "idle" && (
-        <HistoryList
-          history={history}
-          loading={historyLoading}
-          onRefresh={loadHistory}
-          emptyText="История приходов пуста"
-        />
+        <div>
+          <IikoHistoryList type="INCOMING_INVOICE" showToast={showToast} />
+        </div>
       )}
       {mode === "new" && (
         <div
@@ -1264,17 +2021,40 @@ function IncomingView({
                                 </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
-                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    justifyContent: "center",
+                                  }}
+                                >
                                   <input
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
+                                      updateItem(
+                                        idx,
+                                        "quantity",
+                                        it.unit === "шт"
+                                          ? e.target.value
+                                              .split(".")[0]
+                                              .split(",")[0]
+                                          : e.target.value
+                                      )
                                     }
                                     placeholder="0"
                                     style={numInput}
                                   />
-                                  <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "left", fontWeight: 600 }}>
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#64748b",
+                                      minWidth: 24,
+                                      textAlign: "left",
+                                      fontWeight: 600,
+                                    }}
+                                  >
                                     {it.unit || "шт"}
                                   </span>
                                 </div>
@@ -1385,6 +2165,7 @@ function TransferView({
   historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     fromId: "",
@@ -1422,8 +2203,15 @@ function TransferView({
       showToast("Заполните все поля", "error");
       return;
     }
-    if (loggedInUser?.storeId && form.fromId !== loggedInUser.storeId && form.toId !== loggedInUser.storeId) {
-      showToast("Вы можете перемещать товары только со своего или на свой склад", "error");
+    if (
+      loggedInUser?.storeId &&
+      form.fromId !== loggedInUser.storeId &&
+      form.toId !== loggedInUser.storeId
+    ) {
+      showToast(
+        "Вы можете перемещать товары только со своего или на свой склад",
+        "error"
+      );
       return;
     }
     const prepared = items
@@ -1450,7 +2238,7 @@ function TransferView({
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
         role: loggedInUser.role,
-      }
+      },
     });
     setSubmitting(false);
     if (result?.success) {
@@ -1507,12 +2295,9 @@ function TransferView({
         )}
       </div>
       {mode === "idle" && (
-        <HistoryList
-          history={history}
-          loading={historyLoading}
-          onRefresh={loadHistory}
-          emptyText="История перемещений пуста"
-        />
+        <div>
+          <IikoHistoryList type="INTERNAL_TRANSFER" showToast={showToast} />
+        </div>
       )}
       {mode === "new" && (
         <div
@@ -1637,17 +2422,40 @@ function TransferView({
                                 </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
-                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    justifyContent: "center",
+                                  }}
+                                >
                                   <input
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
+                                      updateItem(
+                                        idx,
+                                        "quantity",
+                                        it.unit === "шт"
+                                          ? e.target.value
+                                              .split(".")[0]
+                                              .split(",")[0]
+                                          : e.target.value
+                                      )
                                     }
                                     placeholder="0"
                                     style={numInput}
                                   />
-                                  <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "left", fontWeight: 600 }}>
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#64748b",
+                                      minWidth: 24,
+                                      textAlign: "left",
+                                      fontWeight: 600,
+                                    }}
+                                  >
                                     {it.unit || "шт"}
                                   </span>
                                 </div>
@@ -1742,9 +2550,13 @@ function InventoryView({
 
   useEffect(() => {
     if (loggedInUser && loggedInUser.storeId && stores.length > 0) {
-      const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+      const boundStore = stores.find((s) => s.id === loggedInUser.storeId);
       if (boundStore) {
-        setForm(f => ({ ...f, storeId: boundStore.id, storeName: boundStore.name }));
+        setForm((f) => ({
+          ...f,
+          storeId: boundStore.id,
+          storeName: boundStore.name,
+        }));
         setStep(1);
       }
     }
@@ -1753,7 +2565,9 @@ function InventoryView({
   // Load draft when store is selected
   useEffect(() => {
     if (form.storeId) {
-      const saved = localStorage.getItem("locmaco_inventory_draft_" + form.storeId);
+      const saved = localStorage.getItem(
+        "locmaco_inventory_draft_" + form.storeId
+      );
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -1779,7 +2593,10 @@ function InventoryView({
   useEffect(() => {
     if (form.storeId) {
       if (items.length > 0) {
-        localStorage.setItem("locmaco_inventory_draft_" + form.storeId, JSON.stringify(items));
+        localStorage.setItem(
+          "locmaco_inventory_draft_" + form.storeId,
+          JSON.stringify(items)
+        );
       } else {
         localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
       }
@@ -1855,7 +2672,7 @@ function InventoryView({
       setItems([]);
       if (loggedInUser?.storeId) {
         setStep(1);
-        const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+        const boundStore = stores.find((s) => s.id === loggedInUser.storeId);
         setForm({
           storeId: boundStore?.id || "",
           storeName: boundStore?.name || "",
@@ -1889,7 +2706,9 @@ function InventoryView({
               setMode("new");
               if (loggedInUser?.storeId) {
                 setStep(1);
-                const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+                const boundStore = stores.find(
+                  (s) => s.id === loggedInUser.storeId
+                );
                 setForm({
                   storeId: boundStore?.id || "",
                   storeName: boundStore?.name || "",
@@ -1910,7 +2729,9 @@ function InventoryView({
               setItems([]);
               if (loggedInUser?.storeId) {
                 setStep(1);
-                const boundStore = stores.find(s => s.id === loggedInUser.storeId);
+                const boundStore = stores.find(
+                  (s) => s.id === loggedInUser.storeId
+                );
                 setForm({
                   storeId: boundStore?.id || "",
                   storeName: boundStore?.name || "",
@@ -1978,7 +2799,9 @@ function InventoryView({
                   alignItems: "center",
                 }}
               >
-                <span>🏢 Склад: <b>{form.storeName}</b></span>
+                <span>
+                  🏢 Склад: <b>{form.storeName}</b>
+                </span>
                 {items.length > 0 && (
                   <button
                     onClick={clearDraft}
@@ -2078,7 +2901,15 @@ function InventoryView({
                                     type="number"
                                     value={it.quantity}
                                     onChange={(e) =>
-                                      updateItem(idx, "quantity", it.unit === "шт" ? e.target.value.split(".")[0].split(",")[0] : e.target.value)
+                                      updateItem(
+                                        idx,
+                                        "quantity",
+                                        it.unit === "шт"
+                                          ? e.target.value
+                                              .split(".")[0]
+                                              .split(",")[0]
+                                          : e.target.value
+                                      )
                                     }
                                     placeholder="0"
                                     style={numInput}
@@ -2202,7 +3033,9 @@ function CashView({
   };
 
   const updateExpense = (id, field, value) => {
-    setExpenses((p) => p.map((exp) => (exp.id === id ? { ...exp, [field]: value } : exp)));
+    setExpenses((p) =>
+      p.map((exp) => (exp.id === id ? { ...exp, [field]: value } : exp))
+    );
   };
 
   const removeExpense = (id) => {
@@ -2211,7 +3044,8 @@ function CashView({
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    const hasValues = Object.values(form).some((v) => v !== "") || expenses.length > 0;
+    const hasValues =
+      Object.values(form).some((v) => v !== "") || expenses.length > 0;
     if (!hasValues) {
       showToast("Заполните хотя бы одно поле", "error");
       return;
@@ -2273,9 +3107,13 @@ function CashView({
     (parseFloat(form.uzum) || 0) +
     (parseFloat(form.yandex) || 0);
 
-  const totalExpenses = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
+  const totalExpenses = expenses.reduce(
+    (sum, exp) => sum + (parseFloat(exp.amount) || 0),
+    0
+  );
 
-  const isManager = loggedInUser.role === "admin" || loggedInUser.role === "director";
+  const isManager =
+    loggedInUser.role === "admin" || loggedInUser.role === "director";
 
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
@@ -2287,7 +3125,9 @@ function CashView({
           marginBottom: 20,
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Отчет кассы</h2>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Отчет кассы
+        </h2>
       </div>
 
       <div
@@ -2299,7 +3139,10 @@ function CashView({
           marginBottom: 24,
         }}
       >
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+        >
           <div style={{ maxWidth: 220, marginBottom: 8 }}>
             <label style={lbl}>📅 Дата сдачи кассы</label>
             <input
@@ -2311,10 +3154,23 @@ function CashView({
             />
           </div>
 
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#475569",
+            }}
+          >
             💵 Выручка по типам оплат
           </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 16,
+            }}
+          >
             <div>
               <label style={lbl}>Наличные (сум)</label>
               <input
@@ -2412,7 +3268,14 @@ function CashView({
                 marginBottom: 12,
               }}
             >
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#475569",
+                }}
+              >
                 💸 Расходы из кассы
               </h3>
               <button
@@ -2437,19 +3300,28 @@ function CashView({
             </div>
 
             {expenses.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              >
                 {expenses.map((exp) => (
-                  <div key={exp.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <div
+                    key={exp.id}
+                    style={{ display: "flex", gap: 12, alignItems: "center" }}
+                  >
                     <input
                       value={exp.name}
-                      onChange={(e) => updateExpense(exp.id, "name", e.target.value)}
+                      onChange={(e) =>
+                        updateExpense(exp.id, "name", e.target.value)
+                      }
                       placeholder="Название (например: лимоны, хозтовары)"
                       style={{ ...inp, flex: 2 }}
                     />
                     <input
                       type="number"
                       value={exp.amount}
-                      onChange={(e) => updateExpense(exp.id, "amount", e.target.value)}
+                      onChange={(e) =>
+                        updateExpense(exp.id, "amount", e.target.value)
+                      }
                       placeholder="Сумма (сум)"
                       style={{ ...inp, flex: 1 }}
                     />
@@ -2486,13 +3358,23 @@ function CashView({
                 </div>
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>
+              <div
+                style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}
+              >
                 Расходов по смене не зафиксировано
               </div>
             )}
           </div>
 
-          <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div
+            style={{
+              borderTop: "1px dashed #e2e8f0",
+              paddingTop: 16,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+            }}
+          >
             <div>
               <label style={{ ...lbl, color: "#166534" }}>Излишки (сум)</label>
               <input
@@ -2504,7 +3386,9 @@ function CashView({
               />
             </div>
             <div>
-              <label style={{ ...lbl, color: "#991b1b" }}>Недостача (сум)</label>
+              <label style={{ ...lbl, color: "#991b1b" }}>
+                Недостача (сум)
+              </label>
               <input
                 type="number"
                 value={form.shortage}
@@ -2527,7 +3411,8 @@ function CashView({
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Btn onClick={handleSubmit} disabled={submitting}>
-              {submitting ? I.loader : I.send} {submitting ? "Сдача..." : "Сдать кассу"}
+              {submitting ? I.loader : I.send}{" "}
+              {submitting ? "Сдача..." : "Сдать кассу"}
             </Btn>
           </div>
         </form>
@@ -2535,16 +3420,46 @@ function CashView({
 
       {isManager ? (
         <div style={{ marginTop: 24 }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#475569" }}>
+          <h3
+            style={{
+              margin: "0 0 12px",
+              fontSize: 15,
+              fontWeight: 700,
+              color: "#475569",
+            }}
+          >
             📊 Сводная таблица расхождений (Админ)
           </h3>
           {historyLoading && history.length === 0 ? (
             <LoadingBlock text="Загрузка сводной таблицы..." />
           ) : history.length === 0 ? (
-            <div style={{ textAlign: "center", padding: 20, color: "#94a3b8", fontSize: 13 }}>Сводная таблица пуста</div>
+            <div
+              style={{
+                textAlign: "center",
+                padding: 20,
+                color: "#94a3b8",
+                fontSize: 13,
+              }}
+            >
+              Сводная таблица пуста
+            </div>
           ) : (
-            <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, border: "1px solid #e8ecf0", marginBottom: 24 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <div
+              style={{
+                overflowX: "auto",
+                background: "#fff",
+                borderRadius: 12,
+                border: "1px solid #e8ecf0",
+                marginBottom: 24,
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 12,
+                }}
+              >
                 <thead>
                   <tr style={{ background: "#f8fafb" }}>
                     <th style={th}>Дата</th>
@@ -2557,9 +3472,11 @@ function CashView({
                 <tbody>
                   {history.map((act) => {
                     const det = act.details || {};
-                    const repCash = det.total_sales || ((det.cash || 0) + (det.card || 0) + (det.online || 0));
+                    const repCash =
+                      det.total_sales ||
+                      (det.cash || 0) + (det.card || 0) + (det.online || 0);
                     const diff = det.difference || 0;
-                    const iiko = det.iiko_cash || (repCash - diff);
+                    const iiko = det.iiko_cash || repCash - diff;
                     const hasDiscrepancy = Math.abs(diff) > 0;
                     let dateStr = "";
                     if (det.selected_date) {
@@ -2570,30 +3487,54 @@ function CashView({
                         dateStr = det.selected_date;
                       }
                     } else {
-                      dateStr = new Date(act.created_at).toLocaleDateString("ru-RU", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
+                      dateStr = new Date(act.created_at).toLocaleDateString(
+                        "ru-RU",
+                        {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }
+                      );
                     }
 
                     return (
-                      <tr key={act.id} style={{ borderTop: "1px solid #f0f2f5" }}>
+                      <tr
+                        key={act.id}
+                        style={{ borderTop: "1px solid #f0f2f5" }}
+                      >
                         <td style={td}>{dateStr}</td>
-                        <td style={{ ...td, fontWeight: 600 }}>{act.user_name}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 500 }}>{fmtPrice(repCash)}</td>
-                        <td style={{ ...td, textAlign: "right" }}>{fmtPrice(iiko)}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>
+                          {act.user_name}
+                        </td>
+                        <td
+                          style={{ ...td, textAlign: "right", fontWeight: 500 }}
+                        >
+                          {fmtPrice(repCash)}
+                        </td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {fmtPrice(iiko)}
+                        </td>
                         <td
                           style={{
                             ...td,
                             textAlign: "right",
                             fontWeight: 700,
-                            color: diff < 0 ? "#991b1b" : diff > 0 ? "#166534" : "#475569",
-                            background: hasDiscrepancy ? (diff < 0 ? "#fef2f2" : "#f0fdf4") : "transparent",
+                            color:
+                              diff < 0
+                                ? "#991b1b"
+                                : diff > 0
+                                ? "#166534"
+                                : "#475569",
+                            background: hasDiscrepancy
+                              ? diff < 0
+                                ? "#fef2f2"
+                                : "#f0fdf4"
+                              : "transparent",
                           }}
                         >
-                          {diff > 0 ? "+" : ""}{fmtPrice(diff)}
+                          {diff > 0 ? "+" : ""}
+                          {fmtPrice(diff)}
                         </td>
                       </tr>
                     );
@@ -2621,7 +3562,8 @@ function CashView({
             fontSize: 13,
           }}
         >
-          🔒 Просмотр истории отчетов доступен только Администраторам и Руководителям.
+          🔒 Просмотр истории отчетов доступен только Администраторам и
+          Руководителям.
         </div>
       )}
     </div>
@@ -2871,8 +3813,12 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
     return (
       <div style={{ textAlign: "center", padding: "40px 20px" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>📜</div>
-        <div style={{ fontWeight: 600, color: "#64748b" }}>{emptyText || "История действий пуста"}</div>
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+        <div style={{ fontWeight: 600, color: "#64748b" }}>
+          {emptyText || "История действий пуста"}
+        </div>
+        <div
+          style={{ display: "flex", justifyContent: "center", marginTop: 16 }}
+        >
           <Btn outline onClick={onRefresh}>
             {I.refresh} Обновить
           </Btn>
@@ -2892,7 +3838,9 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
           marginTop: 10,
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#475569" }}>
+        <h3
+          style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#475569" }}
+        >
           История операций
         </h3>
         <button
@@ -2962,7 +3910,9 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                 }}
               >
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
                     <span
                       style={{
                         padding: "4px 8px",
@@ -2993,15 +3943,32 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                         ? "Отчет кассы"
                         : "Перемещение"}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#334155",
+                      }}
+                    >
                       {act.document_number || "Без номера"}
                     </span>
                   </div>
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                    👤 Выполнил: <b style={{ color: "#475569" }}>{act.user_name || "Неизвестный"}</b> (через {(act.document_number && String(act.document_number).startsWith("TG-")) ? "ТГ-Бот" : "Сайт"})
+                    👤 Выполнил:{" "}
+                    <b style={{ color: "#475569" }}>
+                      {act.user_name || "Неизвестный"}
+                    </b>{" "}
+                    (через{" "}
+                    {act.document_number &&
+                    String(act.document_number).startsWith("TG-")
+                      ? "ТГ-Бот"
+                      : "Сайт"}
+                    )
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
+                <div
+                  style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}
+                >
                   {formattedDate}
                 </div>
               </div>
@@ -3009,66 +3976,204 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
               <div style={{ fontSize: 12 }}>
                 {isCash ? (
                   <div>
-                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        borderRadius: 8,
+                        padding: 12,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>💵 Наличные:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.cash || details.cash || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(
+                            details.payments?.cash || details.cash || 0
+                          )}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>💳 Uzcard:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.uzcard || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(details.payments?.uzcard || 0)}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>💳 Humo:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.humo || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(details.payments?.humo || 0)}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>📱 Click / Payme:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.online || details.online || 0)}</span>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ color: "#64748b" }}>
+                          📱 Click / Payme:
+                        </span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(
+                            details.payments?.online || details.online || 0
+                          )}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>💳 RAHMAT:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.rahmat || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(details.payments?.rahmat || 0)}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>💳 Uzum:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.uzum || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(details.payments?.uzum || 0)}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
                         <span style={{ color: "#64748b" }}>🛵 Яндекс Еда:</span>
-                        <span style={{ fontWeight: 600 }}>{fmtPrice(details.payments?.yandex || 0)}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {fmtPrice(details.payments?.yandex || 0)}
+                        </span>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e2e8f0", paddingTop: 6, fontWeight: 700 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          borderTop: "1px dashed #e2e8f0",
+                          paddingTop: 6,
+                          fontWeight: 700,
+                        }}
+                      >
                         <span>💰 Итого выручка:</span>
-                        <span>{fmtPrice(details.total_sales || ((details.cash || 0) + (details.card || 0) + (details.online || 0)))}</span>
+                        <span>
+                          {fmtPrice(
+                            details.total_sales ||
+                              (details.cash || 0) +
+                                (details.card || 0) +
+                                (details.online || 0)
+                          )}
+                        </span>
                       </div>
                       {details.expenses?.length > 0 && (
-                        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ color: "#64748b", fontWeight: 700, fontSize: 11 }}>💸 Расходы из кассы:</span>
+                        <div
+                          style={{
+                            borderTop: "1px dashed #e2e8f0",
+                            paddingTop: 6,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: 700,
+                              fontSize: 11,
+                            }}
+                          >
+                            💸 Расходы из кассы:
+                          </span>
                           {details.expenses.map((exp, idx) => (
-                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingLeft: 8 }}>
+                            <div
+                              key={idx}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 11,
+                                paddingLeft: 8,
+                              }}
+                            >
                               <span>• {exp.name}:</span>
-                              <span style={{ fontWeight: 600 }}>{fmtPrice(exp.amount)}</span>
+                              <span style={{ fontWeight: 600 }}>
+                                {fmtPrice(exp.amount)}
+                              </span>
                             </div>
                           ))}
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, paddingLeft: 8 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              paddingLeft: 8,
+                            }}
+                          >
                             <span>Сумма расходов:</span>
                             <span>{fmtPrice(details.total_expenses || 0)}</span>
                           </div>
                         </div>
                       )}
                       {(details.surplus > 0 || details.shortage > 0) && (
-                        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 6, marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div
+                          style={{
+                            borderTop: "1px dashed #e2e8f0",
+                            paddingTop: 6,
+                            marginTop: 4,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
                           {details.surplus > 0 && (
-                            <div style={{ display: "flex", justifyContent: "space-between", color: "#166534" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                color: "#166534",
+                              }}
+                            >
                               <span>🟢 Излишки:</span>
-                              <span style={{ fontWeight: 700 }}>+{fmtPrice(details.surplus)}</span>
+                              <span style={{ fontWeight: 700 }}>
+                                +{fmtPrice(details.surplus)}
+                              </span>
                             </div>
                           )}
                           {details.shortage > 0 && (
-                            <div style={{ display: "flex", justifyContent: "space-between", color: "#991b1b" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                color: "#991b1b",
+                              }}
+                            >
                               <span>🔴 Недостача:</span>
-                              <span style={{ fontWeight: 700 }}>-{fmtPrice(details.shortage)}</span>
+                              <span style={{ fontWeight: 700 }}>
+                                -{fmtPrice(details.shortage)}
+                              </span>
                             </div>
                           )}
                         </div>
@@ -3077,17 +4182,43 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                   </div>
                 ) : (
                   <div>
-                    <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        color: "#475569",
+                        fontWeight: 600,
+                      }}
+                    >
                       {isInvoice ? (
-                        <span>🏭 Поставщик: <b>{details.supplier_name || "Неизвестный"}</b> → 📦 Склад: <b>{details.store_name || "Неизвестный"}</b></span>
+                        <span>
+                          🏭 Поставщик:{" "}
+                          <b>{details.supplier_name || "Неизвестный"}</b> → 📦
+                          Склад: <b>{details.store_name || "Неизвестный"}</b>
+                        </span>
                       ) : isInventory ? (
-                        <span>📦 Склад: <b>{details.store_name || "Неизвестный склад"}</b></span>
+                        <span>
+                          📦 Склад:{" "}
+                          <b>{details.store_name || "Неизвестный склад"}</b>
+                        </span>
                       ) : (
-                        <span>📦 Склад: <b>{details.store_from_name || "Неизвестный склад"}</b> → 📦 Склад: <b>{details.store_to_name || "Неизвестный склад"}</b></span>
+                        <span>
+                          📦 Склад:{" "}
+                          <b>
+                            {details.store_from_name || "Неизвестный склад"}
+                          </b>{" "}
+                          → 📦 Склад:{" "}
+                          <b>{details.store_to_name || "Неизвестный склад"}</b>
+                        </span>
                       )}
                     </div>
 
-                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: 10 }}>
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        borderRadius: 8,
+                        padding: 10,
+                      }}
+                    >
                       {items.map((it, idx) => (
                         <div
                           key={idx}
@@ -3095,14 +4226,19 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                             display: "flex",
                             justifyContent: "space-between",
                             padding: "4px 0",
-                            borderBottom: idx < items.length - 1 ? "1px solid #f1f5f9" : "none",
+                            borderBottom:
+                              idx < items.length - 1
+                                ? "1px solid #f1f5f9"
+                                : "none",
                             color: "#334155",
                           }}
                         >
                           <span>{it.product_name || "Товар"}</span>
                           <span style={{ fontWeight: 600 }}>
                             {it.quantity} {it.unit || "шт"}
-                            {isInvoice && Number(it.price) > 0 && ` × ${fmt(Number(it.price))} сум`}
+                            {isInvoice &&
+                              Number(it.price) > 0 &&
+                              ` × ${fmt(Number(it.price))} сум`}
                           </span>
                         </div>
                       ))}
@@ -3111,7 +4247,14 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                 )}
 
                 {details.comment && (
-                  <div style={{ marginTop: 8, fontStyle: "italic", color: "#64748b", fontSize: 11 }}>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontStyle: "italic",
+                      color: "#64748b",
+                      fontSize: 11,
+                    }}
+                  >
                     💬 Комментарий: {details.comment}
                   </div>
                 )}
@@ -3171,3 +4314,1255 @@ const storeBtn = {
   gap: 10,
   width: "100%",
 };
+
+// ═══════════════════════════════════════════════════════════════
+//  ANALYTICS VIEW — P&L + Касса + Топ продаж
+// ═══════════════════════════════════════════════════════════════
+
+function AnalyticsView({ showToast }) {
+  const [subTab, setSubTab] = useState("pl");
+  const [loading, setLoading] = useState(false);
+
+  // Date ranges
+  const [plPeriod, setPlPeriod] = useState("this_month");
+  const [plDates, setPlDates] = useState({ from: "", to: "" });
+
+  const [cashPeriod, setCashPeriod] = useState("today");
+  const [cashDates, setCashDates] = useState({ from: "", to: "" });
+  const [cashSingleDate, setCashSingleDate] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return tzNow.toISOString().split("T")[0];
+  });
+
+  const [topPeriod, setTopPeriod] = useState("today");
+  const [topDates, setTopDates] = useState({ from: "", to: "" });
+
+  // Data
+  const [plData, setPlData] = useState(null);
+  const [cashData, setCashData] = useState(null);
+  const [topData, setTopData] = useState(null);
+  const [showExpensesDetail, setShowExpensesDetail] = useState(false);
+
+  // Helper date calculators
+  const getDatesForPeriod = (periodType) => {
+    const now = new Date();
+    // Tashkent offset (+5 hours)
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const format = (d) => d.toISOString().split("T")[0];
+
+    switch (periodType) {
+      case "today":
+        return { from: format(tzNow), to: format(tzNow) };
+      case "yesterday": {
+        const y = new Date(tzNow.getTime() - 24 * 60 * 60 * 1000);
+        return { from: format(y), to: format(y) };
+      }
+      case "this_month": {
+        const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
+        return { from: format(d1), to: format(tzNow) };
+      }
+      case "last_month": {
+        const d1 = new Date(
+          tzNow.getFullYear(),
+          tzNow.getMonth() - 1,
+          1,
+          12,
+          0,
+          0
+        );
+        const d2 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 0, 12, 0, 0);
+        return { from: format(d1), to: format(d2) };
+      }
+      default:
+        return { from: "", to: "" };
+    }
+  };
+
+  // PL Loader
+  const loadPL = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/pl?from=${from}&to=${to}`);
+      const res = await r.json();
+      if (res && res.success) {
+        setPlData(res.data);
+      } else {
+        showToast(res?.error || "Ошибка загрузки P&L отчета", "error");
+      }
+    } catch (e) {
+      showToast("Ошибка сети при загрузке P&L", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cash Loader
+  const loadCash = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom" && periodType !== "single") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/cash?from=${from}&to=${to}`);
+      const res = await r.json();
+      if (res && res.success) {
+        setCashData(res.data);
+      } else {
+        showToast(res?.error || "Ошибка загрузки отчета кассы", "error");
+      }
+    } catch (e) {
+      showToast("Ошибка сети при загрузке кассы", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Top Sales Loader
+  const loadTop = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(
+        `/api/iiko/analytics/top-sales?from=${from}&to=${to}`
+      );
+      const res = await r.json();
+      if (res && res.success) {
+        setTopData(res.data);
+      } else {
+        showToast(res?.error || "Ошибка загрузки топ продаж", "error");
+      }
+    } catch (e) {
+      showToast("Ошибка сети при загрузке топ продаж", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Init loaders on SubTab change
+  useEffect(() => {
+    if (subTab === "pl") {
+      loadPL(plPeriod, plDates.from, plDates.to);
+    } else if (subTab === "cash") {
+      if (cashPeriod === "single") {
+        loadCash("single", cashSingleDate, cashSingleDate);
+      } else {
+        loadCash(cashPeriod, cashDates.from, cashDates.to);
+      }
+    } else if (subTab === "top") {
+      loadTop(topPeriod, topDates.from, topDates.to);
+    }
+  }, [subTab]);
+
+  const cardStyle = (grad, border) => ({
+    padding: 20,
+    borderRadius: 16,
+    background: grad || "rgba(255, 255, 255, 0.7)",
+    border: border || "1px solid rgba(226, 232, 240, 0.8)",
+    boxShadow: "0 4px 15px rgba(0,0,0,0.03)",
+    transition: "all 0.2s ease",
+  });
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      {/* Tab Selectors */}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          marginBottom: 24,
+          borderBottom: "1px solid #e2e8f0",
+          paddingBottom: 10,
+        }}
+      >
+        {[
+          {
+            id: "pl",
+            label: "📊 Отчет о Прибыли и Убытках",
+            grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+            text: "#4338ca",
+          },
+          {
+            id: "cash",
+            label: "💵 Касса",
+            grad: "linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)",
+            text: "#065f46",
+          },
+          {
+            id: "top",
+            label: "🍽 Топ продаж",
+            grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+            text: "#92400e",
+          },
+        ].map((sub) => (
+          <button
+            key={sub.id}
+            onClick={() => setSubTab(sub.id)}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 12,
+              border: subTab === sub.id ? "none" : "1px solid #e2e8f0",
+              background: subTab === sub.id ? sub.grad : "#fff",
+              color: subTab === sub.id ? sub.text : "#64748b",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+              boxShadow:
+                subTab === sub.id
+                  ? "0 4px 12px rgba(99, 102, 241, 0.15)"
+                  : "none",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {sub.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: 200,
+          }}
+        >
+          <div
+            style={{ color: "#6366f1", animation: "spin 1s linear infinite" }}
+          >
+            {I.loader}
+          </div>
+          <span
+            style={{
+              marginLeft: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#64748b",
+            }}
+          >
+            Загрузка аналитики...
+          </span>
+        </div>
+      )}
+
+      {/* 📊 P&L REPORT VIEW */}
+      {!loading && subTab === "pl" && (
+        <div>
+          {/* PL Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "this_month", label: "Этот месяц" },
+              { id: "last_month", label: "Прошлый месяц" },
+              { id: "custom", label: "Свой период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setPlPeriod(p.id);
+                  if (p.id !== "custom") loadPL(p.id);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: plPeriod === p.id ? "none" : "1px solid #e2e8f0",
+                  background: plPeriod === p.id ? "#4f46e5" : "#fff",
+                  color: plPeriod === p.id ? "#fff" : "#64748b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {plPeriod === "custom" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: 6,
+                  alignItems: "center",
+                  marginLeft: 10,
+                }}
+              >
+                <input
+                  type="date"
+                  value={plDates.from}
+                  onChange={(e) =>
+                    setPlDates({ ...plDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <input
+                  type="date"
+                  value={plDates.to}
+                  onChange={(e) =>
+                    setPlDates({ ...plDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  onClick={() => loadPL("custom", plDates.from, plDates.to)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#4f46e5",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+          </div>
+
+          {plData ? (
+            <div>
+              {/* Financial Metrics Cards Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 16,
+                  marginBottom: 24,
+                }}
+              >
+                <div
+                  style={cardStyle(
+                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    "none"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.75)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    💰 Выручка
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      color: "#fff",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(plData.revenue)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.8)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Общие кассовые продажи
+                  </div>
+                </div>
+
+                <div
+                  style={cardStyle(
+                    "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                    "none"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.75)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    📉 Себестоимость (COGS)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      color: "#fff",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(plData.cogs)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.8)",
+                      marginTop: 4,
+                    }}
+                  >
+                    {plData.revenue > 0
+                      ? `${((plData.cogs / plData.revenue) * 100).toFixed(1)}%`
+                      : "0%"}{" "}
+                    от выручки
+                  </div>
+                </div>
+
+                <div
+                  style={cardStyle(
+                    "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    "none"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.75)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    💸 Операционные расходы
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      color: "#fff",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(plData.expensesSum)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.8)",
+                      marginTop: 4,
+                    }}
+                  >
+                    {plData.revenue > 0
+                      ? `${(
+                          (plData.expensesSum / plData.revenue) *
+                          100
+                        ).toFixed(1)}%`
+                      : "0%"}{" "}
+                    от выручки
+                  </div>
+                </div>
+
+                <div
+                  style={cardStyle(
+                    plData.netProfit >= 0
+                      ? "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)"
+                      : "linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%)",
+                    "none"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.75)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    💵 Чистая прибыль
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      color: "#fff",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(plData.netProfit)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.8)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Рентабельность:{" "}
+                    <strong style={{ textDecoration: "underline" }}>
+                      {plData.margin.toFixed(1)}%
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expenses Drawer / Modal Accordion */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: 16,
+                  border: "1px solid #e2e8f0",
+                  padding: 20,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 16,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>
+                    📂 Операционные расходы по счетам
+                  </h3>
+                  <button
+                    onClick={() => setShowExpensesDetail(!showExpensesDetail)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      background: "rgba(99, 102, 241, 0.08)",
+                      border: "none",
+                      color: "#4f46e5",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {showExpensesDetail ? "Скрыть детали" : "Показать детали"}
+                  </button>
+                </div>
+
+                {showExpensesDetail ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
+                    {plData.expensesDetail.length > 0 ? (
+                      plData.expensesDetail.map((exp, idx) => {
+                        const maxVal = plData.expensesDetail[0].amount || 1;
+                        const pctOfMax = (exp.amount / maxVal) * 100;
+                        return (
+                          <div key={idx} style={{ padding: "8px 0" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                marginBottom: 4,
+                              }}
+                            >
+                              <span>{exp.name}</span>
+                              <span style={{ color: "#ef4444" }}>
+                                {fmtPrice(exp.amount)}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                width: "100%",
+                                height: 6,
+                                borderRadius: 3,
+                                background: "#f1f5f9",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: "100%",
+                                  borderRadius: 3,
+                                  background: "#ef4444",
+                                  width: `${pctOfMax}%`,
+                                  transition: "width .5s ease",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div
+                        style={{
+                          fontStyle: "italic",
+                          color: "#64748b",
+                          fontSize: 13,
+                          textAlign: "center",
+                          padding: "20px 0",
+                        }}
+                      >
+                        Расходы отсутствуют за выбранный период.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: "#64748b" }}>
+                    Нажмите «Показать детали» для просмотра детализации расходов
+                    по счетам.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: "#64748b",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 💵 CASH REGISTER REPORT VIEW */}
+      {!loading && subTab === "cash" && (
+        <div>
+          {/* Branch Select & Cash Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            <div>
+              <select
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  outline: "none",
+                }}
+              >
+                <option value="fest">📍 Lokmaco г.Фергана тц Festival</option>
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {[
+                { id: "today", label: "Сегодня" },
+                { id: "yesterday", label: "Вчера" },
+                { id: "single", label: "Выбрать день" },
+                { id: "custom", label: "Период" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setCashPeriod(p.id);
+                    if (p.id !== "custom" && p.id !== "single") {
+                      loadCash(p.id);
+                    } else if (p.id === "single") {
+                      loadCash("single", cashSingleDate, cashSingleDate);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: cashPeriod === p.id ? "none" : "1px solid #e2e8f0",
+                    background: cashPeriod === p.id ? "#10b981" : "#fff",
+                    color: cashPeriod === p.id ? "#fff" : "#64748b",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {cashPeriod === "single" && (
+              <div
+                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+              >
+                <span
+                  style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}
+                >
+                  Выбор даты:
+                </span>
+                <input
+                  type="date"
+                  value={cashSingleDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCashSingleDate(val);
+                    loadCash("single", val, val);
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+
+            {cashPeriod === "custom" && (
+              <div
+                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+              >
+                <input
+                  type="date"
+                  value={cashDates.from}
+                  onChange={(e) =>
+                    setCashDates({ ...cashDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <input
+                  type="date"
+                  value={cashDates.to}
+                  onChange={(e) =>
+                    setCashDates({ ...cashDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  onClick={() =>
+                    loadCash("custom", cashDates.from, cashDates.to)
+                  }
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#10b981",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+          </div>
+
+          {cashData ? (
+            <div>
+              {/* Cash Key Metrics Cards Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 16,
+                  marginBottom: 24,
+                }}
+              >
+                <div
+                  style={cardStyle(
+                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    "none"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.75)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    💰 Выручка
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "#fff",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(cashData.revenue)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.8)",
+                      marginTop: 4,
+                    }}
+                  >
+                    За выбранный период
+                  </div>
+                </div>
+
+                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    🧾 Всего чеков
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "#0f1729",
+                      marginTop: 8,
+                    }}
+                  >
+                    {cashData.orderCount}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    Выставлено счетов в iiko
+                  </div>
+                </div>
+
+                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    📈 Средний чек
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "#0f1729",
+                      marginTop: 8,
+                    }}
+                  >
+                    {fmtPrice(cashData.avgCheck)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    Средняя стоимость заказа
+                  </div>
+                </div>
+
+                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    👥 Количество гостей
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "#0f1729",
+                      marginTop: 8,
+                    }}
+                  >
+                    {cashData.guestCount || "—"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    Общее число посетителей
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Types split */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: 16,
+                  border: "1px solid #e2e8f0",
+                  padding: 20,
+                }}
+              >
+                <h3
+                  style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800 }}
+                >
+                  💳 Разбивка выручки по типам оплат
+                </h3>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                >
+                  {cashData.paymentsSplit.length > 0 ? (
+                    cashData.paymentsSplit.map((pay, idx) => {
+                      const pct = pay.percent || 0;
+                      // Colorful indicators based on paytype name
+                      let color = "#3b82f6"; // Card/Terminal
+                      if (pay.name.toLowerCase().includes("нал"))
+                        color = "#10b981"; // Cash
+                      else if (
+                        pay.name.toLowerCase().includes("click") ||
+                        pay.name.toLowerCase().includes("payme")
+                      )
+                        color = "#8b5cf6"; // Mobile click/payme
+
+                      return (
+                        <div key={idx} style={{ padding: "4px 0" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <span>
+                              {pay.name.toLowerCase().includes("нал")
+                                ? "💵 "
+                                : "💳 "}
+                              {pay.name}
+                            </span>
+                            <span style={{ color: "#334155" }}>
+                              {fmtPrice(pay.amount)}{" "}
+                              <strong
+                                style={{ color: "#64748b", marginLeft: 4 }}
+                              >
+                                ({pct.toFixed(0)}%)
+                              </strong>
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: 8,
+                              borderRadius: 4,
+                              background: "#f1f5f9",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: "100%",
+                                borderRadius: 4,
+                                background: color,
+                                width: `${pct}%`,
+                                transition: "width .5s ease",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div
+                      style={{
+                        fontStyle: "italic",
+                        color: "#64748b",
+                        fontSize: 13,
+                        textAlign: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      Платежи отсутствуют за этот период.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: "#64748b",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 🍽 TOP SALES VIEW */}
+      {!loading && subTab === "top" && (
+        <div>
+          {/* Top Sales Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "today", label: "Сегодня" },
+              { id: "yesterday", label: "Вчера" },
+              { id: "custom", label: "Период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setTopPeriod(p.id);
+                  if (p.id !== "custom") loadTop(p.id);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: topPeriod === p.id ? "none" : "1px solid #e2e8f0",
+                  background: topPeriod === p.id ? "#f59e0b" : "#fff",
+                  color: topPeriod === p.id ? "#fff" : "#64748b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {topPeriod === "custom" && (
+              <div
+                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+              >
+                <input
+                  type="date"
+                  value={topDates.from}
+                  onChange={(e) =>
+                    setTopDates({ ...topDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <input
+                  type="date"
+                  value={topDates.to}
+                  onChange={(e) =>
+                    setTopDates({ ...topDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  onClick={() => loadTop("custom", topDates.from, topDates.to)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#f59e0b",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+          </div>
+
+          {topData ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {topData.length > 0 ? (
+                topData.map((cat, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: "#fff",
+                      borderRadius: 16,
+                      border: "1px solid #e2e8f0",
+                      padding: 20,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 14,
+                        borderBottom: "1px solid #f1f5f9",
+                        paddingBottom: 8,
+                      }}
+                    >
+                      <h4
+                        style={{
+                          margin: 0,
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: "#0f1729",
+                        }}
+                      >
+                        📂 {cat.name}
+                      </h4>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#f59e0b",
+                          background: "rgba(245, 158, 11, 0.08)",
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {fmtPrice(cat.totalRevenue)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                      }}
+                    >
+                      {cat.topDishes.map((dish, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            fontSize: 13,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 16,
+                              width: 20,
+                              textAlign: "center",
+                            }}
+                          >
+                            {["🥇", "🥈", "🥉"][i]}
+                          </span>
+                          <div style={{ flex: 1, fontWeight: 600 }}>
+                            {dish.name}
+                          </div>
+                          <div style={{ color: "#64748b", textAlign: "right" }}>
+                            <div style={{ fontWeight: 700, color: "#1e293b" }}>
+                              {dish.amount} шт
+                            </div>
+                            <div style={{ fontSize: 11 }}>
+                              {fmtPrice(dish.revenue)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div
+                  style={{
+                    fontStyle: "italic",
+                    color: "#64748b",
+                    fontSize: 13,
+                    textAlign: "center",
+                    padding: 40,
+                    gridColumn: "1 / -1",
+                  }}
+                >
+                  Нет проданных товаров за этот период.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: "#64748b",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

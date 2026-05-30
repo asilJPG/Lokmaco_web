@@ -34,7 +34,6 @@ export async function GET() {
         }
       }
 
-      console.log("[stores] found:", results.length);
       return results.length > 0 ? results : FALLBACK;
     });
 
