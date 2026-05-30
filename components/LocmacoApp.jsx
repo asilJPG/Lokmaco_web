@@ -67,6 +67,9 @@ const API = {
   createTransfer(data) {
     return this.post("/transfer", data);
   },
+  createInventory(data) {
+    return this.post("/inventory", data);
+  },
   getHistory() {
     return this.get("/history");
   },
@@ -105,6 +108,19 @@ const I = {
     >
       <path d="m7 7 10 10" />
       <path d="M17 7v10H7" />
+    </svg>
+  ),
+  inventory: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
     </svg>
   ),
   search: (
@@ -302,6 +318,7 @@ export default function LocmacoApp() {
   const tabs = [
     { id: "incoming", label: "Приход", icon: I.inbox },
     { id: "transfer", label: "Перемещение", icon: I.transfer },
+    { id: "inventory", label: "Инвентаризация", icon: I.inventory },
   ];
 
   const ROLE_NAMES = {
@@ -710,6 +727,19 @@ export default function LocmacoApp() {
             loggedInUser={loggedInUser}
             loadHistory={loadHistory}
             history={history.filter((h) => h.action_type === "transfer")}
+            historyLoading={historyLoading}
+          />
+        )}
+        {tab === "inventory" && (
+          <InventoryView
+            products={products}
+            stores={stores}
+            showToast={showToast}
+            loading={productsLoading}
+            onRetry={loadData}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "inventory")}
             historyLoading={historyLoading}
           />
         )}
@@ -1450,6 +1480,410 @@ function TransferView({
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  INVENTORY — склад → товары (поиск + кол-во) с автосохранением черновика
+// ═══════════════════════════════════════════════════════════════
+
+function InventoryView({
+  products,
+  stores,
+  showToast,
+  loading,
+  onRetry,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
+  const [mode, setMode] = useState("idle");
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    storeId: "",
+    storeName: "",
+    comment: "",
+  });
+  const [items, setItems] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // Load draft when store is selected
+  useEffect(() => {
+    if (form.storeId) {
+      const saved = localStorage.getItem("locmaco_inventory_draft_" + form.storeId);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+            setDraftRestored(true);
+            setTimeout(() => setDraftRestored(false), 3000);
+          } else {
+            setItems([]);
+          }
+        } catch (e) {
+          setItems([]);
+        }
+      } else {
+        setItems([]);
+      }
+    } else {
+      setItems([]);
+    }
+  }, [form.storeId]);
+
+  // Save draft on items change
+  useEffect(() => {
+    if (form.storeId) {
+      if (items.length > 0) {
+        localStorage.setItem("locmaco_inventory_draft_" + form.storeId, JSON.stringify(items));
+      } else {
+        localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
+      }
+    }
+  }, [items, form.storeId]);
+
+  const addItem = (p) => {
+    setItems((prev) => {
+      if (prev.find((i) => i.product_id === p.id)) return prev;
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          product_name: p.name,
+          quantity: "",
+          unit: p.mainUnit || "шт",
+        },
+      ];
+    });
+  };
+
+  const updateItem = (idx, field, value) => {
+    setItems((p) =>
+      p.map((x, i) => (i === idx ? { ...x, [field]: value } : x))
+    );
+  };
+
+  const clearDraft = () => {
+    if (window.confirm("Очистить текущий черновик?")) {
+      setItems([]);
+      if (form.storeId) {
+        localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
+      }
+      showToast("Черновик очищен");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!form.storeId || items.length === 0) {
+      showToast("Выберите склад и укажите товары", "error");
+      return;
+    }
+    const prepared = items
+      .map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit,
+      }))
+      .filter((it) => it.quantity > 0);
+    if (prepared.length === 0) {
+      showToast("Укажите количество", "error");
+      return;
+    }
+    setSubmitting(true);
+    const result = await API.createInventory({
+      store_id: form.storeId,
+      store_name: form.storeName,
+      items: prepared,
+      comment: form.comment,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name,
+      },
+    });
+    setSubmitting(false);
+    if (result?.success) {
+      showToast("Инвентаризация проведена!");
+      localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
+      loadHistory();
+      setMode("idle");
+      setStep(0);
+      setItems([]);
+      setForm({ storeId: "", storeName: "", comment: "" });
+    } else {
+      showToast("Ошибка создания", "error");
+    }
+  };
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Инвентаризация остатков
+        </h2>
+        {mode === "idle" ? (
+          <Btn
+            onClick={() => {
+              setMode("new");
+              setStep(0);
+            }}
+          >
+            {I.plus} Пересчет
+          </Btn>
+        ) : (
+          <Btn
+            outline
+            onClick={() => {
+              setMode("idle");
+              setStep(0);
+              setItems([]);
+            }}
+          >
+            {I.x} Отмена
+          </Btn>
+        )}
+      </div>
+      {mode === "idle" && (
+        <HistoryList
+          history={history}
+          loading={historyLoading}
+          onRefresh={loadHistory}
+          emptyText="История инвентаризаций пуста"
+        />
+      )}
+      {mode === "new" && (
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 14,
+            border: "1px solid #e8ecf0",
+            padding: 24,
+          }}
+        >
+          <StepBar steps={["Выбор склада", "Пересчет"]} current={step} />
+
+          {step === 0 && (
+            <div>
+              <label style={lbl}>Выберите склад</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {stores.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setForm({ ...form, storeId: s.id, storeName: s.name });
+                      setStep(1);
+                    }}
+                    style={storeBtn}
+                  >
+                    <span style={{ fontSize: 20 }}>
+                      {STORE_ICONS[s.id] || "📦"}
+                    </span>
+                    <div>{s.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div>
+              <div
+                style={{
+                  ...crumb,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span>🏢 Склад: <b>{form.storeName}</b></span>
+                {items.length > 0 && (
+                  <button
+                    onClick={clearDraft}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ef4444",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {I.trash} Очистить черновик
+                  </button>
+                )}
+              </div>
+
+              {draftRestored && (
+                <div
+                  style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    color: "#166534",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    marginBottom: 12,
+                    animation: "fadeIn 0.2s ease",
+                  }}
+                >
+                  🔄 Восстановлен черновик автосохранения
+                </div>
+              )}
+
+              {loading ? (
+                <LoadingBlock text="Загрузка товаров..." />
+              ) : products.length === 0 ? (
+                <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
+              ) : (
+                <>
+                  <ProductSearch products={products} onSelect={addItem} />
+                  {items.length > 0 && (
+                    <div
+                      style={{
+                        border: "1px solid #e8ecf0",
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        marginTop: 12,
+                      }}
+                    >
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: 12,
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "#f8fafb" }}>
+                            <th style={th}>Товар</th>
+                            <th
+                              style={{ ...th, textAlign: "center", width: 130 }}
+                            >
+                              Количество
+                            </th>
+                            <th style={{ ...th, width: 36 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((it, idx) => (
+                            <tr
+                              key={idx}
+                              style={{ borderTop: "1px solid #f0f2f5" }}
+                            >
+                              <td style={td}>
+                                <div style={{ fontWeight: 500 }}>
+                                  {it.product_name}
+                                </div>
+                                <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                  {it.unit}
+                                </div>
+                              </td>
+                              <td style={{ ...td, textAlign: "center" }}>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <input
+                                    type="number"
+                                    value={it.quantity}
+                                    onChange={(e) =>
+                                      updateItem(idx, "quantity", e.target.value)
+                                    }
+                                    placeholder="0"
+                                    style={numInput}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#64748b",
+                                      minWidth: 24,
+                                      textAlign: "left",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {it.unit || "шт"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={td}>
+                                <button
+                                  onClick={() =>
+                                    setItems((p) =>
+                                      p.filter((_, i) => i !== idx)
+                                    )
+                                  }
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "#ef4444",
+                                    display: "flex",
+                                  }}
+                                >
+                                  {I.trash}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
+                  <input
+                    value={form.comment}
+                    onChange={(e) =>
+                      setForm({ ...form, comment: e.target.value })
+                    }
+                    placeholder="Необязательно"
+                    style={inp}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      marginTop: 16,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn outline onClick={() => setStep(0)}>
+                      ← Назад
+                    </Btn>
+                    <Btn
+                      onClick={handleSubmit}
+                      disabled={submitting || items.length === 0}
+                    >
+                      {submitting ? I.loader : I.send}{" "}
+                      {submitting ? "Отправка..." : "Провести в iiko"}
+                    </Btn>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  PRODUCT SEARCH
 // ═══════════════════════════════════════════════════════════════
 
@@ -1737,6 +2171,7 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {history.map((act) => {
           const isInvoice = act.action_type === "invoice";
+          const isInventory = act.action_type === "inventory";
           const date = new Date(act.created_at);
           const formattedDate = date.toLocaleDateString("ru-RU", {
             day: "2-digit",
@@ -1778,11 +2213,23 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                         borderRadius: 6,
                         fontSize: 11,
                         fontWeight: 700,
-                        background: isInvoice ? "#ecfdf5" : "#e0e7ff",
-                        color: isInvoice ? "#059669" : "#4f46e5",
+                        background: isInvoice
+                          ? "#ecfdf5"
+                          : isInventory
+                          ? "#faf5ff"
+                          : "#e0e7ff",
+                        color: isInvoice
+                          ? "#059669"
+                          : isInventory
+                          ? "#7c3aed"
+                          : "#4f46e5",
                       }}
                     >
-                      {isInvoice ? "Приход" : "Перемещение"}
+                      {isInvoice
+                        ? "Приход"
+                        : isInventory
+                        ? "Инвентаризация"
+                        : "Перемещение"}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
                       {act.document_number || "Без номера"}
@@ -1801,6 +2248,8 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                 <div style={{ marginBottom: 8, color: "#475569", fontWeight: 600 }}>
                   {isInvoice ? (
                     <span>🏭 Поставщик: <b>{details.supplier_name || "Неизвестный"}</b> → 📦 Склад: <b>{details.store_name || "Неизвестный"}</b></span>
+                  ) : isInventory ? (
+                    <span>📦 Склад: <b>{details.store_name || "Неизвестный склад"}</b></span>
                   ) : (
                     <span>📦 Склад: <b>{details.store_from_name || "Неизвестный склад"}</b> → 📦 Склад: <b>{details.store_to_name || "Неизвестный склад"}</b></span>
                   )}
