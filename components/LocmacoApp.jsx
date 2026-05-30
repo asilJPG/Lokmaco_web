@@ -2054,7 +2054,14 @@ function CashView({
   history,
   historyLoading,
 }) {
+  const getTodayTashkent = () => {
+    const now = new Date();
+    const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return tashkent.toISOString().split("T")[0];
+  };
+
   const [form, setForm] = useState({
+    date: getTodayTashkent(),
     cash: "",
     uzcard: "",
     humo: "",
@@ -2094,6 +2101,7 @@ function CashView({
     }
     setSubmitting(true);
     const result = await API.createCash({
+      date: form.date,
       payments: {
         cash: form.cash,
         uzcard: form.uzcard,
@@ -2119,6 +2127,7 @@ function CashView({
     if (result?.success) {
       showToast("Отчет кассы сохранен!");
       setForm({
+        date: getTodayTashkent(),
         cash: "",
         uzcard: "",
         humo: "",
@@ -2173,6 +2182,17 @@ function CashView({
         }}
       >
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ maxWidth: 220, marginBottom: 8 }}>
+            <label style={lbl}>📅 Дата сдачи кассы</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => handleFieldChange("date", e.target.value)}
+              style={inp}
+              required
+            />
+          </div>
+
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}>
             💵 Выручка по типам оплат
           </h3>
@@ -2423,12 +2443,22 @@ function CashView({
                     const diff = det.difference || 0;
                     const iiko = det.iiko_cash || (repCash - diff);
                     const hasDiscrepancy = Math.abs(diff) > 0;
-                    const dateStr = new Date(act.created_at).toLocaleDateString("ru-RU", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
+                    let dateStr = "";
+                    if (det.selected_date) {
+                      const parts = det.selected_date.split("-");
+                      if (parts.length === 3) {
+                        dateStr = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                      } else {
+                        dateStr = det.selected_date;
+                      }
+                    } else {
+                      dateStr = new Date(act.created_at).toLocaleDateString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                    }
 
                     return (
                       <tr key={act.id} style={{ borderTop: "1px solid #f0f2f5" }}>
@@ -2770,16 +2800,26 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
           const isInvoice = act.action_type === "invoice";
           const isInventory = act.action_type === "inventory";
           const isCash = act.action_type === "cash";
-          const date = new Date(act.created_at);
-          const formattedDate = date.toLocaleDateString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-
           const details = act.details || {};
+          let formattedDate = "";
+          if (details.selected_date) {
+            const parts = details.selected_date.split("-");
+            if (parts.length === 3) {
+              formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
+            } else {
+              formattedDate = details.selected_date;
+            }
+            formattedDate = `${formattedDate} (Отчетный день)`;
+          } else {
+            const date = new Date(act.created_at);
+            formattedDate = date.toLocaleDateString("ru-RU", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+          }
           const items = details.items || [];
 
           return (

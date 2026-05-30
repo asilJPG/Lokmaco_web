@@ -2,7 +2,7 @@ import { logAction, createCashReport } from "@/lib/supabase.js";
 
 export async function POST(request) {
   try {
-    const { payments, expenses, surplus, shortage, comment, user } = await request.json();
+    const { payments, expenses, surplus, shortage, comment, date, user } = await request.json();
 
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,8 +33,12 @@ export async function POST(request) {
     const diff = surp - short;
     const iikoCash = totalSales - diff;
 
+    // Construct Tashkent timezone timestamp for target date
+    // e.g. "2026-05-30" -> "2026-05-30T12:00:00+05:00"
+    const createdAt = date ? `${date}T12:00:00+05:00` : null;
+
     // Log to custom cash_reports table
-    await createCashReport(user.tg_id, user.name, totalSales, iikoCash, diff);
+    await createCashReport(user.tg_id, user.name, totalSales, iikoCash, diff, createdAt);
 
     // Detailed JSON for bot_actions
     const details = {
@@ -57,7 +61,11 @@ export async function POST(request) {
       comment: comment || "",
     };
 
-    await logAction(user.tg_id, user.name, "cash", dn, details);
+    if (date) {
+      details.selected_date = date;
+    }
+
+    await logAction(user.tg_id, user.name, "cash", dn, details, createdAt);
 
     return Response.json({ success: true, documentNumber: dn });
   } catch (e) {
