@@ -4401,6 +4401,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
   const [topPeriod, setTopPeriod] = useState("today");
   const [topDates, setTopDates] = useState({ from: "", to: "" });
+  const [topThreshold, setTopThreshold] = useState(30);
 
   const [waitersPeriod, setWaitersPeriod] = useState("today");
   const [waitersDates, setWaitersDates] = useState({ from: "", to: "" });
@@ -4520,6 +4521,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
       const res = await r.json();
       if (res && res.success) {
         setTopData(res.data);
+        setTopThreshold(res.threshold || 30);
       } else {
         showToast(res?.error || "Ошибка загрузки топ продаж", "error");
       }
@@ -5786,41 +5788,128 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: 10,
+                        gap: 12,
                       }}
                     >
-                      {cat.topDishes.map((dish, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            fontSize: 13,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 16,
-                              width: 20,
-                              textAlign: "center",
-                            }}
-                          >
-                            {["🥇", "🥈", "🥉"][i]}
-                          </span>
-                          <div style={{ flex: 1, fontWeight: 600 }}>
-                            {dish.name}
-                          </div>
-                          <div style={{ color: "#64748b", textAlign: "right" }}>
-                            <div style={{ fontWeight: 700, color: "#1e293b" }}>
-                              {dish.amount} шт
-                            </div>
-                            <div style={{ fontSize: 11 }}>
-                              {fmtPrice(dish.revenue)}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                      {(() => {
+                        const dishes = cat.dishes || [];
+                        const popularDishes = dishes.filter(d => d.amount >= topThreshold);
+                        const weakDishes = dishes.filter(d => d.amount < topThreshold);
+                        const weakDishesSorted = [...weakDishes].sort((a, b) => a.amount - b.amount);
+
+                        return (
+                          <>
+                            {popularDishes.length > 0 && (
+                              <div style={{ marginBottom: 12 }}>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                    color: "#ef4444",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: 8,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  🔥 Популярные ({popularDishes.length})
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  {popularDishes.map((dish, i) => (
+                                    <div
+                                      key={i}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 10,
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: 16,
+                                          width: 20,
+                                          textAlign: "center",
+                                        }}
+                                      >
+                                        {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "•"}
+                                      </span>
+                                      <div style={{ flex: 1, fontWeight: 600, color: "#1e293b" }}>
+                                        {dish.name}
+                                      </div>
+                                      <div style={{ color: "#64748b", textAlign: "right" }}>
+                                        <div style={{ fontWeight: 700, color: "#1e293b" }}>
+                                          {dish.amount} шт
+                                        </div>
+                                        <div style={{ fontSize: 11 }}>
+                                          {fmtPrice(dish.revenue)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {weakDishesSorted.length > 0 && (
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                    color: "#64748b",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: 8,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  💤 Слабые продажи ({weakDishesSorted.length})
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  {weakDishesSorted.map((dish, i) => (
+                                    <div
+                                      key={i}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 10,
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: 14,
+                                          width: 20,
+                                          textAlign: "center",
+                                          color: "#94a3b8",
+                                        }}
+                                      >
+                                        •
+                                      </span>
+                                      <div style={{ flex: 1, fontWeight: 500, color: "#475569" }}>
+                                        {dish.name}
+                                      </div>
+                                      <div style={{ color: "#94a3b8", textAlign: "right" }}>
+                                        <div style={{ fontWeight: 600, color: "#475569" }}>
+                                          {dish.amount} шт
+                                        </div>
+                                        <div style={{ fontSize: 11 }}>
+                                          {fmtPrice(dish.revenue)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))
