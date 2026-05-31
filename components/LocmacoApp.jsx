@@ -390,7 +390,7 @@ export default function LocmacoApp() {
   };
 
   const hasAccess = (role, tabId) => {
-    if (role === "admin" || role === "director") return true;
+    if (role === "admin") return true;
     switch (tabId) {
       case "incoming":
         return role === "supplier";
@@ -401,7 +401,7 @@ export default function LocmacoApp() {
       case "cash":
         return role === "cashier";
       case "analytics":
-        return false; // Only admin/director
+        return role === "director";
       default:
         return false;
     }
