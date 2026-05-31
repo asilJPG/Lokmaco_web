@@ -1102,7 +1102,14 @@ export default function LocmacoApp() {
             historyLoading={historyLoading}
           />
         )}
-        {tab === "analytics" && <AnalyticsView showToast={showToast} />}
+        {tab === "analytics" && (
+          <AnalyticsView
+            showToast={showToast}
+            history={history}
+            historyLoading={historyLoading}
+            loadHistory={loadHistory}
+          />
+        )}
       </main>
 
       {toast && (
@@ -1146,8 +1153,14 @@ function IikoHistoryList({ type, showToast }) {
       setLoading(true);
       const res = await API.getIikoDocuments();
       if (res && Array.isArray(res.data)) {
-        // Filter by document type
-        const filtered = res.data.filter((d) => d.type === type);
+        // Filter by document type and remove deleted / storno documents
+        const filtered = res.data.filter(
+          (d) =>
+            d.type === type &&
+            d.status !== "DELETED" &&
+            d.status !== "STORNO" &&
+            !d.deleted
+        );
         // Sort by date descending
         filtered.sort(
           (a, b) => new Date(b.dateIncoming) - new Date(a.dateIncoming)
@@ -3418,152 +3431,16 @@ function CashView({
         </form>
       </div>
 
-      {isManager ? (
+      {!isManager && (
         <div style={{ marginTop: 24 }}>
-          <h3
-            style={{
-              margin: "0 0 12px",
-              fontSize: 15,
-              fontWeight: 700,
-              color: "#475569",
-            }}
-          >
-            📊 Сводная таблица расхождений (Админ)
-          </h3>
-          {historyLoading && history.length === 0 ? (
-            <LoadingBlock text="Загрузка сводной таблицы..." />
-          ) : history.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: 20,
-                color: "#94a3b8",
-                fontSize: 13,
-              }}
-            >
-              Сводная таблица пуста
-            </div>
-          ) : (
-            <div
-              style={{
-                overflowX: "auto",
-                background: "#fff",
-                borderRadius: 12,
-                border: "1px solid #e8ecf0",
-                marginBottom: 24,
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 12,
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f8fafb" }}>
-                    <th style={th}>Дата</th>
-                    <th style={th}>Кассир</th>
-                    <th style={{ ...th, textAlign: "right" }}>Сумма кассира</th>
-                    <th style={{ ...th, textAlign: "right" }}>Сумма из iiko</th>
-                    <th style={{ ...th, textAlign: "right" }}>Расхождение</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((act) => {
-                    const det = act.details || {};
-                    const repCash =
-                      det.total_sales ||
-                      (det.cash || 0) + (det.card || 0) + (det.online || 0);
-                    const diff = det.difference || 0;
-                    const iiko = det.iiko_cash || repCash - diff;
-                    const hasDiscrepancy = Math.abs(diff) > 0;
-                    let dateStr = "";
-                    if (det.selected_date) {
-                      const parts = det.selected_date.split("-");
-                      if (parts.length === 3) {
-                        dateStr = `${parts[2]}.${parts[1]}.${parts[0]}`;
-                      } else {
-                        dateStr = det.selected_date;
-                      }
-                    } else {
-                      dateStr = new Date(act.created_at).toLocaleDateString(
-                        "ru-RU",
-                        {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }
-                      );
-                    }
-
-                    return (
-                      <tr
-                        key={act.id}
-                        style={{ borderTop: "1px solid #f0f2f5" }}
-                      >
-                        <td style={td}>{dateStr}</td>
-                        <td style={{ ...td, fontWeight: 600 }}>
-                          {act.user_name}
-                        </td>
-                        <td
-                          style={{ ...td, textAlign: "right", fontWeight: 500 }}
-                        >
-                          {fmtPrice(repCash)}
-                        </td>
-                        <td style={{ ...td, textAlign: "right" }}>
-                          {fmtPrice(iiko)}
-                        </td>
-                        <td
-                          style={{
-                            ...td,
-                            textAlign: "right",
-                            fontWeight: 700,
-                            color:
-                              diff < 0
-                                ? "#991b1b"
-                                : diff > 0
-                                ? "#166534"
-                                : "#475569",
-                            background: hasDiscrepancy
-                              ? diff < 0
-                                ? "#fef2f2"
-                                : "#f0fdf4"
-                              : "transparent",
-                          }}
-                        >
-                          {diff > 0 ? "+" : ""}
-                          {fmtPrice(diff)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
           <HistoryList
-            history={history}
+            history={history.filter(
+              (act) => String(act.tg_id) === String(loggedInUser.tg_id)
+            )}
             loading={historyLoading}
             onRefresh={loadHistory}
-            emptyText="История отчетов кассы пуста"
+            emptyText="Вы еще не сдавали кассовые отчеты"
           />
-        </div>
-      ) : (
-        <div
-          style={{
-            background: "#f8fafc",
-            border: "1px dashed #e2e8f0",
-            borderRadius: 12,
-            padding: 20,
-            textAlign: "center",
-            color: "#64748b",
-            fontSize: 13,
-          }}
-        >
-          🔒 Просмотр истории отчетов доступен только Администраторам и
-          Руководителям.
         </div>
       )}
     </div>
@@ -4319,7 +4196,7 @@ const storeBtn = {
 //  ANALYTICS VIEW — P&L + Касса + Топ продаж
 // ═══════════════════════════════════════════════════════════════
 
-function AnalyticsView({ showToast }) {
+function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
   const [subTab, setSubTab] = useState("pl");
   const [loading, setLoading] = useState(false);
 
@@ -4338,10 +4215,14 @@ function AnalyticsView({ showToast }) {
   const [topPeriod, setTopPeriod] = useState("today");
   const [topDates, setTopDates] = useState({ from: "", to: "" });
 
+  const [waitersPeriod, setWaitersPeriod] = useState("today");
+  const [waitersDates, setWaitersDates] = useState({ from: "", to: "" });
+
   // Data
   const [plData, setPlData] = useState(null);
   const [cashData, setCashData] = useState(null);
   const [topData, setTopData] = useState(null);
+  const [waitersData, setWaitersData] = useState(null);
   const [showExpensesDetail, setShowExpensesDetail] = useState(false);
 
   // Helper date calculators
@@ -4462,6 +4343,33 @@ function AnalyticsView({ showToast }) {
     }
   };
 
+  // Waiters Loader
+  const loadWaiters = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/waiters?from=${from}&to=${to}`);
+      const res = await r.json();
+      if (res && res.success) {
+        setWaitersData(res.data);
+      } else {
+        showToast(res?.error || "Ошибка загрузки топ официантов", "error");
+      }
+    } catch (e) {
+      showToast("Ошибка сети при загрузке официантов", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Init loaders on SubTab change
   useEffect(() => {
     if (subTab === "pl") {
@@ -4474,6 +4382,8 @@ function AnalyticsView({ showToast }) {
       }
     } else if (subTab === "top") {
       loadTop(topPeriod, topDates.from, topDates.to);
+    } else if (subTab === "waiters") {
+      loadWaiters(waitersPeriod, waitersDates.from, waitersDates.to);
     }
   }, [subTab]);
 
@@ -4516,6 +4426,12 @@ function AnalyticsView({ showToast }) {
             label: "🍽 Топ продаж",
             grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
             text: "#92400e",
+          },
+          {
+            id: "waiters",
+            label: "🤵 Топ официантов",
+            grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+            text: "#0369a1",
           },
         ].map((sub) => (
           <button
@@ -5109,230 +5025,418 @@ function AnalyticsView({ showToast }) {
           </div>
 
           {cashData ? (
-            <div>
-              {/* Cash Key Metrics Cards Grid */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                  gap: 16,
-                  marginBottom: 24,
-                }}
-              >
-                <div
-                  style={cardStyle(
-                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    "none"
-                  )}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "rgba(255,255,255,0.75)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    💰 Выручка
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 800,
-                      color: "#fff",
-                      marginTop: 8,
-                    }}
-                  >
-                    {fmtPrice(cashData.revenue)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "rgba(255,255,255,0.8)",
-                      marginTop: 4,
-                    }}
-                  >
-                    За выбранный период
-                  </div>
-                </div>
+            (() => {
+              // 1. Determine the active date range selected by the user
+              let activeFrom = "";
+              let activeTo = "";
 
-                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    🧾 Всего чеков
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 800,
-                      color: "#0f1729",
-                      marginTop: 8,
-                    }}
-                  >
-                    {cashData.orderCount}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    Выставлено счетов в iiko
-                  </div>
-                </div>
+              if (cashPeriod === "single") {
+                activeFrom = cashSingleDate;
+                activeTo = cashSingleDate;
+              } else if (cashPeriod === "custom") {
+                activeFrom = cashDates.from;
+                activeTo = cashDates.to;
+              } else {
+                const dates = getDatesForPeriod(cashPeriod);
+                activeFrom = dates.from;
+                activeTo = dates.to;
+              }
 
-                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    📈 Средний чек
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 800,
-                      color: "#0f1729",
-                      marginTop: 8,
-                    }}
-                  >
-                    {fmtPrice(cashData.avgCheck)}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    Средняя стоимость заказа
-                  </div>
-                </div>
+              // 2. Sum up the cashier reports from Supabase for the active range
+              let cashierTotals = null;
+              let periodReports = [];
+              if (history) {
+                const cashReports = history.filter((h) => h.action_type === "cash");
+                periodReports = cashReports.filter((report) => {
+                  const reportDate =
+                    report.details?.selected_date ||
+                    new Date(report.created_at).toISOString().split("T")[0];
+                  return reportDate >= activeFrom && reportDate <= activeTo;
+                });
 
-                <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                if (periodReports.length > 0) {
+                  cashierTotals = {
+                    cash: 0,
+                    uzcard: 0,
+                    humo: 0,
+                    online: 0,
+                    rahmat: 0,
+                    uzum: 0,
+                    yandex: 0,
+                    totalExpenses: 0,
+                    reportsCount: periodReports.length,
+                  };
+
+                  periodReports.forEach((report) => {
+                    const det = report.details || {};
+                    cashierTotals.cash += parseFloat(det.payments?.cash || det.cash || 0);
+                    cashierTotals.uzcard += parseFloat(det.payments?.uzcard || 0);
+                    cashierTotals.humo += parseFloat(det.payments?.humo || 0);
+                    cashierTotals.online += parseFloat(det.payments?.online || det.online || 0);
+                    cashierTotals.rahmat += parseFloat(det.payments?.rahmat || 0);
+                    cashierTotals.uzum += parseFloat(det.payments?.uzum || 0);
+                    cashierTotals.yandex += parseFloat(det.payments?.yandex || 0);
+                    cashierTotals.totalExpenses += parseFloat(det.total_expenses || 0);
+                  });
+                }
+              }
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {/* Cash Key Metrics Cards Grid */}
                   <div
                     style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                      gap: 16,
                     }}
                   >
-                    👥 Количество гостей
+                    <div
+                      style={cardStyle(
+                        "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        "none"
+                      )}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "rgba(255,255,255,0.75)",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        💰 Выручка iiko
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 800,
+                          color: "#fff",
+                          marginTop: 8,
+                        }}
+                      >
+                        {fmtPrice(cashData.revenue)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.8)",
+                          marginTop: 4,
+                        }}
+                      >
+                        За выбранный период
+                      </div>
+                    </div>
+
+                    <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#64748b",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        🧾 Всего чеков
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 800,
+                          color: "#0f1729",
+                          marginTop: 8,
+                        }}
+                      >
+                        {cashData.orderCount}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                        Выставлено счетов в iiko
+                      </div>
+                    </div>
+
+                    <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#64748b",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        📈 Средний чек
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 800,
+                          color: "#0f1729",
+                          marginTop: 8,
+                        }}
+                      >
+                        {fmtPrice(cashData.avgCheck)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                        Средняя стоимость заказа
+                      </div>
+                    </div>
+
+                    <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#64748b",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        👥 Количество гостей
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 800,
+                          color: "#0f1729",
+                          marginTop: 8,
+                        }}
+                      >
+                        {cashData.guestCount || "—"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                        Общее число посетителей
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Audit Comparison Table comparing iiko vs cashier */}
                   <div
                     style={{
-                      fontSize: 24,
-                      fontWeight: 800,
-                      color: "#0f1729",
-                      marginTop: 8,
+                      background: "#fff",
+                      borderRadius: 16,
+                      border: "1px solid #e2e8f0",
+                      padding: 20,
+                      boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
                     }}
                   >
-                    {cashData.guestCount || "—"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    Общее число посетителей
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Types split */}
-              <div
-                style={{
-                  background: "#fff",
-                  borderRadius: 16,
-                  border: "1px solid #e2e8f0",
-                  padding: 20,
-                }}
-              >
-                <h3
-                  style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800 }}
-                >
-                  💳 Разбивка выручки по типам оплат
-                </h3>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
-                >
-                  {cashData.paymentsSplit.length > 0 ? (
-                    cashData.paymentsSplit.map((pay, idx) => {
-                      const pct = pay.percent || 0;
-                      // Colorful indicators based on paytype name
-                      let color = "#3b82f6"; // Card/Terminal
-                      if (pay.name.toLowerCase().includes("нал"))
-                        color = "#10b981"; // Cash
-                      else if (
-                        pay.name.toLowerCase().includes("click") ||
-                        pay.name.toLowerCase().includes("payme")
-                      )
-                        color = "#8b5cf6"; // Mobile click/payme
-
-                      return (
-                        <div key={idx} style={{ padding: "4px 0" }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              marginBottom: 4,
-                            }}
-                          >
-                            <span>
-                              {pay.name.toLowerCase().includes("нал")
-                                ? "💵 "
-                                : "💳 "}
-                              {pay.name}
-                            </span>
-                            <span style={{ color: "#334155" }}>
-                              {fmtPrice(pay.amount)}{" "}
-                              <strong
-                                style={{ color: "#64748b", marginLeft: 4 }}
-                              >
-                                ({pct.toFixed(0)}%)
-                              </strong>
-                            </span>
-                          </div>
-                          <div
-                            style={{
-                              width: "100%",
-                              height: 8,
-                              borderRadius: 4,
-                              background: "#f1f5f9",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: "100%",
-                                borderRadius: 4,
-                                background: color,
-                                width: `${pct}%`,
-                                transition: "width .5s ease",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
                     <div
                       style={{
-                        fontStyle: "italic",
-                        color: "#64748b",
-                        fontSize: 13,
-                        textAlign: "center",
-                        padding: "20px 0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 16,
+                        borderBottom: "1px solid #f1f5f9",
+                        paddingBottom: 10,
                       }}
                     >
-                      Платежи отсутствуют за этот период.
+                      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#0f1729" }}>
+                        ⚖️ Сверка выручки и оплат (iiko vs Сдача кассира)
+                      </h3>
+                      {cashierTotals ? (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#10b981",
+                            background: "rgba(16, 185, 129, 0.08)",
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                          }}
+                        >
+                          Сведено смен: {cashierTotals.reportsCount}
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#ef4444",
+                            background: "rgba(239, 68, 68, 0.08)",
+                            padding: "4px 10px",
+                            borderRadius: 8,
+                          }}
+                        >
+                          Нет сданных смен кассира за период
+                        </span>
+                      )}
                     </div>
-                  )}
+
+                    {(() => {
+                      const mapIikoToField = (iikoName) => {
+                        const name = iikoName.toLowerCase();
+                        if (name.includes("нал")) return "cash";
+                        if (name.includes("uzcard")) return "uzcard";
+                        if (name.includes("humo")) return "humo";
+                        if (name.includes("click") || name.includes("payme") || name.includes("онлайн")) return "online";
+                        if (name.includes("rahmat")) return "rahmat";
+                        if (name.includes("uzum")) return "uzum";
+                        if (name.includes("янндекс") || name.includes("yandex") || name.includes("яндекс")) return "yandex";
+                        return "other";
+                      };
+
+                      const iikoPayments = {
+                        cash: 0,
+                        uzcard: 0,
+                        humo: 0,
+                        online: 0,
+                        rahmat: 0,
+                        uzum: 0,
+                        yandex: 0,
+                        other: 0,
+                      };
+
+                      if (cashData && cashData.paymentsSplit) {
+                        cashData.paymentsSplit.forEach((item) => {
+                          const field = mapIikoToField(item.name);
+                          iikoPayments[field] += item.amount;
+                        });
+                      }
+
+                      const cashierPayments = cashierTotals
+                        ? {
+                            cash: cashierTotals.cash,
+                            uzcard: cashierTotals.uzcard,
+                            humo: cashierTotals.humo,
+                            online: cashierTotals.online,
+                            rahmat: cashierTotals.rahmat,
+                            uzum: cashierTotals.uzum,
+                            yandex: cashierTotals.yandex,
+                          }
+                        : { cash: 0, uzcard: 0, humo: 0, online: 0, rahmat: 0, uzum: 0, yandex: 0 };
+
+                      const totalExpenses = cashierTotals ? cashierTotals.totalExpenses : 0;
+
+                      const rows = [
+                        { label: "💵 Наличные", field: "cash", exp: totalExpenses },
+                        { label: "💳 Uzcard", field: "uzcard", exp: 0 },
+                        { label: "💳 Humo", field: "humo", exp: 0 },
+                        { label: "📱 Click / Payme", field: "online", exp: 0 },
+                        { label: "💳 RAHMAT", field: "rahmat", exp: 0 },
+                        { label: "💳 Uzum", field: "uzum", exp: 0 },
+                        { label: "🛵 Яндекс Еда", field: "yandex", exp: 0 },
+                      ];
+
+                      if (iikoPayments.other > 0) {
+                        rows.push({ label: "⚙️ Другие оплаты (iiko)", field: "other", exp: 0 });
+                      }
+
+                      const thStyle = {
+                        padding: "10px 8px",
+                        borderBottom: "2px solid #cbd5e1",
+                        background: "#f8fafc",
+                        fontSize: "11px",
+                        fontWeight: "700",
+                        color: "#475569",
+                        textAlign: "right",
+                      };
+                      const tdStyle = {
+                        padding: "10px 8px",
+                        borderBottom: "1px solid #e2e8f0",
+                        fontSize: "12px",
+                        color: "#334155",
+                        textAlign: "right",
+                      };
+
+                      return (
+                        <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ ...thStyle, textAlign: "left" }}>Тип оплаты</th>
+                                <th style={thStyle}>Сумма из iiko</th>
+                                <th style={thStyle}>Расходы кассира</th>
+                                <th style={thStyle}>Расчетный остаток</th>
+                                <th style={thStyle}>Факт сдачи</th>
+                                <th style={thStyle}>Отклонение</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((row, idx) => {
+                                const iikoVal = iikoPayments[row.field] || 0;
+                                const cashVal = cashierPayments[row.field] || 0;
+                                const calculatedBalance = iikoVal - row.exp;
+                                const diff = cashierTotals ? cashVal - calculatedBalance : 0;
+
+                                return (
+                                  <tr key={idx}>
+                                    <td style={{ ...tdStyle, textAlign: "left", fontWeight: "600", background: "#f8fafc" }}>
+                                      {row.label}
+                                    </td>
+                                    <td style={tdStyle}>{fmtPrice(iikoVal)}</td>
+                                    <td style={{ ...tdStyle, color: row.exp > 0 ? "#ef4444" : "#64748b" }}>
+                                      {row.exp > 0 ? fmtPrice(row.exp) : "—"}
+                                    </td>
+                                    <td style={{ ...tdStyle, fontWeight: "600" }}>{fmtPrice(calculatedBalance)}</td>
+                                    <td style={{ ...tdStyle, fontWeight: "700", color: "#1e293b", background: "#fafafa" }}>
+                                      {cashierTotals ? fmtPrice(cashVal) : "—"}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        fontWeight: "800",
+                                        color: !cashierTotals ? "#64748b" : diff < 0 ? "#ef4444" : diff > 0 ? "#10b981" : "#64748b",
+                                        background: cashierTotals && diff !== 0 ? (diff < 0 ? "#fef2f2" : "#f0fdf4") : "transparent",
+                                      }}
+                                    >
+                                      {!cashierTotals ? "—" : (diff > 0 ? "+" : "") + (diff !== 0 ? fmtPrice(diff) : "0")}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+
+                              {/* Total Row */}
+                              {(() => {
+                                const totalIiko = Object.values(iikoPayments).reduce((a, b) => a + b, 0);
+                                const totalCashier = Object.values(cashierPayments).reduce((a, b) => a + b, 0);
+                                const totalCalc = totalIiko - totalExpenses;
+                                const totalDiff = totalCashier - totalCalc;
+
+                                return (
+                                  <tr style={{ background: "#f8fafc", fontWeight: "800" }}>
+                                    <td style={{ ...tdStyle, textAlign: "left", borderTop: "2px solid #cbd5e1" }}>
+                                      📊 ИТОГО СМЕНА
+                                    </td>
+                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1" }}>{fmtPrice(totalIiko)}</td>
+                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1", color: totalExpenses > 0 ? "#ef4444" : "#64748b" }}>
+                                      {totalExpenses > 0 ? fmtPrice(totalExpenses) : "—"}
+                                    </td>
+                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1" }}>{fmtPrice(totalCalc)}</td>
+                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1", background: "#f1f5f9" }}>
+                                      {cashierTotals ? fmtPrice(totalCashier) : "—"}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
+                                        color: !cashierTotals ? "#64748b" : totalDiff < 0 ? "#ef4444" : totalDiff > 0 ? "#10b981" : "#64748b",
+                                        background: cashierTotals && totalDiff !== 0 ? (totalDiff < 0 ? "#fee2e2" : "#dcfce7") : "transparent",
+                                      }}
+                                    >
+                                      {!cashierTotals ? "—" : (totalDiff > 0 ? "+" : "") + (totalDiff !== 0 ? fmtPrice(totalDiff) : "0")}
+                                    </td>
+                                  </tr>
+                                );
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div style={{ marginTop: 10 }}>
+                    <HistoryList
+                      history={periodReports}
+                      loading={historyLoading}
+                      onRefresh={loadHistory}
+                      emptyText="История отчетов кассы пуста за выбранный период"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()
           ) : (
             <div
               style={{
@@ -5545,6 +5649,239 @@ function AnalyticsView({ showToast }) {
                   }}
                 >
                   Нет проданных товаров за этот период.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: "#64748b",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 🤵 TOP WAITERS VIEW */}
+      {!loading && subTab === "waiters" && (
+        <div>
+          {/* Waiters Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "today", label: "Сегодня" },
+              { id: "yesterday", label: "Вчера" },
+              { id: "this_month", label: "Этот месяц" },
+              { id: "custom", label: "Период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setWaitersPeriod(p.id);
+                  if (p.id !== "custom") loadWaiters(p.id);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: waitersPeriod === p.id ? "none" : "1px solid #e2e8f0",
+                  background: waitersPeriod === p.id ? "#0284c7" : "#fff",
+                  color: waitersPeriod === p.id ? "#fff" : "#64748b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {waitersPeriod === "custom" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: 6,
+                  alignItems: "center",
+                  marginLeft: 10,
+                }}
+              >
+                <input
+                  type="date"
+                  value={waitersDates.from}
+                  onChange={(e) =>
+                    setWaitersDates({ ...waitersDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <input
+                  type="date"
+                  value={waitersDates.to}
+                  onChange={(e) =>
+                    setWaitersDates({ ...waitersDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  onClick={() => loadWaiters("custom", waitersDates.from, waitersDates.to)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#0284c7",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+          </div>
+
+          {waitersData ? (
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: 16,
+                border: "1px solid #e2e8f0",
+                padding: 20,
+                boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 20px",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  color: "#0f1729",
+                }}
+              >
+                🏆 Продажи по сотрудникам / официантам
+              </h3>
+
+              {waitersData.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {waitersData.map((waiter, idx) => {
+                    const maxSales = waitersData[0].sales || 1;
+                    const pctOfMax = (waiter.sales / maxSales) * 100;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          border: "1px solid #f1f5f9",
+                          background: idx === 0 ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" : "#fff",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          position: "relative",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            zIndex: 1,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: "#64748b", width: 24 }}>
+                              {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+                              {waiter.name}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: "#0284c7" }}>
+                            {fmtPrice(waiter.sales)}
+                          </span>
+                        </div>
+
+                        {/* Extra Waiter Metrics */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 16,
+                            fontSize: 11,
+                            color: "#64748b",
+                            marginTop: 2,
+                            marginBottom: 2,
+                            zIndex: 1,
+                          }}
+                        >
+                          <span>🧾 Чеков: <strong style={{ color: "#334155" }}>{waiter.orders}</strong></span>
+                          {waiter.refunds > 0 && (
+                            <span style={{ color: "#ef4444" }}>
+                              🔄 Возвратов: <strong>{waiter.refunds}</strong>
+                            </span>
+                          )}
+                          <span>📈 Ср. чек: <strong style={{ color: "#334155" }}>{fmtPrice(waiter.avgCheck)}</strong></span>
+                        </div>
+
+                        {/* Progress Bar visual indicator */}
+                        <div
+                          style={{
+                            width: "100%",
+                            height: 6,
+                            borderRadius: 3,
+                            background: "#f1f5f9",
+                            overflow: "hidden",
+                            marginTop: 4,
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: "100%",
+                              borderRadius: 3,
+                              background: idx === 0 ? "#0284c7" : "#38bdf8",
+                              width: `${pctOfMax}%`,
+                              transition: "width .5s ease",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontStyle: "italic",
+                    color: "#64748b",
+                    fontSize: 13,
+                    textAlign: "center",
+                    padding: "40px 0",
+                  }}
+                >
+                  Нет продаж сотрудников за этот период.
                 </div>
               )}
             </div>

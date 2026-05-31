@@ -85,8 +85,8 @@ export async function GET(request) {
       const categoriesList = [];
 
       for (const [catName, dishes] of Object.entries(categoriesMap)) {
-        // Sort dishes by revenue descending
-        dishes.sort((a, b) => b.revenue - a.revenue);
+        // Sort dishes by amount descending
+        dishes.sort((a, b) => b.amount - a.amount);
 
         const totalRevenue = dishes.reduce((acc, curr) => acc + curr.revenue, 0);
         const totalAmount = dishes.reduce((acc, curr) => acc + curr.amount, 0);
@@ -95,7 +95,7 @@ export async function GET(request) {
           name: catName,
           totalRevenue,
           totalAmount,
-          topDishes: dishes.slice(0, 3), // Top 3
+          dishes, // Return ALL dishes, sorted by amount descending
         });
       }
 
@@ -105,7 +105,20 @@ export async function GET(request) {
       return categoriesList;
     });
 
-    return Response.json({ success: true, data });
+    // Calculate diffDays and recommended threshold
+    let diffDays = 30;
+    let threshold = 30;
+    try {
+      const fromD = new Date(dateFrom);
+      const toD = new Date(dateTo);
+      const diffTime = Math.abs(toD - fromD);
+      diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      threshold = Math.max(1, Math.round(diffDays * 1.0));
+    } catch (e) {
+      console.warn("Failed to compute diffDays/threshold:", e);
+    }
+
+    return Response.json({ success: true, threshold, diffDays, data });
   } catch (e) {
     console.error("[/api/iiko/analytics/top-sales] error:", e.message);
     return Response.json({ success: false, error: e.message }, { status: 500 });
