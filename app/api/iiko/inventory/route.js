@@ -10,7 +10,7 @@ export async function POST(request) {
     }
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
-    const allowedRoles = ["admin", "director", "kitchen", "prep_chef", "bar"];
+    const allowedRoles = ["admin", "director", "kitchen", "prep_chef", "bar", "supplier"];
     if (!allowedRoles.includes(baseRole)) {
       return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
     }
@@ -58,10 +58,45 @@ export async function POST(request) {
       }
       return Response.json({ success: true, documentNumber: dn });
     } else {
+      if (user) {
+        const details = {
+          status: "failed",
+          error: "iiko rejected the inventory document",
+          store_id,
+          store_name: store_name || "Неизвестный склад",
+          items: items.map(it => ({
+            product_id: it.product_id,
+            product_name: it.product_name || "Товар",
+            quantity: it.quantity,
+            unit: it.unit || "шт"
+          })),
+          comment: comment || "",
+        };
+        await logAction(user.tg_id, user.name, "inventory", "СБОЙ", details);
+      }
       return Response.json({ success: false, error: "iiko rejected the inventory document" }, { status: 500 });
     }
   } catch (e) {
     console.error("[/api/iiko/inventory]", e.message);
+    try {
+      const { store_id, store_name, items, comment, user } = await request.clone().json().catch(() => ({}));
+      if (user) {
+        const details = {
+          status: "failed",
+          error: e.message,
+          store_id,
+          store_name: store_name || "Неизвестный склад",
+          items: (items || []).map(it => ({
+            product_id: it.product_id,
+            product_name: it.product_name || "Товар",
+            quantity: it.quantity,
+            unit: it.unit || "шт"
+          })),
+          comment: comment || "",
+        };
+        await logAction(user.tg_id, user.name, "inventory", "СБОЙ", details);
+      }
+    } catch (_) {}
     return Response.json({ error: e.message }, { status: 500 });
   }
 }

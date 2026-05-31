@@ -397,7 +397,7 @@ export default function LocmacoApp() {
       case "transfer":
         return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
       case "inventory":
-        return ["kitchen", "prep_chef", "bar"].includes(role);
+        return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
       case "cash":
         return role === "bar" || role === "cashier";
       case "analytics":
@@ -1141,8 +1141,57 @@ export default function LocmacoApp() {
 //  IIKO HISTORY LIST — Live iiko documents tracker (incoming / transfers)
 // ═══════════════════════════════════════════════════════════════
 
-function IikoHistoryList({ type, showToast }) {
+function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
   const [docs, setDocs] = useState([]);
+
+  const getStoreName = (storeIdOrObjOrName) => {
+    if (!storeIdOrObjOrName) return "—";
+    if (typeof storeIdOrObjOrName === "object") {
+      if (storeIdOrObjOrName.name) return storeIdOrObjOrName.name;
+      if (storeIdOrObjOrName.id) {
+        const found = stores.find((s) => s.id === storeIdOrObjOrName.id);
+        if (found) return found.name;
+      }
+      return "—";
+    }
+    if (typeof storeIdOrObjOrName === "string") {
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeIdOrObjOrName)) {
+        const found = stores.find((s) => s.id === storeIdOrObjOrName);
+        return found ? found.name : "—";
+      }
+      return storeIdOrObjOrName;
+    }
+    return "—";
+  };
+
+  const getProductName = (it) => {
+    const possibleName = it.productName || (it.product && typeof it.product === "object" ? it.product.name : null) || it.name;
+    if (possibleName && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(possibleName)) {
+      return possibleName;
+    }
+    const pId = it.productId || (it.product && typeof it.product === "string" ? it.product : (it.product?.id || null));
+    if (pId) {
+      const found = products.find((p) => p.id === pId);
+      if (found) return found.name;
+    }
+    return "Товар";
+  };
+
+  const getProductUnit = (it) => {
+    const rawUnit = it.productUnitName || it.unitName || it.productUnit || it.unit || "";
+    if (!rawUnit) return "шт";
+    const unitMap = {
+      "7ba81c3a-8de5-8f9d-fb9f-e39efcbc57cc": "кг",
+      "69859c74-db72-b006-cba5-326cf6f4fc6e": "л",
+      "cd19b5ea-1b32-a6e5-1df7-5d2784a0549a": "шт",
+      "109fb602-70ad-473d-ba1f-f037b6e72887": "шт",
+    };
+    if (unitMap[rawUnit]) return unitMap[rawUnit];
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawUnit)) {
+      return "шт";
+    }
+    return rawUnit;
+  };
   const [loading, setLoading] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [detailData, setDetailData] = useState(null);
@@ -1347,7 +1396,7 @@ function IikoHistoryList({ type, showToast }) {
                         <span>
                           📦 Склад:{" "}
                           <strong>
-                            {doc.storageToName || doc.storageName || "—"}
+                            {getStoreName(doc.storageTo || doc.storageToName || doc.storageName || doc.storage)}
                           </strong>
                         </span>
                       </>
@@ -1356,15 +1405,13 @@ function IikoHistoryList({ type, showToast }) {
                         <span>
                           📤 Откуда:{" "}
                           <strong>
-                            {doc.storageFromName ||
-                              doc.storageFrom?.name ||
-                              "—"}
+                            {getStoreName(doc.storageFrom || doc.storageFromName || doc.storageFrom?.name)}
                           </strong>
                         </span>
                         <span>
                           📥 Куда:{" "}
                           <strong>
-                            {doc.storageToName || doc.storageTo?.name || "—"}
+                            {getStoreName(doc.storageTo || doc.storageToName || doc.storageTo?.name)}
                           </strong>
                         </span>
                       </>
@@ -1534,9 +1581,7 @@ function IikoHistoryList({ type, showToast }) {
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
-                      {selectedDoc.storageToName ||
-                        selectedDoc.storageName ||
-                        "—"}
+                      {getStoreName(selectedDoc.storageTo || selectedDoc.storageToName || selectedDoc.storageName || selectedDoc.storage)}
                     </span>
                   </div>
                   {selectedDoc.sum && (
@@ -1565,9 +1610,7 @@ function IikoHistoryList({ type, showToast }) {
                   >
                     <span style={{ color: "#64748b" }}>📤 Склад списания:</span>
                     <span style={{ fontWeight: 600 }}>
-                      {selectedDoc.storageFromName ||
-                        selectedDoc.storageFrom?.name ||
-                        "—"}
+                      {getStoreName(selectedDoc.storageFrom || selectedDoc.storageFromName || selectedDoc.storageFrom?.name)}
                     </span>
                   </div>
                   <div
@@ -1577,9 +1620,7 @@ function IikoHistoryList({ type, showToast }) {
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
-                      {selectedDoc.storageToName ||
-                        selectedDoc.storageTo?.name ||
-                        "—"}
+                      {getStoreName(selectedDoc.storageTo || selectedDoc.storageToName || selectedDoc.storageTo?.name)}
                     </span>
                   </div>
                 </>
@@ -1715,7 +1756,7 @@ function IikoHistoryList({ type, showToast }) {
                                 color: "#0f1729",
                               }}
                             >
-                              {it.productName || it.product?.name || "Товар"}
+                              {getProductName(it)}
                             </td>
                             <td
                               style={{
@@ -1725,7 +1766,7 @@ function IikoHistoryList({ type, showToast }) {
                                 textAlign: "right",
                               }}
                             >
-                              {qty} {it.productUnitName || it.unitName || "шт"}
+                              {qty} {getProductUnit(it)}
                             </td>
                             {type === "INCOMING_INVOICE" && (
                               <>
@@ -1911,8 +1952,39 @@ function IncomingView({
         )}
       </div>
       {mode === "idle" && (
-        <div>
-          <IikoHistoryList type="INCOMING_INVOICE" showToast={showToast} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div>
+            <IikoHistoryList type="INCOMING_INVOICE" showToast={showToast} stores={stores} products={products} />
+          </div>
+          <div>
+            <HistoryList
+              history={history.filter(act => act.action_type === "invoice")}
+              loading={historyLoading}
+              onRefresh={loadHistory}
+              emptyText="История приходов пуста"
+              onRestore={(act) => {
+                if (act.details) {
+                  setForm({
+                    supplierId: act.details.supplier_id || "",
+                    supplierName: act.details.supplier_name || "",
+                    storeId: act.details.store_id || "",
+                    storeName: act.details.store_name || "",
+                    comment: act.details.comment || "",
+                  });
+                  setItems((act.details.items || []).map(it => ({
+                    product_id: it.product_id,
+                    product_name: it.product_name,
+                    quantity: it.quantity,
+                    unit: it.unit || "шт",
+                    totalPrice: it.price ? String(it.price * it.quantity) : "",
+                  })));
+                  setMode("new");
+                  setStep(2);
+                  showToast("Черновик успешно восстановлен!");
+                }
+              }}
+            />
+          </div>
         </div>
       )}
       {mode === "new" && (
@@ -2308,8 +2380,38 @@ function TransferView({
         )}
       </div>
       {mode === "idle" && (
-        <div>
-          <IikoHistoryList type="INTERNAL_TRANSFER" showToast={showToast} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div>
+            <IikoHistoryList type="INTERNAL_TRANSFER" showToast={showToast} stores={stores} products={products} />
+          </div>
+          <div>
+            <HistoryList
+              history={history.filter(act => act.action_type === "transfer")}
+              loading={historyLoading}
+              onRefresh={loadHistory}
+              emptyText="История перемещений пуста"
+              onRestore={(act) => {
+                if (act.details) {
+                  setForm({
+                    fromId: act.details.store_from || "",
+                    fromName: act.details.store_from_name || "",
+                    toId: act.details.store_to || "",
+                    toName: act.details.store_to_name || "",
+                    comment: act.details.comment || "",
+                  });
+                  setItems((act.details.items || []).map(it => ({
+                    product_id: it.product_id,
+                    product_name: it.product_name,
+                    quantity: it.quantity,
+                    unit: it.unit || "шт",
+                  })));
+                  setMode("new");
+                  setStep(2);
+                  showToast("Черновик успешно восстановлен!");
+                }
+              }}
+            />
+          </div>
         </div>
       )}
       {mode === "new" && (
@@ -2762,10 +2864,28 @@ function InventoryView({
       </div>
       {mode === "idle" && (
         <HistoryList
-          history={history}
+          history={history.filter(act => act.action_type === "inventory")}
           loading={historyLoading}
           onRefresh={loadHistory}
           emptyText="История инвентаризаций пуста"
+          onRestore={(act) => {
+            if (act.details) {
+              setForm({
+                storeId: act.details.store_id || "",
+                storeName: act.details.store_name || "",
+                comment: act.details.comment || "",
+              });
+              setItems((act.details.items || []).map(it => ({
+                product_id: it.product_id,
+                product_name: it.product_name,
+                quantity: it.quantity,
+                unit: it.unit || "шт",
+              })));
+              setMode("new");
+              setStep(1); // Jump to items step!
+              showToast("Черновик успешно восстановлен!");
+            }
+          }}
         />
       )}
       {mode === "new" && (
@@ -3681,7 +3801,7 @@ function Btn({ children, outline, onClick, disabled, style }) {
   );
 }
 
-function HistoryList({ history, loading, onRefresh, emptyText }) {
+function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
   if (loading && history.length === 0) {
     return <LoadingBlock text="Загрузка истории..." />;
   }
@@ -3744,6 +3864,7 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
           const isInventory = act.action_type === "inventory";
           const isCash = act.action_type === "cash";
           const details = act.details || {};
+          const isFailed = details.status === "failed" || act.document_number === "СБОЙ";
           let formattedDate = "";
           if (details.selected_date) {
             const parts = details.selected_date.split("-");
@@ -3769,11 +3890,12 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
             <div
               key={act.id}
               style={{
-                background: "#fff",
+                background: isFailed ? "#fffbfa" : "#fff",
                 borderRadius: 14,
-                border: "1px solid #e8ecf0",
+                border: isFailed ? "1px solid #fee2e2" : "1px solid #e8ecf0",
                 padding: 18,
-                boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                boxShadow: isFailed ? "0 4px 12px rgba(239, 68, 68, 0.04)" : "0 2px 4px rgba(0,0,0,0.02)",
+                animation: "fadeIn .25s ease",
               }}
             >
               <div
@@ -3790,41 +3912,56 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                   <div
                     style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
-                    <span
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: isInvoice
-                          ? "#ecfdf5"
+                    {isFailed ? (
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: "#fee2e2",
+                          color: "#ef4444",
+                        }}
+                      >
+                        СБОЙ IIKO
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: isInvoice
+                            ? "#ecfdf5"
+                            : isInventory
+                            ? "#faf5ff"
+                            : isCash
+                            ? "#f0fdf4"
+                            : "#e0e7ff",
+                          color: isInvoice
+                            ? "#059669"
+                            : isInventory
+                            ? "#7c3aed"
+                            : isCash
+                            ? "#166534"
+                            : "#4f46e5",
+                        }}
+                      >
+                        {isInvoice
+                          ? "Приход"
                           : isInventory
-                          ? "#faf5ff"
+                          ? "Инвентаризация"
                           : isCash
-                          ? "#f0fdf4"
-                          : "#e0e7ff",
-                        color: isInvoice
-                          ? "#059669"
-                          : isInventory
-                          ? "#7c3aed"
-                          : isCash
-                          ? "#166534"
-                          : "#4f46e5",
-                      }}
-                    >
-                      {isInvoice
-                        ? "Приход"
-                        : isInventory
-                        ? "Инвентаризация"
-                        : isCash
-                        ? "Отчет кассы"
-                        : "Перемещение"}
-                    </span>
+                          ? "Отчет кассы"
+                          : "Перемещение"}
+                      </span>
+                    )}
                     <span
                       style={{
                         fontSize: 13,
                         fontWeight: 700,
-                        color: "#334155",
+                        color: isFailed ? "#ef4444" : "#334155",
                       }}
                     >
                       {act.document_number || "Без номера"}
@@ -4123,6 +4260,23 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                   </div>
                 )}
 
+                {isFailed && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      background: "#fff1f1",
+                      border: "1px solid #fecaca",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      color: "#b91c1c",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⚠️ Ошибка отправки: {details.error || "iiko отклонила документ"}
+                  </div>
+                )}
+
                 {details.comment && (
                   <div
                     style={{
@@ -4133,6 +4287,39 @@ function HistoryList({ history, loading, onRefresh, emptyText }) {
                     }}
                   >
                     💬 Комментарий: {details.comment}
+                  </div>
+                )}
+
+                {isFailed && onRestore && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                    <button
+                      onClick={() => onRestore(act)}
+                      style={{
+                        background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "6px 14px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 4px 10px rgba(239, 68, 68, 0.2)",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                        e.currentTarget.style.boxShadow = "0 6px 14px rgba(239, 68, 68, 0.3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "none";
+                        e.currentTarget.style.boxShadow = "0 4px 10px rgba(239, 68, 68, 0.2)";
+                      }}
+                    >
+                      🔄 Восстановить черновик
+                    </button>
                   </div>
                 )}
               </div>
