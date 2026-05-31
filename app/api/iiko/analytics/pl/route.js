@@ -26,13 +26,13 @@ export async function GET(request) {
     const IIKO_SERVER = (process.env.IIKO_SERVER || "").replace(/\/+$/, "");
 
     const data = await withIikoSession(async (token) => {
-      // 1. Fetch SALES OLAP report (Revenue and COGS)
+      // 1. Fetch SALES OLAP report (Revenue)
       const salesBody = {
         reportType: "SALES",
         buildSummary: "true",
         groupByRowFields: [],
         groupByColFields: [],
-        aggregateFields: ["DishDiscountSumInt", "ProductCostBase.ProductCost"],
+        aggregateFields: ["DishDiscountSumInt"],
         filters: {
           "OpenDate.Typed": {
             filterType: "DateRange",
@@ -66,7 +66,6 @@ export async function GET(request) {
         if (salesData && salesData.data) {
           for (const row of salesData.data) {
             revenue += parseFloat(row["DishDiscountSumInt"] || 0);
-            cogs += parseFloat(row["ProductCostBase.ProductCost"] || 0);
           }
         }
       }
@@ -107,8 +106,10 @@ export async function GET(request) {
         if (transData && transData.data) {
           for (const row of transData.data) {
             const actType = row["Account.Type"] || "";
-            if (actType === "EXPENSES" || actType === "OTHER_EXPENSES") {
-              const val = parseFloat(row["Sum.ResignedSum"] || 0);
+            const val = parseFloat(row["Sum.ResignedSum"] || 0);
+            if (actType === "COST_OF_GOODS_SOLD") {
+              cogs += val;
+            } else if (actType === "EXPENSES" || actType === "OTHER_EXPENSES") {
               if (val > 0) {
                 expensesSum += val;
                 const name = row["Account.Name"] || "Прочие расходы";
