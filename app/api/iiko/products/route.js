@@ -24,11 +24,13 @@ export async function GET() {
       if (!data) return [];
 
       return data
-        .filter((p) => p.type === "GOODS")
+        .filter((p) => p.type === "GOODS" || p.type === "PREPARED")
         .map((p) => ({
           id: p.id,
           name: p.name,
           type: p.type,
+          code: p.code || "",
+          num: p.num || "",
           mainUnit: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт",
         }));
     });

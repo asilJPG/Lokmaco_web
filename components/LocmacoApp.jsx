@@ -31,11 +31,14 @@ const API = {
   async get(ep) {
     try {
       const r = await fetch(`/api/iiko${ep}`);
-      if (!r.ok) throw new Error(`${r.status}`);
-      return await r.json();
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
     } catch (e) {
       console.error(`API GET ${ep}:`, e);
-      return null;
+      return { success: false, error: e.message };
     }
   },
   async post(ep, body) {
@@ -45,11 +48,46 @@ const API = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(`${r.status}`);
-      return await r.json();
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
     } catch (e) {
       console.error(`API POST ${ep}:`, e);
-      return null;
+      return { success: false, error: e.message };
+    }
+  },
+  async delete(ep) {
+    try {
+      const r = await fetch(`/api/iiko${ep}`, {
+        method: "DELETE",
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
+    } catch (e) {
+      console.error(`API DELETE ${ep}:`, e);
+      return { success: false, error: e.message };
+    }
+  },
+  async put(ep, body) {
+    try {
+      const r = await fetch(`/api/iiko${ep}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
+    } catch (e) {
+      console.error(`API PUT ${ep}:`, e);
+      return { success: false, error: e.message };
     }
   },
   getProducts() {
@@ -66,6 +104,21 @@ const API = {
   },
   createTransfer(data) {
     return this.post("/transfer", data);
+  },
+  createProduction(data) {
+    return this.post("/production", data);
+  },
+  getEmployees() {
+    return this.get("/employees");
+  },
+  createEmployee(data) {
+    return this.post("/employees", data);
+  },
+  updateEmployee(data) {
+    return this.put("/employees", data);
+  },
+  deleteEmployee(id) {
+    return this.delete(`/employees?id=${id}`);
   },
   createInventory(data) {
     return this.post("/inventory", data);
@@ -290,6 +343,48 @@ const I = {
       <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   ),
+  cooking: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M6 18h12M12 2v4M5 8h14c0 4.4-3.6 8-8 8s-8-3.6-8-8z" />
+    </svg>
+  ),
+  users: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75" />
+    </svg>
+  ),
+  edit: (
+    <svg
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  ),
 };
 
 export default function LocmacoApp() {
@@ -375,8 +470,10 @@ export default function LocmacoApp() {
     { id: "incoming", label: "Приход", icon: I.inbox },
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
+    { id: "production", label: "Приготовление", icon: I.cooking },
     { id: "cash", label: "Касса", icon: I.cash },
     { id: "analytics", label: "Аналитика", icon: I.analytics },
+    { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
   const ROLE_NAMES = {
@@ -398,6 +495,10 @@ export default function LocmacoApp() {
         return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
       case "inventory":
         return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
+      case "production":
+        return ["prep_chef"].includes(role);
+      case "employees":
+        return role === "admin";
       case "cash":
         return role === "cashier";
       case "analytics":
@@ -992,6 +1093,35 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "production") && (
+                <button
+                  onClick={() => setTab("production")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background:
+                      "linear-gradient(135deg, #f97316 0%, #d97706 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(249, 115, 22, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>🍳</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Приготовление заготовок
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Акт приготовления готовых заготовок/смесей в iiko
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "cash") && (
                 <button
                   onClick={() => setTab("cash")}
@@ -1049,6 +1179,35 @@ export default function LocmacoApp() {
                   </div>
                 </button>
               )}
+
+              {hasAccess(loggedInUser.baseRole, "employees") && (
+                <button
+                  onClick={() => setTab("employees")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background:
+                      "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Сотрудники
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Управление учетными записями персонала и правами
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1093,6 +1252,18 @@ export default function LocmacoApp() {
             historyLoading={historyLoading}
           />
         )}
+        {tab === "production" && (
+          <ProductionView
+            products={products}
+            showToast={showToast}
+            loading={productsLoading}
+            onRetry={loadData}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "production")}
+            historyLoading={historyLoading}
+          />
+        )}
         {tab === "cash" && (
           <CashView
             showToast={showToast}
@@ -1108,6 +1279,13 @@ export default function LocmacoApp() {
             history={history}
             historyLoading={historyLoading}
             loadHistory={loadHistory}
+          />
+        )}
+        {tab === "employees" && (
+          <EmployeesView
+            stores={stores}
+            showToast={showToast}
+            loggedInUser={loggedInUser}
           />
         )}
       </main>
@@ -1155,7 +1333,11 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
       return "—";
     }
     if (typeof storeIdOrObjOrName === "string") {
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeIdOrObjOrName)) {
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          storeIdOrObjOrName
+        )
+      ) {
         const found = stores.find((s) => s.id === storeIdOrObjOrName);
         return found ? found.name : "—";
       }
@@ -1165,11 +1347,23 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
   };
 
   const getProductName = (it) => {
-    const possibleName = it.productName || (it.product && typeof it.product === "object" ? it.product.name : null) || it.name;
-    if (possibleName && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(possibleName)) {
+    const possibleName =
+      it.productName ||
+      (it.product && typeof it.product === "object" ? it.product.name : null) ||
+      it.name;
+    if (
+      possibleName &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        possibleName
+      )
+    ) {
       return possibleName;
     }
-    const pId = it.productId || (it.product && typeof it.product === "string" ? it.product : (it.product?.id || null));
+    const pId =
+      it.productId ||
+      (it.product && typeof it.product === "string"
+        ? it.product
+        : it.product?.id || null);
     if (pId) {
       const found = products.find((p) => p.id === pId);
       if (found) return found.name;
@@ -1178,7 +1372,8 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
   };
 
   const getProductUnit = (it) => {
-    const rawUnit = it.productUnitName || it.unitName || it.productUnit || it.unit || "";
+    const rawUnit =
+      it.productUnitName || it.unitName || it.productUnit || it.unit || "";
     if (!rawUnit) return "шт";
     const unitMap = {
       "7ba81c3a-8de5-8f9d-fb9f-e39efcbc57cc": "кг",
@@ -1187,7 +1382,11 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
       "109fb602-70ad-473d-ba1f-f037b6e72887": "шт",
     };
     if (unitMap[rawUnit]) return unitMap[rawUnit];
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawUnit)) {
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        rawUnit
+      )
+    ) {
       return "шт";
     }
     return rawUnit;
@@ -1396,7 +1595,12 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                         <span>
                           📦 Склад:{" "}
                           <strong>
-                            {getStoreName(doc.storageTo || doc.storageToName || doc.storageName || doc.storage)}
+                            {getStoreName(
+                              doc.storageTo ||
+                                doc.storageToName ||
+                                doc.storageName ||
+                                doc.storage
+                            )}
                           </strong>
                         </span>
                       </>
@@ -1405,13 +1609,21 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                         <span>
                           📤 Откуда:{" "}
                           <strong>
-                            {getStoreName(doc.storageFrom || doc.storageFromName || doc.storageFrom?.name)}
+                            {getStoreName(
+                              doc.storageFrom ||
+                                doc.storageFromName ||
+                                doc.storageFrom?.name
+                            )}
                           </strong>
                         </span>
                         <span>
                           📥 Куда:{" "}
                           <strong>
-                            {getStoreName(doc.storageTo || doc.storageToName || doc.storageTo?.name)}
+                            {getStoreName(
+                              doc.storageTo ||
+                                doc.storageToName ||
+                                doc.storageTo?.name
+                            )}
                           </strong>
                         </span>
                       </>
@@ -1581,7 +1793,12 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
-                      {getStoreName(selectedDoc.storageTo || selectedDoc.storageToName || selectedDoc.storageName || selectedDoc.storage)}
+                      {getStoreName(
+                        selectedDoc.storageTo ||
+                          selectedDoc.storageToName ||
+                          selectedDoc.storageName ||
+                          selectedDoc.storage
+                      )}
                     </span>
                   </div>
                   {selectedDoc.sum && (
@@ -1610,7 +1827,11 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                   >
                     <span style={{ color: "#64748b" }}>📤 Склад списания:</span>
                     <span style={{ fontWeight: 600 }}>
-                      {getStoreName(selectedDoc.storageFrom || selectedDoc.storageFromName || selectedDoc.storageFrom?.name)}
+                      {getStoreName(
+                        selectedDoc.storageFrom ||
+                          selectedDoc.storageFromName ||
+                          selectedDoc.storageFrom?.name
+                      )}
                     </span>
                   </div>
                   <div
@@ -1620,7 +1841,11 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
-                      {getStoreName(selectedDoc.storageTo || selectedDoc.storageToName || selectedDoc.storageTo?.name)}
+                      {getStoreName(
+                        selectedDoc.storageTo ||
+                          selectedDoc.storageToName ||
+                          selectedDoc.storageTo?.name
+                      )}
                     </span>
                   </div>
                 </>
@@ -1954,11 +2179,16 @@ function IncomingView({
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div>
-            <IikoHistoryList type="INCOMING_INVOICE" showToast={showToast} stores={stores} products={products} />
+            <IikoHistoryList
+              type="INCOMING_INVOICE"
+              showToast={showToast}
+              stores={stores}
+              products={products}
+            />
           </div>
           <div>
             <HistoryList
-              history={history.filter(act => act.action_type === "invoice")}
+              history={history.filter((act) => act.action_type === "invoice")}
               loading={historyLoading}
               onRefresh={loadHistory}
               emptyText="История приходов пуста"
@@ -1971,13 +2201,17 @@ function IncomingView({
                     storeName: act.details.store_name || "",
                     comment: act.details.comment || "",
                   });
-                  setItems((act.details.items || []).map(it => ({
-                    product_id: it.product_id,
-                    product_name: it.product_name,
-                    quantity: it.quantity,
-                    unit: it.unit || "шт",
-                    totalPrice: it.price ? String(it.price * it.quantity) : "",
-                  })));
+                  setItems(
+                    (act.details.items || []).map((it) => ({
+                      product_id: it.product_id,
+                      product_name: it.product_name,
+                      quantity: it.quantity,
+                      unit: it.unit || "шт",
+                      totalPrice: it.price
+                        ? String(it.price * it.quantity)
+                        : "",
+                    }))
+                  );
                   setMode("new");
                   setStep(2);
                   showToast("Черновик успешно восстановлен!");
@@ -2382,11 +2616,16 @@ function TransferView({
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div>
-            <IikoHistoryList type="INTERNAL_TRANSFER" showToast={showToast} stores={stores} products={products} />
+            <IikoHistoryList
+              type="INTERNAL_TRANSFER"
+              showToast={showToast}
+              stores={stores}
+              products={products}
+            />
           </div>
           <div>
             <HistoryList
-              history={history.filter(act => act.action_type === "transfer")}
+              history={history.filter((act) => act.action_type === "transfer")}
               loading={historyLoading}
               onRefresh={loadHistory}
               emptyText="История перемещений пуста"
@@ -2399,12 +2638,14 @@ function TransferView({
                     toName: act.details.store_to_name || "",
                     comment: act.details.comment || "",
                   });
-                  setItems((act.details.items || []).map(it => ({
-                    product_id: it.product_id,
-                    product_name: it.product_name,
-                    quantity: it.quantity,
-                    unit: it.unit || "шт",
-                  })));
+                  setItems(
+                    (act.details.items || []).map((it) => ({
+                      product_id: it.product_id,
+                      product_name: it.product_name,
+                      quantity: it.quantity,
+                      unit: it.unit || "шт",
+                    }))
+                  );
                   setMode("new");
                   setStep(2);
                   showToast("Черновик успешно восстановлен!");
@@ -2864,7 +3105,7 @@ function InventoryView({
       </div>
       {mode === "idle" && (
         <HistoryList
-          history={history.filter(act => act.action_type === "inventory")}
+          history={history.filter((act) => act.action_type === "inventory")}
           loading={historyLoading}
           onRefresh={loadHistory}
           emptyText="История инвентаризаций пуста"
@@ -2875,12 +3116,14 @@ function InventoryView({
                 storeName: act.details.store_name || "",
                 comment: act.details.comment || "",
               });
-              setItems((act.details.items || []).map(it => ({
-                product_id: it.product_id,
-                product_name: it.product_name,
-                quantity: it.quantity,
-                unit: it.unit || "шт",
-              })));
+              setItems(
+                (act.details.items || []).map((it) => ({
+                  product_id: it.product_id,
+                  product_name: it.product_name,
+                  quantity: it.quantity,
+                  unit: it.unit || "шт",
+                }))
+              );
               setMode("new");
               setStep(1); // Jump to items step!
               showToast("Черновик успешно восстановлен!");
@@ -3119,6 +3362,836 @@ function InventoryView({
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PRODUCTION — акты приготовления (списание и оприходование)
+// ═══════════════════════════════════════════════════════════════
+
+function ProductionView({
+  products,
+  showToast,
+  loading,
+  onRetry,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
+  const [mode, setMode] = useState("idle");
+  const [items, setItems] = useState([]);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // Load draft on mount/mode change
+  useEffect(() => {
+    if (mode === "new") {
+      const saved = localStorage.getItem("locmaco_production_draft");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+            setDraftRestored(true);
+            setTimeout(() => setDraftRestored(false), 3000);
+          } else {
+            setItems([]);
+          }
+        } catch (e) {
+          setItems([]);
+        }
+      } else {
+        setItems([]);
+      }
+    } else {
+      setItems([]);
+    }
+  }, [mode]);
+
+  // Save draft on items change
+  useEffect(() => {
+    if (mode === "new") {
+      if (items.length > 0) {
+        localStorage.setItem("locmaco_production_draft", JSON.stringify(items));
+      } else {
+        localStorage.removeItem("locmaco_production_draft");
+      }
+    }
+  }, [items, mode]);
+
+  const addItem = (p) => {
+    setItems((prev) => {
+      if (prev.find((i) => i.product_id === p.id)) return prev;
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          product_name: p.name,
+          code: p.code || "",
+          quantity: "",
+          unit: p.mainUnit || "шт",
+        },
+      ];
+    });
+  };
+
+  const updateItem = (idx, field, value) => {
+    setItems((p) =>
+      p.map((x, i) => (i === idx ? { ...x, [field]: value } : x))
+    );
+  };
+
+  const clearDraft = () => {
+    if (window.confirm("Очистить текущий черновик?")) {
+      setItems([]);
+      localStorage.removeItem("locmaco_production_draft");
+      showToast("Черновик очищен");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (items.length === 0) {
+      showToast("Выберите готовые изделия для приготовления", "error");
+      return;
+    }
+    const prepared = items
+      .map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        code: it.code,
+        quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit,
+      }))
+      .filter((it) => it.quantity > 0);
+
+    if (prepared.length === 0) {
+      showToast("Укажите количество для изделий", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await API.createProduction({
+      items: prepared,
+      comment,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name,
+        role: loggedInUser.role,
+      },
+    });
+    setSubmitting(false);
+
+    if (result?.success) {
+      showToast("Акт приготовления успешно проведен!");
+      localStorage.removeItem("locmaco_production_draft");
+      loadHistory();
+      setMode("idle");
+      setItems([]);
+      setComment("");
+    } else {
+      showToast(result?.error || "Ошибка создания акта", "error");
+    }
+  };
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Приготовление заготовок
+        </h2>
+        {mode === "idle" ? (
+          <Btn
+            onClick={() => {
+              setMode("new");
+              setComment("");
+            }}
+            style={{
+              background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+              boxShadow: "0 4px 12px rgba(249, 115, 22, 0.2)",
+            }}
+          >
+            {I.plus} Новый акт
+          </Btn>
+        ) : (
+          <Btn
+            outline
+            onClick={() => {
+              setMode("idle");
+              setItems([]);
+              setComment("");
+            }}
+          >
+            {I.x} Отмена
+          </Btn>
+        )}
+      </div>
+
+      {mode === "idle" && (
+        <HistoryList
+          history={history.filter((act) => act.action_type === "production")}
+          loading={historyLoading}
+          onRefresh={loadHistory}
+          emptyText="История актов приготовления пуста"
+          onRestore={(act) => {
+            if (act.details) {
+              setComment(act.details.comment || "");
+              setItems(
+                (act.details.items || []).map((it) => ({
+                  product_id: it.product_id,
+                  product_name: it.product_name,
+                  code: it.code || "",
+                  quantity: it.quantity,
+                  unit: it.unit || "шт",
+                }))
+              );
+              setMode("new");
+              showToast("Черновик успешно восстановлен!");
+            }
+          }}
+        />
+      )}
+
+      {mode === "new" && (
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 14,
+            border: "1px solid #e8ecf0",
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              ...crumb,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>
+              🍳 Место приготовления: <b>Кухня Заготовки</b>
+            </span>
+            {items.length > 0 && (
+              <button
+                onClick={clearDraft}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#ef4444",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                {I.trash} Очистить черновик
+              </button>
+            )}
+          </div>
+
+          {draftRestored && (
+            <div
+              style={{
+                background: "#fff7ed",
+                border: "1px solid #ffedd5",
+                color: "#c2410c",
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 500,
+                marginBottom: 12,
+                animation: "fadeIn 0.2s ease",
+              }}
+            >
+              🔄 Восстановлен черновик автосохранения
+            </div>
+          )}
+
+          {loading ? (
+            <LoadingBlock text="Загрузка товаров..." />
+          ) : products.length === 0 ? (
+            <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
+          ) : (
+            <>
+              <ProductSearch products={products} onSelect={addItem} />
+              {items.length > 0 && (
+                <div
+                  style={{
+                    border: "1px solid #e8ecf0",
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    marginTop: 12,
+                  }}
+                >
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: 12,
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8fafb" }}>
+                        <th style={th}>Товар</th>
+                        <th style={{ ...th, textAlign: "center", width: 130 }}>
+                          Количество
+                        </th>
+                        <th style={{ ...th, width: 36 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, idx) => (
+                        <tr
+                          key={idx}
+                          style={{ borderTop: "1px solid #f0f2f5" }}
+                        >
+                          <td style={td}>
+                            <div style={{ fontWeight: 500 }}>
+                              {it.product_name}
+                            </div>
+                            <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                              {it.unit}
+                            </div>
+                          </td>
+                          <td style={{ ...td, textAlign: "center" }}>
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                justifyContent: "center",
+                              }}
+                            >
+                              <input
+                                type="number"
+                                value={it.quantity}
+                                onChange={(e) =>
+                                  updateItem(
+                                    idx,
+                                    "quantity",
+                                    it.unit === "шт"
+                                      ? e.target.value
+                                          .split(".")[0]
+                                          .split(",")[0]
+                                      : e.target.value
+                                  )
+                                }
+                                placeholder="0"
+                                style={numInput}
+                              />
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: "#64748b",
+                                  minWidth: 24,
+                                  textAlign: "left",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {it.unit || "шт"}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={td}>
+                            <button
+                              onClick={() =>
+                                setItems((p) => p.filter((_, i) => i !== idx))
+                              }
+                              style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#ef4444",
+                                display: "flex",
+                              }}
+                            >
+                              {I.trash}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
+              <input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Необязательно"
+                style={inp}
+              />
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <Btn
+                  onClick={handleSubmit}
+                  disabled={submitting || items.length === 0}
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                    border: "none",
+                  }}
+                >
+                  {submitting ? I.loader : I.send}{" "}
+                  {submitting ? "Отправка..." : "Приготовить в iiko"}
+                </Btn>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EMPLOYEES — управление сотрудниками (без привязки к ТГ)
+// ═══════════════════════════════════════════════════════════════
+
+function EmployeesView({ stores, showToast, loggedInUser }) {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState("idle"); // idle, new, or edit
+  const [editingId, setEditingId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [form, setForm] = useState({
+    name: "",
+    role: "bar",
+    storeId: "",
+    access_code: "",
+  });
+
+  const loadEmployees = async () => {
+    setLoading(true);
+    const res = await API.getEmployees();
+    if (res && res.success && Array.isArray(res.employees)) {
+      setEmployees(res.employees);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadEmployees();
+  }, []);
+
+  const isStoreDependent = (role) => {
+    return ["supplier", "kitchen", "prep_chef", "bar"].includes(role);
+  };
+
+  const getRoleLabel = (roleStr) => {
+    const [base] = roleStr.split(":");
+    const labels = {
+      admin: "Администратор",
+      director: "Руководитель",
+      supplier: "Снабженец",
+      kitchen: "Шеф-повар",
+      prep_chef: "Смесь-повар",
+      bar: "Бармен",
+      cashier: "Кассир",
+    };
+    return labels[base] || base;
+  };
+
+  const getRoleColor = (roleStr) => {
+    const [base] = roleStr.split(":");
+    const colors = {
+      admin: { bg: "#e0e7ff", text: "#4f46e5" }, // indigo
+      director: { bg: "#fce7f3", text: "#db2777" }, // pink
+      supplier: { bg: "#e0f2fe", text: "#0284c7" }, // sky
+      kitchen: { bg: "#f3e8ff", text: "#7e22ce" }, // purple
+      prep_chef: { bg: "#ffedd5", text: "#ea580c" }, // orange
+      bar: { bg: "#ecfdf5", text: "#059669" }, // emerald
+      cashier: { bg: "#fef9c3", text: "#ca8a04" }, // yellow
+    };
+    return colors[base] || { bg: "#f1f5f9", text: "#475569" };
+  };
+
+  const getStoreName = (roleStr) => {
+    const [_, storeId] = roleStr.split(":");
+    if (!storeId) return "Все склады";
+    const found = stores.find((s) => s.id === storeId);
+    return found ? found.name : "Неизвестный склад";
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      showToast("Введите имя сотрудника", "error");
+      return;
+    }
+    if (isStoreDependent(form.role) && !form.storeId) {
+      showToast("Выберите склад для данной должности", "error");
+      return;
+    }
+    if (!/^\d{4}$/.test(form.access_code)) {
+      showToast("Код доступа должен состоять ровно из 4 цифр", "error");
+      return;
+    }
+
+    const finalRole = isStoreDependent(form.role)
+      ? `${form.role}:${form.storeId}`
+      : form.role;
+
+    setSubmitting(true);
+    let res;
+    if (mode === "edit") {
+      res = await API.updateEmployee({
+        id: editingId,
+        name: form.name.trim(),
+        role: finalRole,
+        access_code: form.access_code,
+        user: { role: loggedInUser.baseRole },
+      });
+    } else {
+      res = await API.createEmployee({
+        name: form.name.trim(),
+        role: finalRole,
+        access_code: form.access_code,
+        user: { role: loggedInUser.baseRole },
+      });
+    }
+    setSubmitting(false);
+
+    if (res && res.success) {
+      showToast(mode === "edit" ? "Сотрудник успешно изменен!" : "Сотрудник успешно создан!");
+      setForm({ name: "", role: "bar", storeId: "", access_code: "" });
+      setMode("idle");
+      setEditingId(null);
+      loadEmployees();
+    } else {
+      showToast(res?.error || "Ошибка сохранения сотрудника", "error");
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (window.confirm(`Вы уверены, что хотите удалить сотрудника "${name}"?`)) {
+      const res = await API.deleteEmployee(id);
+      if (res && res.success) {
+        showToast("Сотрудник успешно удален");
+        loadEmployees();
+      } else {
+        showToast(res?.error || "Ошибка удаления", "error");
+      }
+    }
+  };
+
+  const filtered = employees.filter((emp) => {
+    const q = searchQuery.toLowerCase();
+    const nameMatch = emp.name?.toLowerCase().includes(q);
+    const codeMatch = emp.access_code?.includes(q);
+    const roleMatch = getRoleLabel(emp.role).toLowerCase().includes(q);
+    const storeMatch = getStoreName(emp.role).toLowerCase().includes(q);
+    return nameMatch || codeMatch || roleMatch || storeMatch;
+  });
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          {mode === "edit" ? "Редактирование сотрудника" : "Сотрудники"}
+        </h2>
+        {mode === "idle" ? (
+          <Btn
+            onClick={() => {
+              setMode("new");
+              setForm({ name: "", role: "bar", storeId: "", access_code: "" });
+            }}
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+              boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)",
+            }}
+          >
+            {I.plus} Добавить сотрудника
+          </Btn>
+        ) : (
+          <Btn outline onClick={() => { setMode("idle"); setEditingId(null); }}>
+            {I.x} Отмена
+          </Btn>
+        )}
+      </div>
+
+      {mode === "idle" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="Поиск по имени, должности, складу или коду..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                ...inp,
+                paddingLeft: 40,
+                background: "#fff",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#94a3b8",
+                display: "flex",
+              }}
+            >
+              {I.search}
+            </div>
+          </div>
+
+          {loading ? (
+            <LoadingBlock text="Загрузка списка сотрудников..." />
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e8ecf0" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
+              <div style={{ fontWeight: 600, color: "#64748b" }}>
+                {searchQuery ? "Ничего не найдено" : "Сотрудники не найдены"}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: 14,
+                border: "1px solid #e8ecf0",
+                overflow: "hidden",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafb", borderBottom: "1px solid #e8ecf0" }}>
+                      <th style={{ ...th, padding: "14px 16px" }}>Имя</th>
+                      <th style={th}>Должность</th>
+                      <th style={th}>Склад</th>
+                      <th style={{ ...th, textAlign: "center", width: 100 }}>Код доступа</th>
+                      <th style={{ ...th, width: 90 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((emp) => {
+                      const color = getRoleColor(emp.role);
+                      return (
+                        <tr key={emp.id} style={{ borderBottom: "1px solid #f0f2f5" }}>
+                          <td style={{ ...td, padding: "14px 16px", fontWeight: 600, color: "#1e293b" }}>
+                            {emp.name}
+                          </td>
+                          <td style={td}>
+                            <span
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: color.bg,
+                                color: color.text,
+                                display: "inline-block",
+                              }}
+                            >
+                              {getRoleLabel(emp.role)}
+                            </span>
+                          </td>
+                          <td style={{ ...td, color: "#475569", fontWeight: 500 }}>
+                            {getStoreName(emp.role)}
+                          </td>
+                          <td style={{ ...td, textAlign: "center", fontFamily: "monospace", fontWeight: 700, letterSpacing: 1, color: "#64748b" }}>
+                            {emp.access_code}
+                          </td>
+                          <td style={td}>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button
+                                onClick={() => {
+                                  const [baseRole, storeId] = emp.role.split(":");
+                                  setForm({
+                                    name: emp.name,
+                                    role: baseRole || "bar",
+                                    storeId: storeId || "",
+                                    access_code: emp.access_code,
+                                  });
+                                  setEditingId(emp.id);
+                                  setMode("edit");
+                                }}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: "#6366f1",
+                                  display: "flex",
+                                  padding: 8,
+                                  borderRadius: 8,
+                                  transition: "background 0.15s ease",
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = "#e0e7ff"}
+                                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                              >
+                                {I.edit}
+                              </button>
+                              {emp.tg_id !== 2141257356 && emp.tg_id !== 390586482 ? (
+                                <button
+                                  onClick={() => handleDelete(emp.id, emp.name)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "#ef4444",
+                                    display: "flex",
+                                    padding: 8,
+                                    borderRadius: 8,
+                                    transition: "background 0.15s ease",
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "#fee2e2"}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                                >
+                                  {I.trash}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(mode === "new" || mode === "edit") && (
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            background: "#fff",
+            borderRadius: 14,
+            border: "1px solid #e8ecf0",
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+          }}
+        >
+          <div>
+            <label style={lbl}>ФИО сотрудника</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Например, Кадир Кадыров"
+              style={inp}
+              required
+            />
+          </div>
+
+          <div>
+            <label style={lbl}>Должность</label>
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value, storeId: isStoreDependent(e.target.value) ? (stores[0]?.id || "") : "" })}
+              style={inp}
+            >
+              <option value="admin">Администратор (Полный доступ)</option>
+              <option value="director">Руководитель (Только аналитика)</option>
+              <option value="supplier">Снабженец</option>
+              <option value="kitchen">Шеф-повар</option>
+              <option value="prep_chef">Смесь-повар</option>
+              <option value="bar">Бармен</option>
+              <option value="cashier">Кассир</option>
+            </select>
+          </div>
+
+          {isStoreDependent(form.role) && (
+            <div>
+              <label style={lbl}>Склад привязки</label>
+              <select
+                value={form.storeId}
+                onChange={(e) => setForm({ ...form, storeId: e.target.value })}
+                style={inp}
+                required
+              >
+                <option value="" disabled>-- Выберите склад --</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label style={lbl}>Код доступа (4 цифры)</label>
+            <input
+              type="text"
+              pattern="[0-9]{4}"
+              maxLength="4"
+              value={form.access_code}
+              onChange={(e) => setForm({ ...form, access_code: e.target.value.replace(/[^0-9]/g, "") })}
+              placeholder="Например, 1234"
+              style={{
+                ...inp,
+                fontFamily: "monospace",
+                fontSize: 16,
+                fontWeight: 700,
+                letterSpacing: 2,
+              }}
+              required
+            />
+            <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+              Этот уникальный код сотрудник будет вводить на главном экране для входа
+            </small>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 8,
+              justifyContent: "flex-end",
+            }}
+          >
+            <Btn
+              type="submit"
+              disabled={submitting}
+              style={{
+                background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                border: "none",
+              }}
+            >
+              {submitting ? I.loader : (mode === "edit" ? I.edit : I.plus)}{" "}
+              {submitting ? "Сохранение..." : (mode === "edit" ? "Сохранить изменения" : "Создать сотрудника")}
+            </Btn>
+          </div>
+        </form>
       )}
     </div>
   );
@@ -3863,8 +4936,10 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
           const isInvoice = act.action_type === "invoice";
           const isInventory = act.action_type === "inventory";
           const isCash = act.action_type === "cash";
+          const isProduction = act.action_type === "production";
           const details = act.details || {};
-          const isFailed = details.status === "failed" || act.document_number === "СБОЙ";
+          const isFailed =
+            details.status === "failed" || act.document_number === "СБОЙ";
           let formattedDate = "";
           if (details.selected_date) {
             const parts = details.selected_date.split("-");
@@ -3894,7 +4969,9 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                 borderRadius: 14,
                 border: isFailed ? "1px solid #fee2e2" : "1px solid #e8ecf0",
                 padding: 18,
-                boxShadow: isFailed ? "0 4px 12px rgba(239, 68, 68, 0.04)" : "0 2px 4px rgba(0,0,0,0.02)",
+                boxShadow: isFailed
+                  ? "0 4px 12px rgba(239, 68, 68, 0.04)"
+                  : "0 2px 4px rgba(0,0,0,0.02)",
                 animation: "fadeIn .25s ease",
               }}
             >
@@ -3938,6 +5015,8 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                             ? "#faf5ff"
                             : isCash
                             ? "#f0fdf4"
+                            : isProduction
+                            ? "#fff7ed"
                             : "#e0e7ff",
                           color: isInvoice
                             ? "#059669"
@@ -3945,6 +5024,8 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                             ? "#7c3aed"
                             : isCash
                             ? "#166534"
+                            : isProduction
+                            ? "#c2410c"
                             : "#4f46e5",
                         }}
                       >
@@ -3954,6 +5035,8 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           ? "Инвентаризация"
                           : isCash
                           ? "Отчет кассы"
+                          : isProduction
+                          ? "Приготовление"
                           : "Перемещение"}
                       </span>
                     )}
@@ -4214,6 +5297,10 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           📦 Склад:{" "}
                           <b>{details.store_name || "Неизвестный склад"}</b>
                         </span>
+                      ) : isProduction ? (
+                        <span>
+                          🍳 Приготовлено на складе: <b>Кухня Заготовки</b>
+                        </span>
                       ) : (
                         <span>
                           📦 Склад:{" "}
@@ -4273,7 +5360,8 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                       fontWeight: 600,
                     }}
                   >
-                    ⚠️ Ошибка отправки: {details.error || "iiko отклонила документ"}
+                    ⚠️ Ошибка отправки:{" "}
+                    {details.error || "iiko отклонила документ"}
                   </div>
                 )}
 
@@ -4291,11 +5379,18 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                 )}
 
                 {isFailed && onRestore && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: 12,
+                    }}
+                  >
                     <button
                       onClick={() => onRestore(act)}
                       style={{
-                        background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                        background:
+                          "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
                         color: "#fff",
                         border: "none",
                         borderRadius: 8,
@@ -4311,11 +5406,13 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = "translateY(-1px)";
-                        e.currentTarget.style.boxShadow = "0 6px 14px rgba(239, 68, 68, 0.3)";
+                        e.currentTarget.style.boxShadow =
+                          "0 6px 14px rgba(239, 68, 68, 0.3)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = "none";
-                        e.currentTarget.style.boxShadow = "0 4px 10px rgba(239, 68, 68, 0.2)";
+                        e.currentTarget.style.boxShadow =
+                          "0 4px 10px rgba(239, 68, 68, 0.2)";
                       }}
                     >
                       🔄 Восстановить черновик
@@ -4545,7 +5642,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
     try {
       setLoading(true);
-      const r = await fetch(`/api/iiko/analytics/waiters?from=${from}&to=${to}`);
+      const r = await fetch(
+        `/api/iiko/analytics/waiters?from=${from}&to=${to}`
+      );
       const res = await r.json();
       if (res && res.success) {
         setWaitersData(res.data);
@@ -5235,7 +6334,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
               let cashierTotals = null;
               let periodReports = [];
               if (history) {
-                const cashReports = history.filter((h) => h.action_type === "cash");
+                const cashReports = history.filter(
+                  (h) => h.action_type === "cash"
+                );
                 periodReports = cashReports.filter((report) => {
                   const reportDate =
                     report.details?.selected_date ||
@@ -5258,25 +6359,40 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
                   periodReports.forEach((report) => {
                     const det = report.details || {};
-                    cashierTotals.cash += parseFloat(det.payments?.cash || det.cash || 0);
-                    cashierTotals.uzcard += parseFloat(det.payments?.uzcard || 0);
+                    cashierTotals.cash += parseFloat(
+                      det.payments?.cash || det.cash || 0
+                    );
+                    cashierTotals.uzcard += parseFloat(
+                      det.payments?.uzcard || 0
+                    );
                     cashierTotals.humo += parseFloat(det.payments?.humo || 0);
-                    cashierTotals.online += parseFloat(det.payments?.online || det.online || 0);
-                    cashierTotals.rahmat += parseFloat(det.payments?.rahmat || 0);
+                    cashierTotals.online += parseFloat(
+                      det.payments?.online || det.online || 0
+                    );
+                    cashierTotals.rahmat += parseFloat(
+                      det.payments?.rahmat || 0
+                    );
                     cashierTotals.uzum += parseFloat(det.payments?.uzum || 0);
-                    cashierTotals.yandex += parseFloat(det.payments?.yandex || 0);
-                    cashierTotals.totalExpenses += parseFloat(det.total_expenses || 0);
+                    cashierTotals.yandex += parseFloat(
+                      det.payments?.yandex || 0
+                    );
+                    cashierTotals.totalExpenses += parseFloat(
+                      det.total_expenses || 0
+                    );
                   });
                 }
               }
 
               return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 20 }}
+                >
                   {/* Cash Key Metrics Cards Grid */}
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(200px, 1fr))",
                       gap: 16,
                     }}
                   >
@@ -5340,7 +6456,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       >
                         {cashData.orderCount}
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                      <div
+                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                      >
                         Выставлено счетов в iiko
                       </div>
                     </div>
@@ -5367,7 +6485,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       >
                         {fmtPrice(cashData.avgCheck)}
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                      <div
+                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                      >
                         Средняя стоимость заказа
                       </div>
                     </div>
@@ -5394,7 +6514,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       >
                         {cashData.guestCount || "—"}
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                      <div
+                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                      >
                         Общее число посетителей
                       </div>
                     </div>
@@ -5420,7 +6542,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                         paddingBottom: 10,
                       }}
                     >
-                      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#0f1729" }}>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: 15,
+                          fontWeight: 800,
+                          color: "#0f1729",
+                        }}
+                      >
                         ⚖️ Сверка выручки и оплат (iiko vs Сдача кассира)
                       </h3>
                       {cashierTotals ? (
@@ -5458,10 +6587,20 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                         if (name.includes("нал")) return "cash";
                         if (name.includes("uzcard")) return "uzcard";
                         if (name.includes("humo")) return "humo";
-                        if (name.includes("click") || name.includes("payme") || name.includes("онлайн")) return "online";
+                        if (
+                          name.includes("click") ||
+                          name.includes("payme") ||
+                          name.includes("онлайн")
+                        )
+                          return "online";
                         if (name.includes("rahmat")) return "rahmat";
                         if (name.includes("uzum")) return "uzum";
-                        if (name.includes("янндекс") || name.includes("yandex") || name.includes("яндекс")) return "yandex";
+                        if (
+                          name.includes("янндекс") ||
+                          name.includes("yandex") ||
+                          name.includes("яндекс")
+                        )
+                          return "yandex";
                         return "other";
                       };
 
@@ -5493,12 +6632,26 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                             uzum: cashierTotals.uzum,
                             yandex: cashierTotals.yandex,
                           }
-                        : { cash: 0, uzcard: 0, humo: 0, online: 0, rahmat: 0, uzum: 0, yandex: 0 };
+                        : {
+                            cash: 0,
+                            uzcard: 0,
+                            humo: 0,
+                            online: 0,
+                            rahmat: 0,
+                            uzum: 0,
+                            yandex: 0,
+                          };
 
-                      const totalExpenses = cashierTotals ? cashierTotals.totalExpenses : 0;
+                      const totalExpenses = cashierTotals
+                        ? cashierTotals.totalExpenses
+                        : 0;
 
                       const rows = [
-                        { label: "💵 Наличные", field: "cash", exp: totalExpenses },
+                        {
+                          label: "💵 Наличные",
+                          field: "cash",
+                          exp: totalExpenses,
+                        },
                         { label: "💳 Uzcard", field: "uzcard", exp: 0 },
                         { label: "💳 Humo", field: "humo", exp: 0 },
                         { label: "📱 Click / Payme", field: "online", exp: 0 },
@@ -5508,7 +6661,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       ];
 
                       if (iikoPayments.other > 0) {
-                        rows.push({ label: "⚙️ Другие оплаты (iiko)", field: "other", exp: 0 });
+                        rows.push({
+                          label: "⚙️ Другие оплаты (iiko)",
+                          field: "other",
+                          exp: 0,
+                        });
                       }
 
                       const thStyle = {
@@ -5529,11 +6686,25 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       };
 
                       return (
-                        <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
+                        <div
+                          style={{
+                            overflowX: "auto",
+                            borderRadius: 10,
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          <table
+                            style={{
+                              width: "100%",
+                              borderCollapse: "collapse",
+                              minWidth: 600,
+                            }}
+                          >
                             <thead>
                               <tr>
-                                <th style={{ ...thStyle, textAlign: "left" }}>Тип оплаты</th>
+                                <th style={{ ...thStyle, textAlign: "left" }}>
+                                  Тип оплаты
+                                </th>
                                 <th style={thStyle}>Сумма из iiko</th>
                                 <th style={thStyle}>Расходы кассира</th>
                                 <th style={thStyle}>Расчетный остаток</th>
@@ -5546,30 +6717,70 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                 const iikoVal = iikoPayments[row.field] || 0;
                                 const cashVal = cashierPayments[row.field] || 0;
                                 const calculatedBalance = iikoVal - row.exp;
-                                const diff = cashierTotals ? cashVal - calculatedBalance : 0;
+                                const diff = cashierTotals
+                                  ? cashVal - calculatedBalance
+                                  : 0;
 
                                 return (
                                   <tr key={idx}>
-                                    <td style={{ ...tdStyle, textAlign: "left", fontWeight: "600", background: "#f8fafc" }}>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        textAlign: "left",
+                                        fontWeight: "600",
+                                        background: "#f8fafc",
+                                      }}
+                                    >
                                       {row.label}
                                     </td>
                                     <td style={tdStyle}>{fmtPrice(iikoVal)}</td>
-                                    <td style={{ ...tdStyle, color: row.exp > 0 ? "#ef4444" : "#64748b" }}>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        color:
+                                          row.exp > 0 ? "#ef4444" : "#64748b",
+                                      }}
+                                    >
                                       {row.exp > 0 ? fmtPrice(row.exp) : "—"}
                                     </td>
-                                    <td style={{ ...tdStyle, fontWeight: "600" }}>{fmtPrice(calculatedBalance)}</td>
-                                    <td style={{ ...tdStyle, fontWeight: "700", color: "#1e293b", background: "#fafafa" }}>
+                                    <td
+                                      style={{ ...tdStyle, fontWeight: "600" }}
+                                    >
+                                      {fmtPrice(calculatedBalance)}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        fontWeight: "700",
+                                        color: "#1e293b",
+                                        background: "#fafafa",
+                                      }}
+                                    >
                                       {cashierTotals ? fmtPrice(cashVal) : "—"}
                                     </td>
                                     <td
                                       style={{
                                         ...tdStyle,
                                         fontWeight: "800",
-                                        color: !cashierTotals ? "#64748b" : diff < 0 ? "#ef4444" : diff > 0 ? "#10b981" : "#64748b",
-                                        background: cashierTotals && diff !== 0 ? (diff < 0 ? "#fef2f2" : "#f0fdf4") : "transparent",
+                                        color: !cashierTotals
+                                          ? "#64748b"
+                                          : diff < 0
+                                          ? "#ef4444"
+                                          : diff > 0
+                                          ? "#10b981"
+                                          : "#64748b",
+                                        background:
+                                          cashierTotals && diff !== 0
+                                            ? diff < 0
+                                              ? "#fef2f2"
+                                              : "#f0fdf4"
+                                            : "transparent",
                                       }}
                                     >
-                                      {!cashierTotals ? "—" : (diff > 0 ? "+" : "") + (diff !== 0 ? fmtPrice(diff) : "0")}
+                                      {!cashierTotals
+                                        ? "—"
+                                        : (diff > 0 ? "+" : "") +
+                                          (diff !== 0 ? fmtPrice(diff) : "0")}
                                     </td>
                                   </tr>
                                 );
@@ -5577,33 +6788,97 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
                               {/* Total Row */}
                               {(() => {
-                                const totalIiko = Object.values(iikoPayments).reduce((a, b) => a + b, 0);
-                                const totalCashier = Object.values(cashierPayments).reduce((a, b) => a + b, 0);
+                                const totalIiko = Object.values(
+                                  iikoPayments
+                                ).reduce((a, b) => a + b, 0);
+                                const totalCashier = Object.values(
+                                  cashierPayments
+                                ).reduce((a, b) => a + b, 0);
                                 const totalCalc = totalIiko - totalExpenses;
                                 const totalDiff = totalCashier - totalCalc;
 
                                 return (
-                                  <tr style={{ background: "#f8fafc", fontWeight: "800" }}>
-                                    <td style={{ ...tdStyle, textAlign: "left", borderTop: "2px solid #cbd5e1" }}>
+                                  <tr
+                                    style={{
+                                      background: "#f8fafc",
+                                      fontWeight: "800",
+                                    }}
+                                  >
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        textAlign: "left",
+                                        borderTop: "2px solid #cbd5e1",
+                                      }}
+                                    >
                                       📊 ИТОГО СМЕНА
-                                    </td>
-                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1" }}>{fmtPrice(totalIiko)}</td>
-                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1", color: totalExpenses > 0 ? "#ef4444" : "#64748b" }}>
-                                      {totalExpenses > 0 ? fmtPrice(totalExpenses) : "—"}
-                                    </td>
-                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1" }}>{fmtPrice(totalCalc)}</td>
-                                    <td style={{ ...tdStyle, borderTop: "2px solid #cbd5e1", background: "#f1f5f9" }}>
-                                      {cashierTotals ? fmtPrice(totalCashier) : "—"}
                                     </td>
                                     <td
                                       style={{
                                         ...tdStyle,
                                         borderTop: "2px solid #cbd5e1",
-                                        color: !cashierTotals ? "#64748b" : totalDiff < 0 ? "#ef4444" : totalDiff > 0 ? "#10b981" : "#64748b",
-                                        background: cashierTotals && totalDiff !== 0 ? (totalDiff < 0 ? "#fee2e2" : "#dcfce7") : "transparent",
                                       }}
                                     >
-                                      {!cashierTotals ? "—" : (totalDiff > 0 ? "+" : "") + (totalDiff !== 0 ? fmtPrice(totalDiff) : "0")}
+                                      {fmtPrice(totalIiko)}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
+                                        color:
+                                          totalExpenses > 0
+                                            ? "#ef4444"
+                                            : "#64748b",
+                                      }}
+                                    >
+                                      {totalExpenses > 0
+                                        ? fmtPrice(totalExpenses)
+                                        : "—"}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
+                                      }}
+                                    >
+                                      {fmtPrice(totalCalc)}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
+                                        background: "#f1f5f9",
+                                      }}
+                                    >
+                                      {cashierTotals
+                                        ? fmtPrice(totalCashier)
+                                        : "—"}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
+                                        color: !cashierTotals
+                                          ? "#64748b"
+                                          : totalDiff < 0
+                                          ? "#ef4444"
+                                          : totalDiff > 0
+                                          ? "#10b981"
+                                          : "#64748b",
+                                        background:
+                                          cashierTotals && totalDiff !== 0
+                                            ? totalDiff < 0
+                                              ? "#fee2e2"
+                                              : "#dcfce7"
+                                            : "transparent",
+                                      }}
+                                    >
+                                      {!cashierTotals
+                                        ? "—"
+                                        : (totalDiff > 0 ? "+" : "") +
+                                          (totalDiff !== 0
+                                            ? fmtPrice(totalDiff)
+                                            : "0")}
                                     </td>
                                   </tr>
                                 );
@@ -5793,9 +7068,15 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                     >
                       {(() => {
                         const dishes = cat.dishes || [];
-                        const popularDishes = dishes.filter(d => d.amount >= topThreshold);
-                        const weakDishes = dishes.filter(d => d.amount < topThreshold);
-                        const weakDishesSorted = [...weakDishes].sort((a, b) => a.amount - b.amount);
+                        const popularDishes = dishes.filter(
+                          (d) => d.amount >= topThreshold
+                        );
+                        const weakDishes = dishes.filter(
+                          (d) => d.amount < topThreshold
+                        );
+                        const weakDishesSorted = [...weakDishes].sort(
+                          (a, b) => a.amount - b.amount
+                        );
 
                         return (
                           <>
@@ -5816,7 +7097,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                 >
                                   🔥 Популярные ({popularDishes.length})
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 10,
+                                  }}
+                                >
                                   {popularDishes.map((dish, i) => (
                                     <div
                                       key={i}
@@ -5834,13 +7121,35 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                           textAlign: "center",
                                         }}
                                       >
-                                        {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "•"}
+                                        {i === 0
+                                          ? "🥇"
+                                          : i === 1
+                                          ? "🥈"
+                                          : i === 2
+                                          ? "🥉"
+                                          : "•"}
                                       </span>
-                                      <div style={{ flex: 1, fontWeight: 600, color: "#1e293b" }}>
+                                      <div
+                                        style={{
+                                          flex: 1,
+                                          fontWeight: 600,
+                                          color: "#1e293b",
+                                        }}
+                                      >
                                         {dish.name}
                                       </div>
-                                      <div style={{ color: "#64748b", textAlign: "right" }}>
-                                        <div style={{ fontWeight: 700, color: "#1e293b" }}>
+                                      <div
+                                        style={{
+                                          color: "#64748b",
+                                          textAlign: "right",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontWeight: 700,
+                                            color: "#1e293b",
+                                          }}
+                                        >
                                           {dish.amount} шт
                                         </div>
                                         <div style={{ fontSize: 11 }}>
@@ -5870,7 +7179,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                 >
                                   💤 Слабые продажи ({weakDishesSorted.length})
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 10,
+                                  }}
+                                >
                                   {weakDishesSorted.map((dish, i) => (
                                     <div
                                       key={i}
@@ -5891,11 +7206,27 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                       >
                                         •
                                       </span>
-                                      <div style={{ flex: 1, fontWeight: 500, color: "#475569" }}>
+                                      <div
+                                        style={{
+                                          flex: 1,
+                                          fontWeight: 500,
+                                          color: "#475569",
+                                        }}
+                                      >
                                         {dish.name}
                                       </div>
-                                      <div style={{ color: "#94a3b8", textAlign: "right" }}>
-                                        <div style={{ fontWeight: 600, color: "#475569" }}>
+                                      <div
+                                        style={{
+                                          color: "#94a3b8",
+                                          textAlign: "right",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontWeight: 600,
+                                            color: "#475569",
+                                          }}
+                                        >
                                           {dish.amount} шт
                                         </div>
                                         <div style={{ fontSize: 11 }}>
@@ -6021,7 +7352,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                   }}
                 />
                 <button
-                  onClick={() => loadWaiters("custom", waitersDates.from, waitersDates.to)}
+                  onClick={() =>
+                    loadWaiters("custom", waitersDates.from, waitersDates.to)
+                  }
                   style={{
                     padding: "6px 12px",
                     borderRadius: 8,
@@ -6061,7 +7394,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
               </h3>
 
               {waitersData.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                >
                   {waitersData.map((waiter, idx) => {
                     const maxSales = waitersData[0].sales || 1;
                     const pctOfMax = (waiter.sales / maxSales) * 100;
@@ -6072,7 +7407,10 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                           padding: "12px 14px",
                           borderRadius: 12,
                           border: "1px solid #f1f5f9",
-                          background: idx === 0 ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" : "#fff",
+                          background:
+                            idx === 0
+                              ? "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)"
+                              : "#fff",
                           display: "flex",
                           flexDirection: "column",
                           gap: 6,
@@ -6088,15 +7426,46 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                             zIndex: 1,
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: "#64748b", width: 24 }}>
-                              {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 800,
+                                color: "#64748b",
+                                width: 24,
+                              }}
+                            >
+                              {idx === 0
+                                ? "🥇"
+                                : idx === 1
+                                ? "🥈"
+                                : idx === 2
+                                ? "🥉"
+                                : `${idx + 1}.`}
                             </span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 700,
+                                color: "#1e293b",
+                              }}
+                            >
                               {waiter.name}
                             </span>
                           </div>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: "#0284c7" }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: "#0284c7",
+                            }}
+                          >
                             {fmtPrice(waiter.sales)}
                           </span>
                         </div>
@@ -6113,13 +7482,23 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                             zIndex: 1,
                           }}
                         >
-                          <span>🧾 Чеков: <strong style={{ color: "#334155" }}>{waiter.orders}</strong></span>
+                          <span>
+                            🧾 Чеков:{" "}
+                            <strong style={{ color: "#334155" }}>
+                              {waiter.orders}
+                            </strong>
+                          </span>
                           {waiter.refunds > 0 && (
                             <span style={{ color: "#ef4444" }}>
                               🔄 Возвратов: <strong>{waiter.refunds}</strong>
                             </span>
                           )}
-                          <span>📈 Ср. чек: <strong style={{ color: "#334155" }}>{fmtPrice(waiter.avgCheck)}</strong></span>
+                          <span>
+                            📈 Ср. чек:{" "}
+                            <strong style={{ color: "#334155" }}>
+                              {fmtPrice(waiter.avgCheck)}
+                            </strong>
+                          </span>
                         </div>
 
                         {/* Progress Bar visual indicator */}
