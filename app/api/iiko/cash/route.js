@@ -22,6 +22,7 @@ export async function POST(request) {
     const exp = expenses || [];
 
     const cashVal = parseFloat(pay.cash) || 0;
+    const encashmentVal = parseFloat(pay.encashment) || 0;
     const uzcardVal = parseFloat(pay.uzcard) || 0;
     const humoVal = parseFloat(pay.humo) || 0;
     const onlineVal = parseFloat(pay.online) || 0;
@@ -50,6 +51,7 @@ export async function POST(request) {
     const details = {
       payments: {
         cash: cashVal,
+        encashment: encashmentVal,
         uzcard: uzcardVal,
         humo: humoVal,
         online: onlineVal,

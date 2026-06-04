@@ -99,6 +99,9 @@ const API = {
   getStores() {
     return this.get("/stores");
   },
+  getBalances() {
+    return this.get("/balances");
+  },
   createInvoice(data) {
     return this.post("/invoice", data);
   },
@@ -144,6 +147,22 @@ const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
 const fmtPrice = (n) => fmt(n) + " сум";
 
 const I = {
+  box: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  ),
   inbox: (
     <svg
       width="20"
@@ -471,6 +490,7 @@ export default function LocmacoApp() {
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
     { id: "production", label: "Приготовление", icon: I.cooking },
+    { id: "balances", label: "Остатки", icon: I.box },
     { id: "cash", label: "Касса", icon: I.cash },
     { id: "analytics", label: "Аналитика", icon: I.analytics },
     { id: "employees", label: "Сотрудники", icon: I.users },
@@ -503,6 +523,8 @@ export default function LocmacoApp() {
         return role === "cashier";
       case "analytics":
         return role === "director";
+      case "balances":
+        return true;
       default:
         return false;
     }
@@ -1208,6 +1230,35 @@ export default function LocmacoApp() {
                   </div>
                 </button>
               )}
+
+              {hasAccess(loggedInUser.baseRole, "balances") && (
+                <button
+                  onClick={() => setTab("balances")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 20,
+                    border: "none",
+                    background:
+                      "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(59, 130, 246, 0.25)",
+                    outline: "none",
+                  }}
+                  className="dashboard-card"
+                >
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📦</div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                  >
+                    Остатки на складе
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.8 }}>
+                    Просмотр и контроль остатков товаров на складах
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1283,6 +1334,13 @@ export default function LocmacoApp() {
         )}
         {tab === "employees" && (
           <EmployeesView
+            stores={stores}
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+          />
+        )}
+        {tab === "balances" && (
+          <BalancesView
             stores={stores}
             showToast={showToast}
             loggedInUser={loggedInUser}
@@ -4198,6 +4256,301 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  BALANCES — остатки на складе
+// ═══════════════════════════════════════════════════════════════
+
+function BalancesView({ stores, showToast, loggedInUser }) {
+  const [balances, setBalances] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const fetchBalances = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+    const res = await API.getBalances();
+    if (isRefresh) {
+      setRefreshing(false);
+    } else {
+      setLoading(false);
+    }
+
+    if (res && !res.error) {
+      const data = res.data || [];
+      setBalances(data);
+      // Auto-select warehouse
+      if (loggedInUser.storeId) {
+        setSelectedStoreId(loggedInUser.storeId);
+      } else if (!selectedStoreId && data.length > 0) {
+        // Choose first warehouse that has balanceItems or just first warehouse
+        const firstWithItems = data.find(d => d.balanceItems && d.balanceItems.length > 0);
+        setSelectedStoreId(firstWithItems ? firstWithItems.storage.id : data[0].storage.id);
+      }
+    } else {
+      const errMsg = res?.error || "Не удалось загрузить остатки со склада";
+      setError(errMsg);
+      showToast(errMsg, "error");
+    }
+  };
+
+  useEffect(() => {
+    if (loggedInUser.storeId) {
+      setSelectedStoreId(loggedInUser.storeId);
+    }
+    fetchBalances();
+  }, [loggedInUser.storeId]);
+
+  const canSeeFinance = ["admin", "director", "supplier"].includes(loggedInUser.baseRole);
+
+  const selectedStoreData = balances.find((b) => b.storage?.id === selectedStoreId);
+  const rawItems = selectedStoreData?.balanceItems || [];
+
+  const filteredItems = rawItems.filter((item) => {
+    // Если остаток ровно 0, то этот товар не используется на данном складе, полностью исключаем его
+    if (item.amount === 0) return false;
+
+    const p = item.product || {};
+    const nameMatch = (p.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const numMatch = (p.num || "").toLowerCase().includes(searchQuery.toLowerCase());
+    return nameMatch || numMatch;
+  });
+
+  const totalSum = filteredItems.reduce((acc, item) => acc + (item.sum || 0), 0);
+  const totalCount = filteredItems.length;
+
+  const handleRefresh = () => {
+    fetchBalances(true);
+  };
+
+  // Get store options for select element
+  const availableStores = balances.map(b => b.storage).filter(Boolean);
+  const storesList = availableStores.length > 0 ? availableStores : stores;
+
+  const activeStoreName = storesList.find(s => s.id === selectedStoreId)?.name || "Неизвестный склад";
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      {/* Title & Refresh */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1e293b", marginBottom: 4 }}>
+            Остатки на складе
+          </h2>
+          <p style={{ fontSize: 13, color: "#64748b" }}>
+            Просмотр текущих запасов ингредиентов и товаров в режиме реального времени
+          </p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={loading || refreshing}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            borderRadius: 12,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#475569",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+          }}
+        >
+          <span style={{ display: "inline-flex", animation: refreshing ? "spin 1s linear infinite" : "none" }}>
+            {I.refresh}
+          </span>
+          {refreshing ? "Обновление..." : "Обновить"}
+        </button>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 20,
+          padding: 20,
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+          marginBottom: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+          {/* Warehouse Selector */}
+          <div>
+            <label style={lbl}>Склад</label>
+            {loggedInUser.storeId ? (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#f1f5f9",
+                  border: "1px solid #e2e8f0",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#334155",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }}
+              >
+                🏢 {activeStoreName}
+              </div>
+            ) : (
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                style={{ ...inp, background: "#fff", fontWeight: 500 }}
+              >
+                <option value="">Выберите склад...</option>
+                {storesList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    🏢 {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Search Product */}
+          <div>
+            <label style={lbl}>Поиск по товару</label>
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                placeholder="Название или артикул..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ ...inp, paddingLeft: 36 }}
+              />
+              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}>
+                {I.search}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Options */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 12, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+          {/* Statistics summary */}
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ fontSize: 12, background: "#f1f5f9", padding: "6px 12px", borderRadius: 8, color: "#475569", fontWeight: 600 }}>
+              Товаров: <span style={{ color: "#6366f1" }}>{totalCount}</span>
+            </div>
+            {canSeeFinance && selectedStoreId && (
+              <div style={{ fontSize: 12, background: "#e0f2fe", padding: "6px 12px", borderRadius: 8, color: "#0369a1", fontWeight: 600 }}>
+                Общая сумма: <span style={{ color: "#0284c7" }}>{fmtPrice(totalSum)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Table Card */}
+      {loading ? (
+        <LoadingBlock text="Загрузка остатков со склада..." />
+      ) : error ? (
+        <ErrorBlock text={error} onRetry={() => fetchBalances()} />
+      ) : filteredItems.length === 0 ? (
+        <Empty icon="📦" text="Ничего не найдено. Попробуйте изменить параметры поиска или фильтры." />
+      ) : (
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+            overflow: "hidden"
+          }}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#f8fafb", borderBottom: "1px solid #e8ecf0" }}>
+                  <th style={{ ...th, width: 60, textAlign: "center" }}>№</th>
+                  <th style={th}>Артикул</th>
+                  <th style={{ ...th, paddingLeft: 16 }}>Наименование товара</th>
+                  <th style={{ ...th, textAlign: "right", width: 150 }}>Остаток</th>
+                  {canSeeFinance && (
+                    <>
+                      <th style={{ ...th, textAlign: "right", width: 150 }}>Себестоимость</th>
+                      <th style={{ ...th, textAlign: "right", width: 160, paddingRight: 16 }}>Сумма</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((item, idx) => {
+                  const p = item.product || {};
+                  const isZeroOrNegative = item.amount <= 0;
+                  const isLow = item.amount > 0 && item.amount < (item.consumptionForecast || 0);
+
+                  return (
+                    <tr key={p.id || idx} style={{ borderBottom: "1px solid #f0f2f5", background: isZeroOrNegative ? "rgba(239, 68, 68, 0.01)" : "none" }}>
+                      <td style={{ ...td, textAlign: "center", color: "#94a3b8", fontSize: 11 }}>
+                        {idx + 1}
+                      </td>
+                      <td style={{ ...td, color: "#64748b", fontFamily: "monospace", fontSize: 12 }}>
+                        {p.num || "—"}
+                      </td>
+                      <td style={{ ...td, paddingLeft: 16, fontWeight: 600, color: "#1e293b" }}>
+                        {p.name || "Без названия"}
+                      </td>
+                      <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>
+                        <span
+                          style={{
+                            color: isZeroOrNegative
+                              ? "#ef4444"
+                              : isLow
+                              ? "#f97316"
+                              : "#10b981",
+                            background: isZeroOrNegative
+                              ? "#fef2f2"
+                              : isLow
+                              ? "#fff7ed"
+                              : "#ecfdf5",
+                            padding: "4px 8px",
+                            borderRadius: 6,
+                            fontSize: 12,
+                          }}
+                        >
+                          {item.amount.toFixed(3).replace(/\.?0+$/, "")} {p.mainUnitName || "шт"}
+                        </span>
+                      </td>
+                      {canSeeFinance && (
+                        <>
+                          <td style={{ ...td, textAlign: "right", color: "#475569" }}>
+                            {fmtPrice(item.costPrice)}
+                          </td>
+                          <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#0f172a", paddingRight: 16 }}>
+                            {fmtPrice(item.sum)}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  CASH — отчет кассы (наличные, терминал, Click/Payme, излишки/недостачи)
 // ═══════════════════════════════════════════════════════════════
 
@@ -4217,6 +4570,7 @@ function CashView({
   const [form, setForm] = useState({
     date: getTodayTashkent(),
     cash: "",
+    encashment: "",
     uzcard: "",
     humo: "",
     online: "",
@@ -4261,6 +4615,7 @@ function CashView({
       date: form.date,
       payments: {
         cash: form.cash,
+        encashment: form.encashment,
         uzcard: form.uzcard,
         humo: form.humo,
         online: form.online,
@@ -4287,6 +4642,7 @@ function CashView({
       setForm({
         date: getTodayTashkent(),
         cash: "",
+        encashment: "",
         uzcard: "",
         humo: "",
         online: "",
@@ -4383,6 +4739,16 @@ function CashView({
                 type="number"
                 value={form.cash}
                 onChange={(e) => handleFieldChange("cash", e.target.value)}
+                placeholder="0"
+                style={inp}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Инкассация (сум)</label>
+              <input
+                type="number"
+                value={form.encashment}
+                onChange={(e) => handleFieldChange("encashment", e.target.value)}
                 placeholder="0"
                 style={inp}
               />
@@ -5096,6 +5462,21 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           )}
                         </span>
                       </div>
+                      {parseFloat(details.payments?.encashment || details.encashment || 0) > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span style={{ color: "#64748b" }}>💰 Инкассация:</span>
+                          <span style={{ fontWeight: 600 }}>
+                            {fmtPrice(
+                              details.payments?.encashment || details.encashment || 0
+                            )}
+                          </span>
+                        </div>
+                      )}
                       <div
                         style={{
                           display: "flex",
@@ -6347,6 +6728,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                 if (periodReports.length > 0) {
                   cashierTotals = {
                     cash: 0,
+                    encashment: 0,
+                    encashmentFromExpenses: 0,
                     uzcard: 0,
                     humo: 0,
                     online: 0,
@@ -6362,6 +6745,22 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                     cashierTotals.cash += parseFloat(
                       det.payments?.cash || det.cash || 0
                     );
+                    
+                    const reportExpenses = det.expenses || [];
+                    const encFromExp = reportExpenses.reduce((sum, item) => {
+                      const name = (item.name || "").toLowerCase();
+                      if (name.includes("инкасс")) {
+                        return sum + (parseFloat(item.amount) || 0);
+                      }
+                      return sum;
+                    }, 0);
+
+                    cashierTotals.encashment += (parseFloat(
+                      det.payments?.encashment || det.encashment || 0
+                    ) + encFromExp);
+                    
+                    cashierTotals.encashmentFromExpenses += encFromExp;
+
                     cashierTotals.uzcard += parseFloat(
                       det.payments?.uzcard || 0
                     );
@@ -6584,7 +6983,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                     {(() => {
                       const mapIikoToField = (iikoName) => {
                         const name = iikoName.toLowerCase();
-                        if (name.includes("нал")) return "cash";
+                        if ((name.includes("нал") || name.includes("cash")) && name.includes("-")) return "encashment";
+                        if (name.includes("нал") || name.includes("cash")) return "cash";
                         if (name.includes("uzcard")) return "uzcard";
                         if (name.includes("humo")) return "humo";
                         if (
@@ -6606,6 +7006,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
                       const iikoPayments = {
                         cash: 0,
+                        encashment: 0,
                         uzcard: 0,
                         humo: 0,
                         online: 0,
@@ -6625,6 +7026,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                       const cashierPayments = cashierTotals
                         ? {
                             cash: cashierTotals.cash,
+                            encashment: cashierTotals.encashment || 0,
                             uzcard: cashierTotals.uzcard,
                             humo: cashierTotals.humo,
                             online: cashierTotals.online,
@@ -6634,6 +7036,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                           }
                         : {
                             cash: 0,
+                            encashment: 0,
                             uzcard: 0,
                             humo: 0,
                             online: 0,
@@ -6646,11 +7049,18 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                         ? cashierTotals.totalExpenses
                         : 0;
 
+                      const encFromExp = cashierTotals ? cashierTotals.encashmentFromExpenses : 0;
+
                       const rows = [
                         {
                           label: "💵 Наличные",
                           field: "cash",
-                          exp: totalExpenses,
+                          exp: encFromExp,
+                        },
+                        {
+                          label: "💵 Наличные-",
+                          field: "encashment",
+                          exp: totalExpenses - encFromExp,
                         },
                         { label: "💳 Uzcard", field: "uzcard", exp: 0 },
                         { label: "💳 Humo", field: "humo", exp: 0 },
@@ -6697,7 +7107,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                             style={{
                               width: "100%",
                               borderCollapse: "collapse",
-                              minWidth: 600,
+                              minWidth: 800,
                             }}
                           >
                             <thead>
@@ -6706,16 +7116,26 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                   Тип оплаты
                                 </th>
                                 <th style={thStyle}>Сумма из iiko</th>
+                                <th style={thStyle}>Факт сдачи (+расходы)</th>
                                 <th style={thStyle}>Расходы кассира</th>
                                 <th style={thStyle}>Расчетный остаток</th>
-                                <th style={thStyle}>Факт сдачи</th>
-                                <th style={thStyle}>Отклонение</th>
+                                <th style={thStyle}>Факт сдачи (без расходов)</th>
+                                <th style={thStyle}>Разница излишек/недосдача</th>
                               </tr>
                             </thead>
                             <tbody>
                               {rows.map((row, idx) => {
-                                const iikoVal = iikoPayments[row.field] || 0;
-                                const cashVal = cashierPayments[row.field] || 0;
+                                let iikoVal = iikoPayments[row.field] || 0;
+                                let cashVal = cashierPayments[row.field] || 0;
+
+                                if (row.field === "cash") {
+                                  iikoVal = iikoPayments.cash;
+                                  cashVal = cashierPayments.encashment - encFromExp;
+                                } else if (row.field === "encashment") {
+                                  iikoVal = iikoPayments.encashment;
+                                  cashVal = cashierPayments.cash;
+                                }
+
                                 const calculatedBalance = iikoVal - row.exp;
                                 const diff = cashierTotals
                                   ? cashVal - calculatedBalance
@@ -6734,6 +7154,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                       {row.label}
                                     </td>
                                     <td style={tdStyle}>{fmtPrice(iikoVal)}</td>
+                                    <td style={{ ...tdStyle, fontWeight: "600" }}>
+                                      {cashierTotals ? fmtPrice(cashVal + row.exp) : "—"}
+                                    </td>
                                     <td
                                       style={{
                                         ...tdStyle,
@@ -6743,11 +7166,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                     >
                                       {row.exp > 0 ? fmtPrice(row.exp) : "—"}
                                     </td>
-                                    <td
-                                      style={{ ...tdStyle, fontWeight: "600" }}
-                                    >
-                                      {fmtPrice(calculatedBalance)}
-                                    </td>
+                                    <td style={tdStyle}>{fmtPrice(calculatedBalance)}</td>
                                     <td
                                       style={{
                                         ...tdStyle,
@@ -6788,13 +7207,28 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
                               {/* Total Row */}
                               {(() => {
-                                const totalIiko = Object.values(
-                                  iikoPayments
-                                ).reduce((a, b) => a + b, 0);
-                                const totalCashier = Object.values(
-                                  cashierPayments
-                                ).reduce((a, b) => a + b, 0);
-                                const totalCalc = totalIiko - totalExpenses;
+                                let totalIiko = 0;
+                                let totalCashier = 0;
+                                let displayTotalExpenses = 0;
+
+                                rows.forEach((row) => {
+                                  let iikoVal = iikoPayments[row.field] || 0;
+                                  let cashVal = cashierPayments[row.field] || 0;
+
+                                  if (row.field === "cash") {
+                                    iikoVal = iikoPayments.cash;
+                                    cashVal = cashierPayments.encashment - encFromExp;
+                                  } else if (row.field === "encashment") {
+                                    iikoVal = iikoPayments.encashment;
+                                    cashVal = cashierPayments.cash;
+                                  }
+
+                                  totalIiko += iikoVal;
+                                  totalCashier += cashVal;
+                                  displayTotalExpenses += row.exp;
+                                });
+
+                                const totalCalc = totalIiko - displayTotalExpenses;
                                 const totalDiff = totalCashier - totalCalc;
 
                                 return (
@@ -6825,14 +7259,25 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                       style={{
                                         ...tdStyle,
                                         borderTop: "2px solid #cbd5e1",
+                                        fontWeight: "800",
+                                      }}
+                                    >
+                                      {cashierTotals
+                                        ? fmtPrice(totalCashier + displayTotalExpenses)
+                                        : "—"}
+                                    </td>
+                                    <td
+                                      style={{
+                                        ...tdStyle,
+                                        borderTop: "2px solid #cbd5e1",
                                         color:
-                                          totalExpenses > 0
+                                          displayTotalExpenses > 0
                                             ? "#ef4444"
                                             : "#64748b",
                                       }}
                                     >
-                                      {totalExpenses > 0
-                                        ? fmtPrice(totalExpenses)
+                                      {displayTotalExpenses > 0
+                                        ? fmtPrice(displayTotalExpenses)
                                         : "—"}
                                     </td>
                                     <td

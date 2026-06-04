@@ -111,7 +111,7 @@ export async function GET(request) {
         const payData = await payRes.json();
         if (payData && payData.data) {
           for (const row of payData.data) {
-            const amount = parseFloat(row["DishDiscountSumInt"] || 0);
+            const amount = Math.abs(parseFloat(row["DishDiscountSumInt"] || 0));
             if (amount > 0) {
               const name = row["PayTypes"] || "Неизвестный тип оплаты";
               const percent = revenue > 0 ? (amount / revenue) * 100 : 0;
