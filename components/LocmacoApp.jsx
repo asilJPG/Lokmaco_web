@@ -7136,7 +7136,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                   cashVal = cashierPayments.cash;
                                 }
 
-                                const calculatedBalance = iikoVal - row.exp;
+                                const isCashRow = row.field === "cash";
+                                const calculatedBalance = isCashRow ? iikoVal : (iikoVal - row.exp);
                                 const diff = cashierTotals
                                   ? cashVal - calculatedBalance
                                   : 0;
@@ -7155,7 +7156,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                                     </td>
                                     <td style={tdStyle}>{fmtPrice(iikoVal)}</td>
                                     <td style={{ ...tdStyle, fontWeight: "600" }}>
-                                      {cashierTotals ? fmtPrice(cashVal + row.exp) : "—"}
+                                      {cashierTotals ? fmtPrice(isCashRow ? cashVal : (cashVal + row.exp)) : "—"}
                                     </td>
                                     <td
                                       style={{
@@ -7225,7 +7226,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
 
                                   totalIiko += iikoVal;
                                   totalCashier += cashVal;
-                                  displayTotalExpenses += row.exp;
+                                  if (row.field !== "cash") {
+                                    displayTotalExpenses += row.exp;
+                                  }
                                 });
 
                                 const totalCalc = totalIiko - displayTotalExpenses;
