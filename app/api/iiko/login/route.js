@@ -1,4 +1,4 @@
-import { getUserByCode } from "@/lib/supabase.js";
+import { getUserByCode, getUserPasskeys } from "@/lib/supabase.js";
 import { signSession } from "@/lib/auth.js";
 import { cookies } from "next/headers";
 import { rateLimit } from "@/lib/rate-limit.js";
@@ -27,6 +27,18 @@ export async function POST(request) {
     const user = await getUserByCode(code);
 
     if (user) {
+      const [baseRole] = (user.role || "").split(":");
+      if (baseRole === "director") {
+        const passkeys = await getUserPasskeys(user.id);
+        if (passkeys && passkeys.length > 0) {
+          limiter.increment();
+          return Response.json(
+            { success: false, error: "Вход по коду заблокирован. Используйте Face ID / Touch ID" },
+            { status: 403 }
+          );
+        }
+      }
+
       // Sign session token and set HTTP-only cookie
       const token = await signSession({
         id: user.id,
