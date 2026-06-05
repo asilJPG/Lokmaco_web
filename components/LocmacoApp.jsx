@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "КПК" },
@@ -914,6 +913,7 @@ export default function LocmacoApp() {
         return;
       }
 
+      const { startRegistration } = await import("@simplewebauthn/browser");
       const regResponse = await startRegistration(options);
       const verifyRes = await API.verifyPasskeyRegister(regResponse);
 
@@ -944,6 +944,7 @@ export default function LocmacoApp() {
         return;
       }
 
+      const { startAuthentication } = await import("@simplewebauthn/browser");
       const authResponse = await startAuthentication(options);
       const verifyRes = await API.verifyPasskeyLogin(authResponse);
 
