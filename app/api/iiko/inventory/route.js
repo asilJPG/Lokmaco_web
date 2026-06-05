@@ -2,12 +2,26 @@ import { withIikoSession, iikoPostXml } from "@/lib/iiko";
 import { logAction } from "@/lib/supabase.js";
 
 export async function POST(request) {
+  let body = {};
   try {
-    const { store_id, store_name, items, comment, user } = await request.json();
+    const userId = request.headers.get("x-user-id");
+    const userRole = request.headers.get("x-user-role") || "";
+    const userTgId = request.headers.get("x-user-tg-id") || "";
+    const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
 
-    if (!user) {
+    if (!userId) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const user = {
+      id: userId,
+      role: userRole,
+      tg_id: userTgId,
+      name: userName
+    };
+
+    body = await request.json();
+    const { store_id, store_name, items, comment } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "kitchen", "prep_chef", "bar", "supplier"];
@@ -29,62 +43,63 @@ export async function POST(request) {
     const dn = `INV-${formatCompact(tashkent)}`;
     const dateStr = formatDMY(tashkent);
 
-    // Using corrected <productId> and <amountContainer> tags
+    // Using corrected <productId> and <amountContainer> tags with XML escaping
     const itemsXml = items
-      .map((it) => `<item><productId>${it.product_id || ""}</productId><amountContainer>${it.quantity || 0}</amountContainer></item>`)
+      .map((it) => `<item><productId>${escapeXml(String(it.product_id || ""))}</productId><amountContainer>${escapeXml(String(it.quantity || 0))}</amountContainer></item>`)
       .join("");
 
     const commentXml = comment ? `<comment>${escapeXml(comment)}</comment>` : "";
 
     // Corrected tag name: <storeId> instead of <defaultStore>!
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><documentNumber>${dn}</documentNumber><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><storeId>${store_id}</storeId>${commentXml}<items>${itemsXml}</items></document>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><documentNumber>${dn}</documentNumber><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><storeId>${escapeXml(String(store_id))}</storeId>${commentXml}<items>${itemsXml}</items></document>`;
 
     const success = await withIikoSession(async (token) => {
       return await iikoPostXml("documents/import/incomingInventory", xml, token);
     });
 
     if (success) {
-      if (user) {
-        const details = {
-          store_name: store_name || "Неизвестный склад",
-          items: items.map(it => ({
-            product_name: it.product_name || "Товар",
-            quantity: it.quantity,
-            unit: it.unit || "шт"
-          })),
-          comment: comment || "",
-        };
-        await logAction(user.tg_id, user.name, "inventory", dn, details);
-      }
+      const details = {
+        store_name: store_name || "Неизвестный склад",
+        items: items.map(it => ({
+          product_name: it.product_name || "Товар",
+          quantity: it.quantity,
+          unit: it.unit || "шт"
+        })),
+        comment: comment || "",
+      };
+      await logAction(user.tg_id, user.name, "inventory", dn, details);
       return Response.json({ success: true, documentNumber: dn });
     } else {
-      if (user) {
-        const details = {
-          status: "failed",
-          error: "iiko rejected the inventory document",
-          store_id,
-          store_name: store_name || "Неизвестный склад",
-          items: items.map(it => ({
-            product_id: it.product_id,
-            product_name: it.product_name || "Товар",
-            quantity: it.quantity,
-            unit: it.unit || "шт"
-          })),
-          comment: comment || "",
-        };
-        await logAction(user.tg_id, user.name, "inventory", "СБОЙ", details);
-      }
+      const details = {
+        status: "failed",
+        error: "iiko rejected the inventory document",
+        store_id,
+        store_name: store_name || "Неизвестный склад",
+        items: items.map(it => ({
+          product_id: it.product_id,
+          product_name: it.product_name || "Товар",
+          quantity: it.quantity,
+          unit: it.unit || "шт"
+        })),
+        comment: comment || "",
+      };
+      await logAction(user.tg_id, user.name, "inventory", "СБОЙ", details);
       return Response.json({ success: false, error: "iiko rejected the inventory document" }, { status: 500 });
     }
   } catch (e) {
     console.error("[/api/iiko/inventory]", e.message);
     try {
-      const { store_id, store_name, items, comment, user } = await request.clone().json().catch(() => ({}));
-      if (user) {
+      const userId = request.headers.get("x-user-id");
+      const userRole = request.headers.get("x-user-role") || "";
+      const userTgId = request.headers.get("x-user-tg-id") || "";
+      const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
+      
+      if (userId) {
+        const { store_id, store_name, items, comment } = body || {};
         const details = {
           status: "failed",
           error: e.message,
-          store_id,
+          store_id: store_id || "",
           store_name: store_name || "Неизвестный склад",
           items: (items || []).map(it => ({
             product_id: it.product_id,
@@ -94,10 +109,10 @@ export async function POST(request) {
           })),
           comment: comment || "",
         };
-        await logAction(user.tg_id, user.name, "inventory", "СБОЙ", details);
+        await logAction(userTgId, userName, "inventory", "СБОЙ", details);
       }
     } catch (_) {}
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
@@ -114,5 +129,10 @@ function formatDMY(d) {
 }
 
 function escapeXml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }

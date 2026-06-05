@@ -39,3 +39,8 @@ next-env.d.ts
 
 # misc
 *.log
+
+# project scratch
+scratch/
+fetch-units-list.js
+test-supabase.js

@@ -837,6 +837,7 @@ export default function LocmacoApp() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const webAuthnRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
 
   useEffect(() => {
     import("@simplewebauthn/browser")
@@ -895,9 +896,21 @@ export default function LocmacoApp() {
       API.getSuppliers(),
       API.getStores(),
     ]);
-    if (p && Array.isArray(p) && p.length > 0) setProducts(p);
-    if (sup && Array.isArray(sup) && sup.length > 0) setSuppliers(sup);
-    if (st && Array.isArray(st) && st.length > 0) setStores(st);
+    if (p && Array.isArray(p) && p.length > 0) {
+      setProducts(p);
+    } else if (p && p.error) {
+      showToast(p.error, "error");
+    }
+    if (sup && Array.isArray(sup) && sup.length > 0) {
+      setSuppliers(sup);
+    } else if (sup && sup.error) {
+      showToast(sup.error, "error");
+    }
+    if (st && Array.isArray(st) && st.length > 0) {
+      setStores(st);
+    } else if (st && st.error) {
+      showToast(st.error, "error");
+    }
     setProductsLoading(false);
   };
 
@@ -906,6 +919,8 @@ export default function LocmacoApp() {
     const res = await API.getHistory();
     if (res && res.success && Array.isArray(res.history)) {
       setHistory(res.history);
+    } else {
+      showToast(res?.error || "Не удалось загрузить историю операций", "error");
     }
     setHistoryLoading(false);
   };
@@ -928,8 +943,11 @@ export default function LocmacoApp() {
   }, [tab, loggedInUser]);
 
   const showToast = (msg, type = "success") => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 2500);
   };
 
   const handleRegisterPasskey = async () => {
@@ -1008,9 +1026,17 @@ export default function LocmacoApp() {
       setLoginLoading(false);
 
       if (verifyRes && verifyRes.verified && verifyRes.user) {
-        setLoggedInUser(verifyRes.user);
-        sessionStorage.setItem("user", JSON.stringify(verifyRes.user));
-        showToast(`Добро пожаловать, ${verifyRes.user.name}!`);
+        const u = verifyRes.user;
+        const rawRole = u.role || "";
+        const [baseRole, storeId] = rawRole.split(":");
+        const parsedUser = {
+          ...u,
+          baseRole: baseRole || "",
+          storeId: storeId || null,
+        };
+        setLoggedInUser(parsedUser);
+        sessionStorage.setItem("user", JSON.stringify(parsedUser));
+        showToast(`Добро пожаловать, ${parsedUser.name}!`);
       } else {
         setLoginError(verifyRes?.error || "Ошибка проверки биометрии");
         // Refresh preloaded options on failure
@@ -1488,6 +1514,9 @@ export default function LocmacoApp() {
                 sessionStorage.removeItem("user");
                 setLoggedInUser(null);
                 setLoginCode("");
+                fetch("/api/iiko/logout", { method: "POST" }).catch((err) => {
+                  console.error("Failed server logout:", err);
+                });
               }}
               style={{
                 background: "rgba(255, 255, 255, 0.05)",
@@ -3178,7 +3207,7 @@ function TransferView({
       });
 
       if (res && res.success) {
-        if (action === "approve_by_receiver" || action === "approve_by_creator") {
+        if (action === "approve_by_receiver" || action === "approve_by_creator" || res.documentNumber) {
           showToast(`Перемещение проведено в iiko! Номер: ${res.documentNumber || ""}`);
         } else if (action === "reject_by_receiver" || action === "reject_by_creator") {
           showToast("Перемещение отклонено и отменено.");
@@ -3621,177 +3650,184 @@ function TransferView({
                   </div>
                 ))}
 
-                {pendingTransfers.returned.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      background: "#fff",
-                      borderRadius: 12,
-                      border: "1px solid #fbcfe8",
-                      padding: 16,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
-                      animation: "fadeIn .25s ease",
-                    }}
-                  >
+                {pendingTransfers.returned.map((item) => {
+                  const isCreatorReceiver = String(item.store_to) === String(loggedInUser?.storeId);
+                  return (
                     <div
+                      key={item.id}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: 12,
-                        flexWrap: "wrap",
-                        gap: 12,
+                        background: "#fff",
+                        borderRadius: 12,
+                        border: "1px solid #fbcfe8",
+                        padding: 16,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
+                        animation: "fadeIn .25s ease",
                       }}
                     >
-                      <div>
-                        <span
-                          style={{
-                            background: "#fce7f3",
-                            color: "#db2777",
-                            fontSize: 9,
-                            fontWeight: 800,
-                            padding: "3px 8px",
-                            borderRadius: 6,
-                            textTransform: "uppercase",
-                            letterSpacing: 0.5,
-                          }}
-                        >
-                          Получатель вернул с изменениями
-                        </span>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: "#1e293b",
-                            marginTop: 6,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <span>{STORE_ICONS[item.store_from] || "📦"} {item.store_from_name}</span>
-                          <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
-                          <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          marginBottom: 12,
+                          flexWrap: "wrap",
+                          gap: 12,
+                        }}
+                      >
+                        <div>
+                          <span
+                            style={{
+                              background: "#fce7f3",
+                              color: "#db2777",
+                              fontSize: 9,
+                              fontWeight: 800,
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              textTransform: "uppercase",
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            {isCreatorReceiver ? "Отправитель вернул с изменениями" : "Получатель вернул с изменениями"}
+                          </span>
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: "#1e293b",
+                              marginTop: 6,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>{STORE_ICONS[item.store_from] || "📦"} {item.store_from_name}</span>
+                            <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
+                            <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                            Отправлено: {new Date(item.created_at).toLocaleString("ru-RU")}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                          Отправлено: {new Date(item.created_at).toLocaleString("ru-RU")}
-                        </div>
+
+                        {item.receiver_comment && (
+                          <div
+                            style={{
+                              background: "#fff1f2",
+                              border: "1px solid #fecdd3",
+                              borderRadius: 8,
+                              padding: "8px 12px",
+                              fontSize: 12,
+                              maxWidth: 300,
+                              color: "#9f1239",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            💬 <b>{isCreatorReceiver ? "Комментарий отправителя:" : "Комментарий шефа:"}</b><br />
+                            <i>{item.receiver_comment}</i>
+                          </div>
+                        )}
                       </div>
 
-                      {item.receiver_comment && (
-                        <div
+                      <div style={{ border: "1px solid #fbcfe8", borderRadius: 10, overflow: "hidden" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: "#fdf2f8" }}>
+                              <th style={th}>Товар</th>
+                              <th style={{ ...th, textAlign: "right", width: 120 }}>
+                                {isCreatorReceiver ? "Было запрошено" : "Было отправлено"}
+                              </th>
+                              <th style={{ ...th, textAlign: "right", width: 130 }}>
+                                {isCreatorReceiver ? "Фактически выдано" : "Фактически принято"}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {item.items.map((it, idx) => {
+                              const hasDiff =
+                                it.received_quantity !== null &&
+                                parseFloat(it.received_quantity) !== parseFloat(it.quantity);
+                              return (
+                                <tr
+                                  key={idx}
+                                  style={{
+                                    borderTop: "1px solid #fbcfe8",
+                                    background: hasDiff ? "#fff5f5" : "none",
+                                  }}
+                                >
+                                  <td style={td}>
+                                    <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...td,
+                                      textAlign: "right",
+                                      color: hasDiff ? "#94a3b8" : "#334155",
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {hasDiff ? <s>{it.quantity} {it.unit}</s> : `${it.quantity} ${it.unit}`}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...td,
+                                      textAlign: "right",
+                                      fontWeight: 700,
+                                      color: hasDiff ? "#ef4444" : "#334155",
+                                    }}
+                                  >
+                                    {it.received_quantity !== null
+                                      ? `${it.received_quantity} ${it.unit}`
+                                      : `${it.quantity} ${it.unit}`}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => handlePendingAction(item.id, "reject_by_creator", item)}
+                          disabled={actionSubmittingId !== null}
                           style={{
-                            background: "#fff1f2",
-                            border: "1px solid #fecdd3",
+                            padding: "8px 14px",
                             borderRadius: 8,
-                            padding: "8px 12px",
-                            fontSize: 12,
-                            maxWidth: 300,
-                            color: "#9f1239",
-                            wordBreak: "break-word",
+                            border: "1px solid #ef4444",
+                            background: "transparent",
+                            color: "#ef4444",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
                           }}
                         >
-                          💬 <b>Комментарий шефа:</b><br />
-                          <i>{item.receiver_comment}</i>
-                        </div>
-                      )}
-                    </div>
+                          Отклонить изменения
+                        </button>
 
-                    <div style={{ border: "1px solid #fbcfe8", borderRadius: 10, overflow: "hidden" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ background: "#fdf2f8" }}>
-                            <th style={th}>Товар</th>
-                            <th style={{ ...th, textAlign: "right", width: 120 }}>Было отправлено</th>
-                            <th style={{ ...th, textAlign: "right", width: 130 }}>Фактически принято</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {item.items.map((it, idx) => {
-                            const hasDiff =
-                              it.received_quantity !== null &&
-                              parseFloat(it.received_quantity) !== parseFloat(it.quantity);
-                            return (
-                              <tr
-                                key={idx}
-                                style={{
-                                  borderTop: "1px solid #fbcfe8",
-                                  background: hasDiff ? "#fff5f5" : "none",
-                                }}
-                              >
-                                <td style={td}>
-                                  <div style={{ fontWeight: 500 }}>{it.product_name}</div>
-                                  <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
-                                </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    textAlign: "right",
-                                    color: hasDiff ? "#94a3b8" : "#334155",
-                                    fontWeight: 500,
-                                  }}
-                                >
-                                  {hasDiff ? <s>{it.quantity} {it.unit}</s> : `${it.quantity} ${it.unit}`}
-                                </td>
-                                <td
-                                  style={{
-                                    ...td,
-                                    textAlign: "right",
-                                    fontWeight: 700,
-                                    color: hasDiff ? "#ef4444" : "#334155",
-                                  }}
-                                >
-                                  {it.received_quantity !== null
-                                    ? `${it.received_quantity} ${it.unit}`
-                                    : `${it.quantity} ${it.unit}`}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                        <button
+                          onClick={() => handlePendingAction(item.id, "approve_by_creator", item)}
+                          disabled={actionSubmittingId !== null}
+                          style={{
+                            padding: "8px 16px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#db2777",
+                            color: "#fff",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          {actionSubmittingId === item.id ? I.loader : "Принять изменения"}
+                        </button>
+                      </div>
                     </div>
-
-                    <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-                      <button
-                        onClick={() => handlePendingAction(item.id, "reject_by_creator", item)}
-                        disabled={actionSubmittingId !== null}
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: 8,
-                          border: "1px solid #ef4444",
-                          background: "transparent",
-                          color: "#ef4444",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Отклонить изменения
-                      </button>
-
-                      <button
-                        onClick={() => handlePendingAction(item.id, "approve_by_creator", item)}
-                        disabled={actionSubmittingId !== null}
-                        style={{
-                          padding: "8px 16px",
-                          borderRadius: 8,
-                          border: "none",
-                          background: "#db2777",
-                          color: "#fff",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        {actionSubmittingId === item.id ? I.loader : "Принять изменения"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -4173,10 +4209,14 @@ function InventoryView({
   useEffect(() => {
     if (form.storeId) {
       if (items.length > 0) {
-        localStorage.setItem(
-          "locmaco_inventory_draft_" + form.storeId,
-          JSON.stringify(items)
-        );
+        try {
+          localStorage.setItem(
+            "locmaco_inventory_draft_" + form.storeId,
+            JSON.stringify(items)
+          );
+        } catch (e) {
+          console.error("Failed to save inventory draft to localStorage:", e);
+        }
       } else {
         localStorage.removeItem("locmaco_inventory_draft_" + form.storeId);
       }
@@ -4638,7 +4678,11 @@ function ProductionView({
   useEffect(() => {
     if (mode === "new") {
       if (items.length > 0) {
-        localStorage.setItem("locmaco_production_draft", JSON.stringify(items));
+        try {
+          localStorage.setItem("locmaco_production_draft", JSON.stringify(items));
+        } catch (e) {
+          console.error("Failed to save production draft to localStorage:", e);
+        }
       } else {
         localStorage.removeItem("locmaco_production_draft");
       }
@@ -5011,6 +5055,8 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     const res = await API.getEmployees();
     if (res && res.success && Array.isArray(res.employees)) {
       setEmployees(res.employees);
+    } else {
+      showToast(res?.error || "Не удалось загрузить сотрудников", "error");
     }
     setLoading(false);
   };
@@ -5768,7 +5814,7 @@ function CashView({
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     const hasValues =
-      Object.values(form).some((v) => v !== "") || expenses.length > 0;
+      Object.keys(form).some((key) => key !== "date" && form[key] !== "") || expenses.length > 0;
     if (!hasValues) {
       showToast("Заполните хотя бы одно поле", "error");
       return;
@@ -5825,6 +5871,7 @@ function CashView({
 
   const totalSales =
     (parseFloat(form.cash) || 0) +
+    (parseFloat(form.encashment) || 0) +
     (parseFloat(form.uzcard) || 0) +
     (parseFloat(form.humo) || 0) +
     (parseFloat(form.online) || 0) +

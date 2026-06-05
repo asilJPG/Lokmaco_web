@@ -1,6 +1,7 @@
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { getPasskeyById, updatePasskeyCounter, getUserById } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { signSession } from "@/lib/auth";
 
 export async function POST(request) {
   try {
@@ -64,6 +65,22 @@ export async function POST(request) {
         baseRole: baseRole || "",
         storeId: storeId || null,
       };
+
+      // Sign session token and set HTTP-only cookie
+      const token = await signSession({
+        id: dbUser.id,
+        tg_id: dbUser.tg_id,
+        name: dbUser.name,
+        role: rawRole,
+      });
+
+      cookieStore.set("session_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 3600, // 7 days
+      });
 
       // Clear cookie
       cookieStore.delete("login_challenge");

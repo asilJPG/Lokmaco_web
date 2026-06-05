@@ -1,18 +1,48 @@
 import { getUserByCode } from "@/lib/supabase.js";
+import { signSession } from "@/lib/auth.js";
+import { cookies } from "next/headers";
+import { rateLimit } from "@/lib/rate-limit.js";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
+    // 1. Rate limiting by IP
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1";
+    const limiter = rateLimit(ip);
+    if (!limiter.allowed) {
+      return Response.json(
+        { success: false, error: `Слишком много попыток входа. Пожалуйста, подождите ${Math.ceil(limiter.retryAfterMs / 1000)} сек.` },
+        { status: 429 }
+      );
+    }
+
     const { code } = await request.json();
 
     if (!code || String(code).length < 4) {
+      limiter.increment();
       return Response.json({ success: false, error: "Код должен быть 4-значным числом" }, { status: 400 });
     }
 
     const user = await getUserByCode(code);
 
     if (user) {
+      // Sign session token and set HTTP-only cookie
+      const token = await signSession({
+        id: user.id,
+        tg_id: user.tg_id,
+        name: user.name,
+        role: user.role,
+      });
+
+      cookies().set("session_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 3600, // 7 days
+      });
+
       return Response.json({
         success: true,
         user: {
@@ -24,9 +54,10 @@ export async function POST(request) {
       });
     }
 
+    limiter.increment();
     return Response.json({ success: false, error: "Пользователь не найден или неверный код" }, { status: 401 });
   } catch (e) {
     console.error("[/api/iiko/login] error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

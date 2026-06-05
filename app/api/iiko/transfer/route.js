@@ -1,5 +1,5 @@
 import { createTransfer } from "@/lib/iiko-web";
-import { logAction, createPendingTransfer, getPendingTransfersList, updatePendingTransfer } from "@/lib/supabase.js";
+import { logAction, createPendingTransfer, getPendingTransfersList, updatePendingTransfer, getPendingTransferById } from "@/lib/supabase.js";
 
 // Helper to send Telegram notifications
 async function sendTelegramAlert(message) {
@@ -24,9 +24,14 @@ async function sendTelegramAlert(message) {
 
 export async function GET(request) {
   try {
+    const userRole = request.headers.get("x-user-role") || "";
+    const tgId = request.headers.get("x-user-tg-id") || "";
+
+    const [baseRole, userStoreId] = userRole.split(":");
+    const isGlobal = ["admin", "director", "supplier"].includes(baseRole);
+
     const { searchParams } = new URL(request.url);
-    const tgId = searchParams.get("tg_id");
-    const storeId = searchParams.get("store_id");
+    const storeId = isGlobal ? searchParams.get("store_id") : userStoreId;
 
     if (!tgId) {
       return Response.json({ error: "Missing tg_id" }, { status: 400 });
@@ -35,10 +40,12 @@ export async function GET(request) {
     const list = await getPendingTransfersList();
 
     // Filter list:
-    // - incoming: status === 'pending_receiver' && store_to === storeId
+    // - incoming: (status === 'pending_receiver' && store_to === storeId) || (status === 'pending_sender' && store_from === storeId)
     // - returned: status === 'pending_creator' && creator_tg_id === tgId
     const incoming = list.filter(
-      (item) => item.status === "pending_receiver" && item.store_to === storeId
+      (item) =>
+        (item.status === "pending_receiver" && String(item.store_to) === String(storeId)) ||
+        (item.status === "pending_sender" && String(item.store_from) === String(storeId))
     );
     const returned = list.filter(
       (item) => item.status === "pending_creator" && String(item.creator_tg_id) === String(tgId)
@@ -47,12 +54,28 @@ export async function GET(request) {
     return Response.json({ success: true, incoming, returned });
   } catch (e) {
     console.error("[/api/iiko/transfer GET]", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
 export async function POST(request) {
   try {
+    const userId = request.headers.get("x-user-id");
+    const userRole = request.headers.get("x-user-role") || "";
+    const userTgId = request.headers.get("x-user-tg-id") || "";
+    const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
+
+    if (!userId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = {
+      id: userId,
+      role: userRole,
+      tg_id: userTgId,
+      name: userName
+    };
+
     const body = await request.json();
     const {
       action,
@@ -63,13 +86,8 @@ export async function POST(request) {
       store_to_name,
       items,
       comment,
-      receiver_comment,
-      user
+      receiver_comment
     } = body;
-
-    if (!user) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "supplier", "kitchen", "prep_chef", "bar"];
@@ -85,6 +103,15 @@ export async function POST(request) {
 
       if (!store_from || !store_to || !items?.length) {
         return Response.json({ error: "Missing store_from, store_to or items" }, { status: 400 });
+      }
+
+      let status = "pending_receiver";
+      if (userStoreId) {
+        if (String(store_to) === String(userStoreId)) {
+          status = "pending_sender";
+        } else if (String(store_from) === String(userStoreId)) {
+          status = "pending_receiver";
+        }
       }
 
       const pendingTransfer = {
@@ -103,13 +130,14 @@ export async function POST(request) {
           received_quantity: null
         })),
         comment: comment || "",
-        status: "pending_receiver"
+        status: status
       };
 
       const inserted = await createPendingTransfer(pendingTransfer);
       if (inserted) {
         const itemsText = items.map(it => `• ${it.product_name}: ${it.quantity} ${it.unit || "шт"}`).join("\n");
-        const alertMsg = `⏳ *Новое перемещение (ожидает подтверждения)*\n\n` +
+        const actionWord = status === "pending_sender" ? "ожидает выдачи / отправитель" : "ожидает подтверждения / получатель";
+        const alertMsg = `⏳ *Новое перемещение (${actionWord})*\n\n` +
           `👤 *Кто создал:* ${user.name}\n` +
           `📤 *Откуда:* ${store_from_name}\n` +
           `📥 *Куда:* ${store_to_name}\n\n` +
@@ -126,6 +154,35 @@ export async function POST(request) {
     // Process actions
     if (!id) {
       return Response.json({ error: "Missing pending transfer id" }, { status: 400 });
+    }
+
+    const pendingDoc = await getPendingTransferById(id);
+    if (!pendingDoc) {
+      return Response.json({ error: "Перемещение не найдено" }, { status: 404 });
+    }
+
+    const isBypassRole = ["admin", "director"].includes(baseRole);
+
+    // Authorization checks for receiver actions
+    if (["approve_by_receiver", "reject_by_receiver", "modify_by_receiver"].includes(action)) {
+      if (pendingDoc.status === "pending_receiver") {
+        if (!isBypassRole && String(pendingDoc.store_to) !== String(userStoreId)) {
+          return Response.json({ error: "Доступ запрещен: вы не являетесь получателем этого перемещения" }, { status: 403 });
+        }
+      } else if (pendingDoc.status === "pending_sender") {
+        if (!isBypassRole && String(pendingDoc.store_from) !== String(userStoreId)) {
+          return Response.json({ error: "Доступ запрещен: вы не являетесь отправителем этого перемещения" }, { status: 403 });
+        }
+      } else {
+        return Response.json({ error: "Неверный статус документа для этого действия" }, { status: 400 });
+      }
+    }
+
+    // Authorization checks for creator actions
+    if (["approve_by_creator", "reject_by_creator"].includes(action)) {
+      if (!isBypassRole && String(pendingDoc.creator_tg_id) !== String(user.tg_id)) {
+        return Response.json({ error: "Доступ запрещен: вы не являетесь создателем этого перемещения" }, { status: 403 });
+      }
     }
 
     if (action === "approve_by_receiver") {
@@ -208,7 +265,7 @@ export async function POST(request) {
       const prepared = items.map(it => ({
         product_id: it.product_id,
         product_name: it.product_name,
-        quantity: it.received_quantity !== null ? parseFloat(it.received_quantity) : parseFloat(it.quantity),
+        quantity: it.received_quantity != null ? parseFloat(it.received_quantity) : parseFloat(it.quantity),
         unit: it.unit || "шт"
       })).filter(it => it.quantity > 0);
 
@@ -263,6 +320,6 @@ export async function POST(request) {
     return Response.json({ error: "Invalid action" }, { status: 400 });
   } catch (e) {
     console.error("[/api/iiko/transfer POST]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

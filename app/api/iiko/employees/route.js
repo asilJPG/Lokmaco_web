@@ -25,17 +25,18 @@ export async function GET(_request) {
     return Response.json({ success: true, employees });
   } catch (e) {
     console.error("[/api/iiko/employees] GET error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
 export async function POST(request) {
   try {
-    const { name, role, access_code, user } = await request.json();
-
-    if (!user || user.role !== "admin") {
-      return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    const requesterRole = request.headers.get("x-user-role") || "";
+    if (requesterRole !== "admin") {
+      return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
     }
+
+    const { name, role, access_code } = await request.json();
 
     if (!name || !role || !access_code) {
       return Response.json({ success: false, error: "Укажите имя, должность и код доступа" }, { status: 400 });
@@ -77,21 +78,30 @@ export async function POST(request) {
     return Response.json({ success: true, employee: data[0] });
   } catch (e) {
     console.error("[/api/iiko/employees] POST error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
 export async function DELETE(request) {
   try {
+    const requesterRole = request.headers.get("x-user-role") || "";
+    if (requesterRole !== "admin") {
+      return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
-    const adminTgId = searchParams.get("adminTgId");
 
     if (!id) {
       return Response.json({ success: false, error: "Missing id" }, { status: 400 });
     }
 
-    const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${id}`, {
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      return Response.json({ success: false, error: "Invalid id" }, { status: 400 });
+    }
+
+    const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${parsedId}`, {
       method: "DELETE",
       headers: getHeaders(),
     });
@@ -103,20 +113,26 @@ export async function DELETE(request) {
     return Response.json({ success: true });
   } catch (e) {
     console.error("[/api/iiko/employees] DELETE error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
 export async function PUT(request) {
   try {
-    const { id, name, role, access_code, user } = await request.json();
-
-    if (!user || user.role !== "admin") {
-      return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    const requesterRole = request.headers.get("x-user-role") || "";
+    if (requesterRole !== "admin") {
+      return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
     }
+
+    const { id, name, role, access_code } = await request.json();
 
     if (!id || !name || !role || !access_code) {
       return Response.json({ success: false, error: "Укажите все обязательные поля" }, { status: 400 });
+    }
+
+    const parsedId = parseInt(id, 10);
+    if (isNaN(parsedId)) {
+      return Response.json({ success: false, error: "Invalid id" }, { status: 400 });
     }
 
     const body = {
@@ -125,7 +141,7 @@ export async function PUT(request) {
       access_code,
     };
 
-    const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${id}`, {
+    const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${parsedId}`, {
       method: "PATCH",
       headers: {
         ...getHeaders(),
@@ -146,6 +162,6 @@ export async function PUT(request) {
     return Response.json({ success: true, employee: data[0] });
   } catch (e) {
     console.error("[/api/iiko/employees] PUT error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

@@ -2,12 +2,26 @@ import { createProduction } from "@/lib/iiko-web";
 import { logAction } from "@/lib/supabase.js";
 
 export async function POST(request) {
+  let body = {};
   try {
-    const { items, comment, user } = await request.json();
+    const userId = request.headers.get("x-user-id");
+    const userRole = request.headers.get("x-user-role") || "";
+    const userTgId = request.headers.get("x-user-tg-id") || "";
+    const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
 
-    if (!user) {
+    if (!userId) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const user = {
+      id: userId,
+      role: userRole,
+      tg_id: userTgId,
+      name: userName
+    };
+
+    body = await request.json();
+    const { items, comment } = body;
 
     const [baseRole] = (user.role || "").split(":");
     const allowedRoles = ["admin", "prep_chef"];
@@ -30,20 +44,21 @@ export async function POST(request) {
 
     if (result.success) {
       await logAction(user.tg_id, user.name, "production", result.documentNumber || "PROD", details);
-    } else {
-      await logAction(user.tg_id, user.name, "production", "СБОЙ", { ...details, error: result.error });
-    }
-
-    if (result.success) {
       return Response.json({ success: true, documentNumber: result.documentNumber });
     } else {
+      await logAction(user.tg_id, user.name, "production", "СБОЙ", { ...details, error: result.error });
       return Response.json({ success: false, error: result.error }, { status: 500 });
     }
   } catch (e) {
     console.error("[/api/iiko/production]", e.message);
     try {
-      const { items, comment, user } = await request.clone().json().catch(() => ({}));
-      if (user) {
+      const userId = request.headers.get("x-user-id");
+      const userRole = request.headers.get("x-user-role") || "";
+      const userTgId = request.headers.get("x-user-tg-id") || "";
+      const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
+
+      if (userId) {
+        const { items, comment } = body || {};
         const details = {
           error: e.message,
           items: (items || []).map(it => ({
@@ -55,9 +70,9 @@ export async function POST(request) {
           })),
           comment: comment || "",
         };
-        await logAction(user.tg_id, user.name, "production", "СБОЙ", details);
+        await logAction(userTgId, userName, "production", "СБОЙ", details);
       }
     } catch (_) {}
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

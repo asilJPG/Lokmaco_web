@@ -2,11 +2,23 @@ import { logAction, createCashReport } from "@/lib/supabase.js";
 
 export async function POST(request) {
   try {
-    const { payments, expenses, surplus, shortage, comment, date, user } = await request.json();
+    const userId = request.headers.get("x-user-id");
+    const userRole = request.headers.get("x-user-role") || "";
+    const userTgId = request.headers.get("x-user-tg-id") || "";
+    const userName = decodeURIComponent(request.headers.get("x-user-name") || "");
 
-    if (!user) {
+    if (!userId) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const user = {
+      id: userId,
+      role: userRole,
+      tg_id: userTgId,
+      name: userName
+    };
+
+    const { payments, expenses, surplus, shortage, comment, date } = await request.json();
 
     const [baseRole] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "cashier"];
@@ -30,7 +42,7 @@ export async function POST(request) {
     const uzumVal = parseFloat(pay.uzum) || 0;
     const yandexVal = parseFloat(pay.yandex) || 0;
 
-    const totalSales = cashVal + uzcardVal + humoVal + onlineVal + rahmatVal + uzumVal + yandexVal;
+    const totalSales = cashVal + encashmentVal + uzcardVal + humoVal + onlineVal + rahmatVal + uzumVal + yandexVal;
     const totalExpenses = exp.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
     const surp = parseFloat(surplus) || 0;
@@ -77,7 +89,7 @@ export async function POST(request) {
     return Response.json({ success: true, documentNumber: dn });
   } catch (e) {
     console.error("[/api/iiko/cash]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
 
