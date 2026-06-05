@@ -2,7 +2,7 @@ import { getStoreBalances } from "@/lib/iiko-web";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request) {
+export async function GET(_request) {
   try {
     const data = await getStoreBalances();
     return Response.json(data);

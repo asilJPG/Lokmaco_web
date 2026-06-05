@@ -45,6 +45,6 @@ export async function GET() {
 }
 
 function tag(xml, name) {
-  const m = xml.match(new RegExp(`<${name}>([^<]*)<\/${name}>`));
+  const m = xml.match(new RegExp(`<${name}>([^<]*)</${name}>`));
   return m ? m[1].trim() : "";
 }

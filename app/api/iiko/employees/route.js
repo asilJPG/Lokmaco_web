@@ -11,7 +11,7 @@ function getHeaders() {
   };
 }
 
-export async function GET(request) {
+export async function GET(_request) {
   try {
     const url = `${SUPABASE_URL}/rest/v1/bot_users?select=*&order=id.asc`;
     const res = await http1Fetch(url, {
@@ -91,7 +91,6 @@ export async function DELETE(request) {
       return Response.json({ success: false, error: "Missing id" }, { status: 400 });
     }
 
-    // Delete request
     const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${id}`, {
       method: "DELETE",
       headers: getHeaders(),

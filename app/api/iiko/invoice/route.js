@@ -129,8 +129,6 @@ export async function POST(request) {
   }
 }
 
-// ─── Helpers ───
-
 function pad(n) {
   return String(n).padStart(2, "0");
 }

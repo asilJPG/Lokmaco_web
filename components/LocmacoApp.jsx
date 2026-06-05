@@ -108,6 +108,9 @@ const API = {
   createTransfer(data) {
     return this.post("/transfer", data);
   },
+  getPendingTransfers(tgId, storeId) {
+    return this.get(`/transfer?tg_id=${tgId}&store_id=${storeId || ""}`);
+  },
   createProduction(data) {
     return this.post("/production", data);
   },
@@ -406,6 +409,403 @@ const I = {
   ),
 };
 
+function PieChart({ data, total, revenue }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+
+  if (!data || data.length === 0 || !total) return null;
+
+  const validData = data.filter((item) => item.amount > 0);
+  if (validData.length === 0) return null;
+
+  // Group small slices to avoid visual cluttering around the chart
+  const MAX_MAIN_SLICES = 8;
+  let chartData = [];
+  if (validData.length > MAX_MAIN_SLICES + 1) {
+    const mainSlices = validData.slice(0, MAX_MAIN_SLICES);
+    const otherSlices = validData.slice(MAX_MAIN_SLICES);
+    const otherAmount = otherSlices.reduce((sum, item) => sum + item.amount, 0);
+    chartData = [
+      ...mainSlices,
+      {
+        name: "Другие расходы",
+        amount: otherAmount,
+      },
+    ];
+  } else {
+    chartData = [...validData];
+  }
+
+  let accumulatedAngle = 360;
+
+  const COLORS = [
+    "#6366f1",
+    "#10b981",
+    "#f59e0b",
+    "#ef4444",
+    "#8b5cf6",
+    "#ec4899",
+    "#06b6d4",
+    "#14b8a6",
+    "#84cc16",
+    "#a855f7",
+    "#f97316",
+    "#64748b",
+  ];
+
+  const segments = chartData.map((item, idx) => {
+    const percentage = (item.amount / total) * 100;
+    const percentageOfRevenue = revenue > 0 ? (item.amount / revenue) * 100 : 0;
+    const angle = (item.amount / total) * 360;
+    const startAngle = accumulatedAngle - angle;
+    accumulatedAngle -= angle;
+
+    return {
+      name: item.name,
+      amount: item.amount,
+      percentage,
+      percentageOfRevenue,
+      startAngle,
+      angle,
+      color: COLORS[idx % COLORS.length],
+    };
+  });
+
+  const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
+    const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+    return {
+      x: centerX + radius * Math.cos(angleInRadians),
+      y: centerY + radius * Math.sin(angleInRadians),
+    };
+  };
+
+  const getDonutSlicePath = (x, y, innerRadius, outerRadius, startAngle, endAngle) => {
+    let actualEndAngle = endAngle;
+    if (endAngle - startAngle >= 359.99) {
+      actualEndAngle = startAngle + 359.9;
+    }
+
+    const startOuter = polarToCartesian(x, y, outerRadius, actualEndAngle);
+    const endOuter = polarToCartesian(x, y, outerRadius, startAngle);
+    const startInner = polarToCartesian(x, y, innerRadius, actualEndAngle);
+    const endInner = polarToCartesian(x, y, innerRadius, startAngle);
+
+    const largeArcFlag = actualEndAngle - startAngle <= 180 ? "0" : "1";
+
+    return [
+      `M ${startOuter.x} ${startOuter.y}`,
+      `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 0 ${endOuter.x} ${endOuter.y}`,
+      `L ${endInner.x} ${endInner.y}`,
+      `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${startInner.x} ${startInner.y}`,
+      "Z",
+    ].join(" ");
+  };
+
+  const CX = 220;
+  const CY = 200;
+  const R_outer = 145;
+  const R_inner = 105;
+
+  const activeSegment = hoveredIndex !== null ? segments[hoveredIndex] : null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "40px",
+        width: "100%",
+        flexWrap: "wrap",
+        padding: "20px 0",
+      }}
+    >
+      {/* Donut SVG container */}
+      <div
+        style={{
+          flex: "1 1 350px",
+          maxWidth: "400px",
+          position: "relative",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <svg
+          viewBox="0 0 440 400"
+          style={{
+            width: "100%",
+            height: "auto",
+            display: "block",
+          }}
+        >
+          <defs>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="6" stdDeviation="8" floodOpacity="0.12" />
+            </filter>
+          </defs>
+
+          {/* Central Backdrop for Donut text */}
+          <circle cx={CX} cy={CY} r={R_inner - 2} fill="#ffffff" filter="url(#shadow)" />
+
+          {/* Render Donut Slices */}
+          {segments.map((seg, idx) => {
+            const isHovered = hoveredIndex === idx;
+            const midAngle = seg.startAngle + seg.angle / 2;
+            const shiftDistance = isHovered ? 8 : 0;
+            const shiftX =
+              Math.cos(((midAngle - 90) * Math.PI) / 180.0) * shiftDistance;
+            const shiftY =
+              Math.sin(((midAngle - 90) * Math.PI) / 180.0) * shiftDistance;
+
+            let finalEndAngle = seg.startAngle + seg.angle;
+            if (seg.angle >= 359.9) {
+              finalEndAngle = seg.startAngle + 359.99;
+            }
+
+            const path = getDonutSlicePath(
+              CX,
+              CY,
+              R_inner,
+              R_outer,
+              seg.startAngle,
+              finalEndAngle
+            );
+
+            // Calculate outer label coordinates (radius R_outer + 15)
+            const labelPos = polarToCartesian(CX, CY, R_outer + 15, midAngle);
+            let textAnchor = "middle";
+            let dx = 0;
+            let dy = 0;
+
+            if (midAngle >= 15 && midAngle < 165) {
+              textAnchor = "start";
+              dx = 4;
+            } else if (midAngle >= 195 && midAngle < 345) {
+              textAnchor = "end";
+              dx = -4;
+            } else {
+              textAnchor = "middle";
+              dy = midAngle >= 165 && midAngle < 195 ? 12 : -4;
+            }
+
+            return (
+              <g
+                key={idx}
+                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                style={{
+                  cursor: "pointer",
+                  transform: `translate(${shiftX}px, ${shiftY}px)`,
+                  transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <title>
+                  {seg.name}: {fmtPrice(seg.amount)} ({seg.percentage.toFixed(1)}%)
+                </title>
+
+                <path
+                  d={path}
+                  fill={seg.color}
+                  opacity={hoveredIndex === null || isHovered ? 1 : 0.75}
+                  style={{
+                    transition: "opacity 0.2s ease",
+                  }}
+                />
+
+                {/* Floating Outer label for % of Revenue */}
+                <text
+                  x={labelPos.x + dx}
+                  y={labelPos.y + dy}
+                  textAnchor={textAnchor}
+                  fill={seg.color}
+                  opacity={isHovered ? 1 : 0}
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    transition: "opacity 0.2s ease",
+                    pointerEvents: "none",
+                  }}
+                >
+                  {seg.percentageOfRevenue.toFixed(1)}% выр.
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Donut Center Information Text */}
+          {activeSegment === null ? (
+            <g style={{ pointerEvents: "none" }}>
+              <text
+                x={CX}
+                y={CY - 15}
+                textAnchor="middle"
+                fill="#64748b"
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                Всего расходов
+              </text>
+              <text
+                x={CX}
+                y={CY + 20}
+                textAnchor="middle"
+                fill="#0f172a"
+                style={{
+                  fontSize: "24px",
+                  fontWeight: 800,
+                }}
+              >
+                {fmtPrice(total)}
+              </text>
+            </g>
+          ) : (
+            <g style={{ pointerEvents: "none" }}>
+              <text
+                x={CX}
+                y={CY - 35}
+                textAnchor="middle"
+                fill="#64748b"
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                Расход по счету
+              </text>
+              <text
+                x={CX}
+                y={CY - 5}
+                textAnchor="middle"
+                fill={activeSegment.color}
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                }}
+              >
+                {activeSegment.name.length > 20
+                  ? activeSegment.name.slice(0, 18) + "..."
+                  : activeSegment.name}
+              </text>
+              <text
+                x={CX}
+                y={CY + 30}
+                textAnchor="middle"
+                fill="#0f172a"
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 800,
+                }}
+              >
+                {fmtPrice(activeSegment.amount)}
+              </text>
+              <text
+                x={CX}
+                y={CY + 55}
+                textAnchor="middle"
+                fill="#64748b"
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                }}
+              >
+                {activeSegment.percentage.toFixed(1)}% от расходов
+              </text>
+            </g>
+          )}
+        </svg>
+      </div>
+
+      {/* Right side: Modern interactive legend */}
+      <div
+        style={{
+          flex: "1 1 350px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          maxHeight: "380px",
+          overflowY: "auto",
+          paddingRight: "5px",
+        }}
+      >
+        {segments.map((seg, idx) => {
+          const isHovered = hoveredIndex === idx;
+          return (
+            <div
+              key={idx}
+              onMouseEnter={() => setHoveredIndex(idx)}
+              onMouseLeave={() => setHoveredIndex(null)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 14px",
+                borderRadius: "12px",
+                background: isHovered ? "rgba(99, 102, 241, 0.05)" : "transparent",
+                border: isHovered
+                  ? "1px solid rgba(99, 102, 241, 0.15)"
+                  : "1px solid rgba(226, 232, 240, 0.5)",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                <div
+                  style={{
+                    width: "12px",
+                    height: "12px",
+                    borderRadius: "50%",
+                    backgroundColor: seg.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: "13.5px",
+                    fontWeight: isHovered ? 700 : 500,
+                    color: isHovered ? "#4f46e5" : "#1e293b",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {seg.name}
+                </span>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0, marginLeft: "10px" }}>
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 800,
+                    color: "#0f172a",
+                    display: "block",
+                  }}
+                >
+                  {fmtPrice(seg.amount)}
+                </span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#64748b",
+                  }}
+                >
+                  {seg.percentage.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function LocmacoApp() {
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [loginCode, setLoginCode] = useState("");
@@ -422,7 +822,6 @@ export default function LocmacoApp() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Check localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("user");
     if (saved) {
@@ -435,7 +834,7 @@ export default function LocmacoApp() {
           baseRole: baseRole || "",
           storeId: storeId || null,
         });
-      } catch (e) {
+      } catch (_e) {
         localStorage.removeItem("user");
       }
     }
@@ -1475,7 +1874,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
       } else {
         showToast(res?.error || "Ошибка загрузки истории iiko", "error");
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка сети при загрузке истории iiko", "error");
     } finally {
       setLoading(false);
@@ -1500,7 +1899,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
           "error"
         );
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка при получении деталей документа", "error");
     } finally {
       setDetailLoading(false);
@@ -1518,7 +1917,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
         hour: "2-digit",
         minute: "2-digit",
       });
-    } catch (e) {
+    } catch (_e) {
       return dateStr;
     }
   };
@@ -2475,19 +2874,6 @@ function IncomingView({
                       </table>
                     </div>
                   )}
-                  {items.length > 0 && grandTotal > 0 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        fontSize: 16,
-                        fontWeight: 800,
-                        margin: "12px 0",
-                      }}
-                    >
-                      Итого: {fmtPrice(grandTotal)}
-                    </div>
-                  )}
                   <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
                   <input
                     value={form.comment}
@@ -2513,7 +2899,7 @@ function IncomingView({
                       disabled={submitting || items.length === 0}
                     >
                       {submitting ? I.loader : I.send}{" "}
-                      {submitting ? "Отправка..." : "Провести в iiko"}
+                      {submitting ? "Отправка..." : "Провести"}
                     </Btn>
                   </div>
                 </>
@@ -2525,10 +2911,6 @@ function IncomingView({
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  TRANSFER — откуда → куда → товары (поиск + кол-во) → провести
-// ═══════════════════════════════════════════════════════════════
 
 function TransferView({
   products,
@@ -2554,6 +2936,80 @@ function TransferView({
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // States for pending transfers workflow
+  const [pendingTransfers, setPendingTransfers] = useState({ incoming: [], returned: [] });
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editedItems, setEditedItems] = useState([]);
+  const [receiverCommentText, setReceiverCommentText] = useState("");
+  const [actionSubmittingId, setActionSubmittingId] = useState(null);
+  const [subTab, setSubTab] = useState("db_history");
+
+  const loadPendingTransfers = async () => {
+    if (!loggedInUser) return;
+    setPendingLoading(true);
+    try {
+      const res = await API.getPendingTransfers(loggedInUser.tg_id, loggedInUser.storeId);
+      if (res && res.success) {
+        setPendingTransfers({
+          incoming: res.incoming || [],
+          returned: res.returned || [],
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load pending transfers:", e);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPendingTransfers();
+  }, [loggedInUser]);
+
+  const handlePendingAction = async (id, action, targetItem) => {
+    setActionSubmittingId(id);
+    try {
+      const res = await API.createTransfer({
+        action,
+        id,
+        store_from: targetItem.store_from,
+        store_from_name: targetItem.store_from_name,
+        store_to: targetItem.store_to,
+        store_to_name: targetItem.store_to_name,
+        items: targetItem.items,
+        comment: targetItem.comment,
+        receiver_comment: targetItem.receiver_comment || receiverCommentText,
+        user: {
+          tg_id: loggedInUser.tg_id,
+          name: loggedInUser.name,
+          role: loggedInUser.role,
+        },
+      });
+
+      if (res && res.success) {
+        if (action === "approve_by_receiver" || action === "approve_by_creator") {
+          showToast(`Перемещение проведено в iiko! Номер: ${res.documentNumber || ""}`);
+        } else if (action === "reject_by_receiver" || action === "reject_by_creator") {
+          showToast("Перемещение отклонено и отменено.");
+        } else if (action === "modify_by_receiver") {
+          showToast("Изменения отправлены снабженцу.");
+        }
+        setEditingId(null);
+        setReceiverCommentText("");
+        loadPendingTransfers();
+        loadHistory();
+      } else {
+        showToast(res?.error || "Произошла ошибка при выполнении операции", "error");
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Ошибка при обработке перемещения", "error");
+    } finally {
+      setActionSubmittingId(null);
+    }
+  };
+
   const addItem = (p) => {
     setItems((prev) => {
       if (prev.find((i) => i.product_id === p.id)) return prev;
@@ -2578,17 +3034,6 @@ function TransferView({
   const handleSubmit = async () => {
     if (!form.fromId || !form.toId || items.length === 0) {
       showToast("Заполните все поля", "error");
-      return;
-    }
-    if (
-      loggedInUser?.storeId &&
-      form.fromId !== loggedInUser.storeId &&
-      form.toId !== loggedInUser.storeId
-    ) {
-      showToast(
-        "Вы можете перемещать товары только со своего или на свой склад",
-        "error"
-      );
       return;
     }
     const prepared = items
@@ -2619,7 +3064,8 @@ function TransferView({
     });
     setSubmitting(false);
     if (result?.success) {
-      showToast("Перемещение проведено!");
+      showToast("Перемещение отправлено на согласование!");
+      loadPendingTransfers();
       loadHistory();
       setMode("idle");
       setStep(0);
@@ -2673,44 +3119,575 @@ function TransferView({
       </div>
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div>
-            <IikoHistoryList
-              type="INTERNAL_TRANSFER"
-              showToast={showToast}
-              stores={stores}
-              products={products}
-            />
-          </div>
-          <div>
-            <HistoryList
-              history={history.filter((act) => act.action_type === "transfer")}
-              loading={historyLoading}
-              onRefresh={loadHistory}
-              emptyText="История перемещений пуста"
-              onRestore={(act) => {
-                if (act.details) {
-                  setForm({
-                    fromId: act.details.store_from || "",
-                    fromName: act.details.store_from_name || "",
-                    toId: act.details.store_to || "",
-                    toName: act.details.store_to_name || "",
-                    comment: act.details.comment || "",
-                  });
-                  setItems(
-                    (act.details.items || []).map((it) => ({
-                      product_id: it.product_id,
-                      product_name: it.product_name,
-                      quantity: it.quantity,
-                      unit: it.unit || "шт",
-                    }))
-                  );
-                  setMode("new");
-                  setStep(2);
-                  showToast("Черновик успешно восстановлен!");
-                }
+          {(pendingTransfers.incoming.length > 0 || pendingTransfers.returned.length > 0) && (
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.45)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                borderRadius: 16,
+                border: "1px solid rgba(226, 232, 240, 0.8)",
+                padding: 20,
+                boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.04)",
               }}
-            />
+            >
+              <h3
+                style={{
+                  margin: "0 0 16px 0",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#1e293b",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>🔔 На согласовании</span>
+                <span
+                  style={{
+                    background: "#ef4444",
+                    color: "#fff",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: "2px 6px",
+                    borderRadius: 12,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {pendingTransfers.incoming.length + pendingTransfers.returned.length}
+                </span>
+              </h3>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {pendingTransfers.incoming.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "#fff",
+                      borderRadius: 12,
+                      border: "1px solid #e2e8f0",
+                      padding: 16,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
+                      animation: "fadeIn .25s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 12,
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <span
+                          style={{
+                            background: "#e0f2fe",
+                            color: "#0369a1",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          Входящее перемещение
+                        </span>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "#1e293b",
+                            marginTop: 6,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span>{STORE_ICONS[item.store_from] || "📦"} {item.store_from_name}</span>
+                          <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
+                          <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                          Создал: <b>{item.creator_name}</b> • {new Date(item.created_at).toLocaleString("ru-RU")}
+                        </div>
+                      </div>
+
+                      {item.comment && (
+                        <div
+                          style={{
+                            background: "#f8fafb",
+                            border: "1px solid #e8ecf0",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            fontSize: 12,
+                            maxWidth: 300,
+                            color: "#475569",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          💬 <i>{item.comment}</i>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingId === item.id ? (
+                      <div>
+                        <label style={lbl}>Введите фактически полученное количество:</label>
+                        <div
+                          style={{
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 10,
+                            overflow: "hidden",
+                            marginTop: 6,
+                          }}
+                        >
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ background: "#f8fafb" }}>
+                                <th style={th}>Товар</th>
+                                <th style={{ ...th, textAlign: "right", width: 90 }}>Отправлено</th>
+                                <th style={{ ...th, textAlign: "center", width: 130 }}>Получено (факт)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {editedItems.map((it, idx) => (
+                                <tr key={idx} style={{ borderTop: "1px solid #e2e8f0" }}>
+                                  <td style={td}>
+                                    <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                  </td>
+                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#64748b" }}>
+                                    {it.quantity} {it.unit}
+                                  </td>
+                                  <td style={{ ...td, textAlign: "center" }}>
+                                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                      <input
+                                        type="number"
+                                        value={it.received_quantity}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setEditedItems((prev) =>
+                                            prev.map((x, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...x,
+                                                    received_quantity:
+                                                      it.unit === "шт"
+                                                        ? val.split(".")[0].split(",")[0]
+                                                        : val,
+                                                  }
+                                                : x
+                                            )
+                                          );
+                                        }}
+                                        placeholder={it.quantity}
+                                        style={{ ...numInput, width: 70 }}
+                                      />
+                                      <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                                        {it.unit}
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div style={{ marginTop: 12 }}>
+                          <label style={lbl}>Комментарий к расхождению:</label>
+                          <input
+                            value={receiverCommentText}
+                            onChange={(e) => setReceiverCommentText(e.target.value)}
+                            placeholder="Например: недовезли 2 штуки..."
+                            style={inp}
+                          />
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                          <Btn outline onClick={() => setEditingId(null)} disabled={actionSubmittingId !== null}>
+                            Отмена
+                          </Btn>
+                          <Btn
+                            onClick={() => {
+                              const updated = {
+                                ...item,
+                                items: editedItems.map((it) => ({
+                                  ...it,
+                                  received_quantity:
+                                    it.received_quantity === ""
+                                      ? it.quantity
+                                      : parseFloat(it.received_quantity) || 0,
+                                })),
+                                receiver_comment: receiverCommentText,
+                              };
+                              handlePendingAction(item.id, "modify_by_receiver", updated);
+                            }}
+                            disabled={actionSubmittingId !== null}
+                          >
+                            {actionSubmittingId === item.id ? I.loader : I.send} Отправить исправления
+                          </Btn>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ background: "#f8fafb" }}>
+                                <th style={th}>Товар</th>
+                                <th style={{ ...th, textAlign: "right", width: 120 }}>Количество</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.items.map((it, idx) => (
+                                <tr key={idx} style={{ borderTop: "1px solid #f1f5f9" }}>
+                                  <td style={td}>
+                                    <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                  </td>
+                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#334155" }}>
+                                    {it.quantity} {it.unit}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          <button
+                            onClick={() => handlePendingAction(item.id, "reject_by_receiver", item)}
+                            disabled={actionSubmittingId !== null}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              border: "1px solid #ef4444",
+                              background: "transparent",
+                              color: "#ef4444",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Отклонить
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setEditingId(item.id);
+                              setEditedItems(
+                                item.items.map((x) => ({
+                                  ...x,
+                                  received_quantity:
+                                    x.received_quantity !== null
+                                      ? x.received_quantity
+                                      : x.quantity,
+                                }))
+                              );
+                              setReceiverCommentText("");
+                            }}
+                            disabled={actionSubmittingId !== null}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              border: "1px solid #6366f1",
+                              background: "transparent",
+                              color: "#6366f1",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Изменить кол-во
+                          </button>
+
+                          <button
+                            onClick={() => handlePendingAction(item.id, "approve_by_receiver", item)}
+                            disabled={actionSubmittingId !== null}
+                            style={{
+                              padding: "8px 16px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: "#10b981",
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            {actionSubmittingId === item.id ? I.loader : "Принять"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {pendingTransfers.returned.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "#fff",
+                      borderRadius: 12,
+                      border: "1px solid #fbcfe8",
+                      padding: 16,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
+                      animation: "fadeIn .25s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 12,
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <span
+                          style={{
+                            background: "#fce7f3",
+                            color: "#db2777",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          Получатель вернул с изменениями
+                        </span>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "#1e293b",
+                            marginTop: 6,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span>{STORE_ICONS[item.store_from] || "📦"} {item.store_from_name}</span>
+                          <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
+                          <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                          Отправлено: {new Date(item.created_at).toLocaleString("ru-RU")}
+                        </div>
+                      </div>
+
+                      {item.receiver_comment && (
+                        <div
+                          style={{
+                            background: "#fff1f2",
+                            border: "1px solid #fecdd3",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            fontSize: 12,
+                            maxWidth: 300,
+                            color: "#9f1239",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          💬 <b>Комментарий шефа:</b><br />
+                          <i>{item.receiver_comment}</i>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ border: "1px solid #fbcfe8", borderRadius: 10, overflow: "hidden" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: "#fdf2f8" }}>
+                            <th style={th}>Товар</th>
+                            <th style={{ ...th, textAlign: "right", width: 120 }}>Было отправлено</th>
+                            <th style={{ ...th, textAlign: "right", width: 130 }}>Фактически принято</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.items.map((it, idx) => {
+                            const hasDiff =
+                              it.received_quantity !== null &&
+                              parseFloat(it.received_quantity) !== parseFloat(it.quantity);
+                            return (
+                              <tr
+                                key={idx}
+                                style={{
+                                  borderTop: "1px solid #fbcfe8",
+                                  background: hasDiff ? "#fff5f5" : "none",
+                                }}
+                              >
+                                <td style={td}>
+                                  <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                                  <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                </td>
+                                <td
+                                  style={{
+                                    ...td,
+                                    textAlign: "right",
+                                    color: hasDiff ? "#94a3b8" : "#334155",
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {hasDiff ? <s>{it.quantity} {it.unit}</s> : `${it.quantity} ${it.unit}`}
+                                </td>
+                                <td
+                                  style={{
+                                    ...td,
+                                    textAlign: "right",
+                                    fontWeight: 700,
+                                    color: hasDiff ? "#ef4444" : "#334155",
+                                  }}
+                                >
+                                  {it.received_quantity !== null
+                                    ? `${it.received_quantity} ${it.unit}`
+                                    : `${it.quantity} ${it.unit}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                      <button
+                        onClick={() => handlePendingAction(item.id, "reject_by_creator", item)}
+                        disabled={actionSubmittingId !== null}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #ef4444",
+                          background: "transparent",
+                          color: "#ef4444",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Отклонить изменения
+                      </button>
+
+                      <button
+                        onClick={() => handlePendingAction(item.id, "approve_by_creator", item)}
+                        disabled={actionSubmittingId !== null}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          background: "#db2777",
+                          color: "#fff",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {actionSubmittingId === item.id ? I.loader : "Принять изменения"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+            {[
+              {
+                id: "db_history",
+                label: "📋 История сайта",
+                grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+                text: "#0369a1",
+              },
+              {
+                id: "iiko_history",
+                label: "🌐 История iiko",
+                grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                text: "#4338ca",
+              },
+            ].map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSubTab(sub.id)}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  border: subTab === sub.id ? "none" : "1px solid #e2e8f0",
+                  background: subTab === sub.id ? sub.grad : "#fff",
+                  color: subTab === sub.id ? sub.text : "#64748b",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow:
+                    subTab === sub.id
+                      ? "0 4px 10px rgba(99, 102, 241, 0.08)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
           </div>
+
+          {subTab === "iiko_history" ? (
+            <div>
+              <IikoHistoryList
+                type="INTERNAL_TRANSFER"
+                showToast={showToast}
+                stores={stores}
+                products={products}
+              />
+            </div>
+          ) : (
+            <div>
+              <HistoryList
+                history={history.filter((act) => act.action_type === "transfer")}
+                loading={historyLoading}
+                onRefresh={() => {
+                  loadPendingTransfers();
+                  loadHistory();
+                }}
+                emptyText="История перемещений пуста"
+                onRestore={(act) => {
+                  if (act.details) {
+                    setForm({
+                      fromId: act.details.store_from || "",
+                      fromName: act.details.store_from_name || "",
+                      toId: act.details.store_to || "",
+                      toName: act.details.store_to_name || "",
+                      comment: act.details.comment || "",
+                    });
+                    setItems(
+                      (act.details.items || []).map((it) => ({
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        quantity: it.quantity,
+                        unit: it.unit || "шт",
+                      }))
+                    );
+                    setMode("new");
+                    setStep(2);
+                    showToast("Черновик успешно восстановлен!");
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
       {mode === "new" && (
@@ -2992,7 +3969,7 @@ function InventoryView({
           } else {
             setItems([]);
           }
-        } catch (e) {
+        } catch (_e) {
           setItems([]);
         }
       } else {
@@ -3003,7 +3980,6 @@ function InventoryView({
     }
   }, [form.storeId]);
 
-  // Save draft on items change
   useEffect(() => {
     if (form.storeId) {
       if (items.length > 0) {
@@ -3445,7 +4421,6 @@ function ProductionView({
   const [submitting, setSubmitting] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
-  // Load draft on mount/mode change
   useEffect(() => {
     if (mode === "new") {
       const saved = localStorage.getItem("locmaco_production_draft");
@@ -3459,7 +4434,7 @@ function ProductionView({
           } else {
             setItems([]);
           }
-        } catch (e) {
+        } catch (_e) {
           setItems([]);
         }
       } else {
@@ -3470,7 +4445,6 @@ function ProductionView({
     }
   }, [mode]);
 
-  // Save draft on items change
   useEffect(() => {
     if (mode === "new") {
       if (items.length > 0) {
@@ -4328,7 +5302,6 @@ function BalancesView({ stores, showToast, loggedInUser }) {
     fetchBalances(true);
   };
 
-  // Get store options for select element
   const availableStores = balances.map(b => b.storage).filter(Boolean);
   const storesList = availableStores.length > 0 ? availableStores : stores;
 
@@ -5946,7 +6919,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
       } else {
         showToast(res?.error || "Ошибка загрузки P&L отчета", "error");
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка сети при загрузке P&L", "error");
     } finally {
       setLoading(false);
@@ -5973,7 +6946,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
       } else {
         showToast(res?.error || "Ошибка загрузки отчета кассы", "error");
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка сети при загрузке кассы", "error");
     } finally {
       setLoading(false);
@@ -6003,7 +6976,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
       } else {
         showToast(res?.error || "Ошибка загрузки топ продаж", "error");
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка сети при загрузке топ продаж", "error");
     } finally {
       setLoading(false);
@@ -6032,7 +7005,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
       } else {
         showToast(res?.error || "Ошибка загрузки топ официантов", "error");
       }
-    } catch (e) {
+    } catch (_e) {
       showToast("Ошибка сети при загрузке официантов", "error");
     } finally {
       setLoading(false);
@@ -6426,7 +7399,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                 </div>
               </div>
 
-              {/* Expenses Drawer / Modal Accordion */}
+              {/* Expenses Chart Container */}
               <div
                 style={{
                   background: "#fff",
@@ -6446,93 +7419,130 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
                   <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>
                     📂 Операционные расходы по счетам
                   </h3>
-                  <button
-                    onClick={() => setShowExpensesDetail(!showExpensesDetail)}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      background: "rgba(99, 102, 241, 0.08)",
-                      border: "none",
-                      color: "#4f46e5",
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {showExpensesDetail ? "Скрыть детали" : "Показать детали"}
-                  </button>
                 </div>
 
-                {showExpensesDetail ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <PieChart
+                    data={plData.expensesDetail}
+                    total={plData.expensesSum}
+                    revenue={plData.revenue}
+                  />
+
+                  {/* 
                   <div
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 12,
+                      height: 1,
+                      background: "#e2e8f0",
+                      margin: "8px 0",
                     }}
-                  >
-                    {plData.expensesDetail.length > 0 ? (
-                      plData.expensesDetail.map((exp, idx) => {
-                        const maxVal = plData.expensesDetail[0].amount || 1;
-                        const pctOfMax = (exp.amount / maxVal) * 100;
-                        return (
-                          <div key={idx} style={{ padding: "8px 0" }}>
+                  />
+                  {plData.expensesDetail.length > 0 ? (
+                    plData.expensesDetail.map((exp, idx) => {
+                      const pctOfTotalExpenses = (
+                        (exp.amount / (plData.expensesSum || 1)) *
+                        100
+                      ).toFixed(1);
+                      const pctOfRevenue =
+                        plData.revenue > 0
+                          ? ((exp.amount / plData.revenue) * 100).toFixed(1)
+                          : "0.0";
+                      return (
+                        <div key={idx} style={{ padding: "8px 0" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 16,
+                              fontWeight: 700,
+                              marginBottom: 8,
+                              alignItems: "center",
+                            }}
+                          >
                             <div
                               style={{
                                 display: "flex",
-                                justifyContent: "space-between",
-                                fontSize: 13,
-                                fontWeight: 600,
-                                marginBottom: 4,
+                                gap: 10,
+                                flexWrap: "wrap",
+                                alignItems: "center",
                               }}
                             >
-                              <span>{exp.name}</span>
-                              <span style={{ color: "#ef4444" }}>
-                                {fmtPrice(exp.amount)}
+                              <span style={{ color: "#0f172a", fontWeight: 700 }}>{exp.name}</span>
+                              <span
+                                style={{
+                                  background: "rgba(99, 102, 241, 0.08)",
+                                  color: "#4f46e5",
+                                  padding: "3px 10px",
+                                  borderRadius: 6,
+                                  fontSize: "12.5px",
+                                  fontWeight: 700,
+                                  letterSpacing: "0.2px",
+                                }}
+                              >
+                                {pctOfTotalExpenses}% от расходов
                               </span>
+                              {plData.revenue > 0 && (
+                                <span
+                                  style={{
+                                    background: "rgba(16, 185, 129, 0.08)",
+                                    color: "#10b981",
+                                    padding: "3px 10px",
+                                    borderRadius: 6,
+                                    fontSize: "12.5px",
+                                    fontWeight: 700,
+                                    letterSpacing: "0.2px",
+                                  }}
+                                >
+                                  {pctOfRevenue}% от выручки
+                                </span>
+                              )}
                             </div>
+                            <span style={{ color: "#ef4444", flexShrink: 0, fontWeight: 800, fontSize: 16 }}>
+                              {fmtPrice(exp.amount)}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: 6,
+                              borderRadius: 3,
+                              background: "#f1f5f9",
+                              overflow: "hidden",
+                            }}
+                          >
                             <div
                               style={{
-                                width: "100%",
-                                height: 6,
+                                height: "100%",
                                 borderRadius: 3,
-                                background: "#f1f5f9",
-                                overflow: "hidden",
+                                background: "#ef4444",
+                                width: `${pctOfTotalExpenses}%`,
+                                transition: "width .5s ease",
                               }}
-                            >
-                              <div
-                                style={{
-                                  height: "100%",
-                                  borderRadius: 3,
-                                  background: "#ef4444",
-                                  width: `${pctOfMax}%`,
-                                  transition: "width .5s ease",
-                                }}
-                              />
-                            </div>
+                            />
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div
-                        style={{
-                          fontStyle: "italic",
-                          color: "#64748b",
-                          fontSize: 13,
-                          textAlign: "center",
-                          padding: "20px 0",
-                        }}
-                      >
-                        Расходы отсутствуют за выбранный период.
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: "#64748b" }}>
-                    Нажмите «Показать детали» для просмотра детализации расходов
-                    по счетам.
-                  </div>
-                )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div
+                      style={{
+                        fontStyle: "italic",
+                        color: "#64748b",
+                        fontSize: 13,
+                        textAlign: "center",
+                        padding: "20px 0",
+                      }}
+                    >
+                      Расходы отсутствуют за выбранный период.
+                    </div>
+                  )}
+                  */}
+                </div>
               </div>
             </div>
           ) : (

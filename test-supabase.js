@@ -1,7 +1,5 @@
 import fs from "fs";
-import path from "path";
 
-// Load environment variables from bot .env
 const botEnvPath = "/Users/asil/.gemini/antigravity/scratch/.env";
 const envVars = {};
 if (fs.existsSync(botEnvPath)) {

@@ -1,16 +1,22 @@
 {
-  "name": "lokmaco-web",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start -p ${PORT:-3000}"
-  },
-  "dependencies": {
-    "next": "^14.2.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "xml2js": "^0.6.2"
-  }
+	"name": "lokmaco-web",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "next dev",
+		"build": "next build",
+		"start": "next start -p ${PORT:-3000}"
+	},
+	"dependencies": {
+		"next": "^14.2.0",
+		"react": "^18.3.0",
+		"react-dom": "^18.3.0",
+		"xml2js": "^0.6.2"
+	},
+	"overrides": {
+		"postcss": "^8.5.15"
+	},
+	"devDependencies": {
+		"aislop": "^0.10.2"
+	}
 }

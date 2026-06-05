@@ -16,7 +16,7 @@ process.env.IIKO_SERVER = envVars["IIKO_SERVER"];
 process.env.IIKO_LOGIN = envVars["IIKO_LOGIN"];
 process.env.IIKO_PASSWORD = envVars["IIKO_PASSWORD"];
 
-const { withIikoSession, iikoGetJson, iikoGetRaw } = await import("./lib/iiko.js");
+const { withIikoSession, iikoGetJson: _iikoGetJson, iikoGetRaw } = await import("./lib/iiko.js");
 
 const endpoints = [
   "v2/entities/measurementUnits",
@@ -28,16 +28,14 @@ const endpoints = [
 async function probe() {
   await withIikoSession(async (token) => {
     for (const ep of endpoints) {
-      console.log(`Probing: /resto/api/${ep}...`);
       try {
         const raw = await iikoGetRaw(ep, token);
-        console.log(`  -> Status:`, raw ? "OK!" : "Failed");
+        console.error(`  -> Status:`, raw ? "OK!" : "Failed");
         if (raw) {
-          console.log(`  -> Content snippet:`, raw.slice(0, 500));
           return;
         }
       } catch (e) {
-        console.log(`  -> Error:`, e.message);
+        console.error(`  -> Error:`, e.message);
       }
     }
   });

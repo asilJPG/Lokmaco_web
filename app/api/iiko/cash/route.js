@@ -44,7 +44,6 @@ export async function POST(request) {
     // e.g. "2026-05-30" -> "2026-05-30T12:00:00+05:00"
     const createdAt = date ? `${date}T12:00:00+05:00` : null;
 
-    // Log to custom cash_reports table
     await createCashReport(user.tg_id, user.name, totalSales, iikoCash, diff, createdAt);
 
     // Detailed JSON for bot_actions
