@@ -1,4 +1,5 @@
 import { generateRegistrationOptions } from "@simplewebauthn/server";
+import { isoUint8Array } from "@simplewebauthn/server/helpers";
 import { getUserPasskeys } from "@/lib/supabase";
 import { cookies } from "next/headers";
 
@@ -10,8 +11,8 @@ export async function POST(request) {
     }
 
     const rpName = "Lokmaco Admin";
-    const url = new URL(request.url);
-    const rpID = url.hostname;
+    const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+    const rpID = hostHeader.split(":")[0] || "localhost";
 
     // Fetch existing keys to prevent registering same device twice
     const userKeys = await getUserPasskeys(user.id);
@@ -24,7 +25,7 @@ export async function POST(request) {
     const options = await generateRegistrationOptions({
       rpName,
       rpID,
-      userID: String(user.id),
+      userID: isoUint8Array.fromUTF8String(String(user.id)),
       userName: user.name || `User ${user.id}`,
       userDisplayName: user.name || `User ${user.id}`,
       attestationType: "none",

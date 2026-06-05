@@ -3,8 +3,8 @@ import { cookies } from "next/headers";
 
 export async function POST(request) {
   try {
-    const url = new URL(request.url);
-    const rpID = url.hostname;
+    const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+    const rpID = hostHeader.split(":")[0] || "localhost";
 
     const options = await generateAuthenticationOptions({
       rpID,

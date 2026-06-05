@@ -823,6 +823,8 @@ export default function LocmacoApp() {
   const [loginCode, setLoginCode] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [regOptions, setRegOptions] = useState(null);
+  const [loginOptions, setLoginOptions] = useState(null);
 
   const [tab, setTab] = useState("menu");
   const [products, setProducts] = useState([]);
@@ -833,6 +835,40 @@ export default function LocmacoApp() {
 
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const webAuthnRef = useRef(null);
+
+  useEffect(() => {
+    import("@simplewebauthn/browser")
+      .then((mod) => {
+        webAuthnRef.current = mod;
+      })
+      .catch((err) => console.error("Error preloading webauthn module:", err));
+  }, []);
+
+  // Pre-fetch WebAuthn options to satisfy iOS Safari's strict synchronous gesture rules
+  useEffect(() => {
+    if (loggedInUser && loggedInUser.id) {
+      API.getPasskeyRegisterOptions({
+        id: loggedInUser.id,
+        name: loggedInUser.name,
+      }).then((options) => {
+        if (!options.error) {
+          setRegOptions(options);
+        }
+      }).catch(err => console.error("Error prefetching register options:", err));
+    } else {
+      setRegOptions(null);
+    }
+  }, [loggedInUser]);
+
+  useEffect(() => {
+    API.getPasskeyLoginOptions().then((options) => {
+      if (!options.error) {
+        setLoginOptions(options);
+      }
+    }).catch(err => console.error("Error prefetching login options:", err));
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("user");
@@ -901,9 +937,11 @@ export default function LocmacoApp() {
       showToast("Вы должны быть авторизованы", "error");
       return;
     }
-    try {
-      showToast("Подготовка устройства...", "info");
-      const options = await API.getPasskeyRegisterOptions({
+    
+    let options = regOptions;
+    if (!options) {
+      showToast("Подготовка параметров устройства...", "info");
+      options = await API.getPasskeyRegisterOptions({
         id: loggedInUser.id,
         name: loggedInUser.name,
       });
@@ -912,20 +950,31 @@ export default function LocmacoApp() {
         showToast(options.error, "error");
         return;
       }
+    }
 
-      const { startRegistration } = await import("@simplewebauthn/browser");
-      const regResponse = await startRegistration(options);
+    try {
+      if (!webAuthnRef.current) {
+        showToast("Модуль биометрии еще загружается. Пожалуйста, подождите секунду и попробуйте снова.", "error");
+        return;
+      }
+
+      const regResponse = await webAuthnRef.current.startRegistration(options);
       const verifyRes = await API.verifyPasskeyRegister(regResponse);
 
       if (verifyRes && verifyRes.verified) {
         showToast("Устройство успешно привязано к FaceID/TouchID!");
+        // Refresh preloaded options
+        API.getPasskeyRegisterOptions({
+          id: loggedInUser.id,
+          name: loggedInUser.name,
+        }).then(setRegOptions).catch(() => {});
       } else {
         showToast(verifyRes?.error || "Ошибка привязки устройства", "error");
       }
     } catch (e) {
       console.error(e);
       if (e.name === "NotAllowedError") {
-        showToast("Регистрация отменена пользователем", "error");
+        showToast("Ошибка активации биометрии или регистрация отменена. Попробуйте еще раз.", "error");
       } else {
         showToast(`Биометрия не поддерживается или произошла ошибка: ${e.message}`, "error");
       }
@@ -936,16 +985,24 @@ export default function LocmacoApp() {
     try {
       setLoginLoading(true);
       setLoginError("");
-      const options = await API.getPasskeyLoginOptions();
+      
+      let options = loginOptions;
+      if (!options) {
+        options = await API.getPasskeyLoginOptions();
+        if (options.error) {
+          setLoginError(options.error);
+          setLoginLoading(false);
+          return;
+        }
+      }
 
-      if (options.error) {
-        setLoginError(options.error);
+      if (!webAuthnRef.current) {
+        setLoginError("Модуль биометрии еще загружается. Пожалуйста, подождите.");
         setLoginLoading(false);
         return;
       }
 
-      const { startAuthentication } = await import("@simplewebauthn/browser");
-      const authResponse = await startAuthentication(options);
+      const authResponse = await webAuthnRef.current.startAuthentication(options);
       const verifyRes = await API.verifyPasskeyLogin(authResponse);
 
       setLoginLoading(false);
@@ -956,15 +1013,19 @@ export default function LocmacoApp() {
         showToast(`Добро пожаловать, ${verifyRes.user.name}!`);
       } else {
         setLoginError(verifyRes?.error || "Ошибка проверки биометрии");
+        // Refresh preloaded options on failure
+        API.getPasskeyLoginOptions().then(setLoginOptions).catch(() => {});
       }
     } catch (e) {
       console.error(e);
       setLoginLoading(false);
       if (e.name === "NotAllowedError") {
-        setLoginError("Авторизация отменена пользователем");
+        setLoginError("Авторизация отменена пользователем или ошибка активации FaceID");
       } else {
         setLoginError(`Ошибка входа по биометрии: ${e.message}`);
       }
+      // Refresh preloaded options on failure
+      API.getPasskeyLoginOptions().then(setLoginOptions).catch(() => {});
     }
   };
 

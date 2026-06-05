@@ -12,9 +12,10 @@ export async function POST(request) {
       return Response.json({ error: "Login challenge expired or missing" }, { status: 400 });
     }
 
-    const url = new URL(request.url);
-    const rpID = url.hostname;
-    const origin = url.origin;
+    const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+    const rpID = hostHeader.split(":")[0] || "localhost";
+    const protoHeader = request.headers.get("x-forwarded-proto") || "http";
+    const origin = `${protoHeader}://${hostHeader}`;
 
     // The browser returns the credential ID in base64url or raw. We check body.id.
     const credentialId = body.id;
@@ -32,9 +33,9 @@ export async function POST(request) {
       expectedChallenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      authenticator: {
-        credentialID: Buffer.from(passkey.credential_id, "base64url"),
-        credentialPublicKey: publicKeyBuffer,
+      credential: {
+        id: passkey.credential_id,
+        publicKey: publicKeyBuffer,
         counter: passkey.counter,
       },
     });

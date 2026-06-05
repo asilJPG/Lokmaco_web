@@ -14,10 +14,10 @@ export async function POST(request) {
       return Response.json({ error: "Challenge expired or user session missing" }, { status: 400 });
     }
 
-    const url = new URL(request.url);
-    const rpID = url.hostname;
-    // For local dev over IP or verification
-    const origin = url.origin;
+    const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+    const rpID = hostHeader.split(":")[0] || "localhost";
+    const protoHeader = request.headers.get("x-forwarded-proto") || "http";
+    const origin = `${protoHeader}://${hostHeader}`;
 
     const verification = await verifyRegistrationResponse({
       response: body,
@@ -29,11 +29,12 @@ export async function POST(request) {
     const { verified, registrationInfo } = verification;
 
     if (verified && registrationInfo) {
-      const { credentialID, credentialPublicKey, counter } = registrationInfo;
+      const { credential } = registrationInfo;
+      const { id, publicKey, counter } = credential;
 
-      // Convert Uint8Array to Base64url or Base64 so we can store it in postgres text columns
-      const credIdBase64 = Buffer.from(credentialID).toString("base64url");
-      const pubKeyBase64 = Buffer.from(credentialPublicKey).toString("base64");
+      // Convert Uint8Array to Base64 so we can store it in postgres text columns
+      const credIdBase64 = id; // id is already a Base64URL string
+      const pubKeyBase64 = Buffer.from(publicKey).toString("base64");
 
       const saved = await saveUserPasskey(
         parseInt(userIdStr),

@@ -16,6 +16,7 @@ export async function POST(request) {
       return Response.json({
         success: true,
         user: {
+          id: user.id,
           tg_id: user.tg_id,
           name: user.name,
           role: user.role,
