@@ -871,7 +871,7 @@ export default function LocmacoApp() {
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem("user");
+    const saved = sessionStorage.getItem("user");
     if (saved) {
       try {
         const u = JSON.parse(saved);
@@ -883,7 +883,7 @@ export default function LocmacoApp() {
           storeId: storeId || null,
         });
       } catch (_e) {
-        localStorage.removeItem("user");
+        sessionStorage.removeItem("user");
       }
     }
   }, []);
@@ -1009,7 +1009,7 @@ export default function LocmacoApp() {
 
       if (verifyRes && verifyRes.verified && verifyRes.user) {
         setLoggedInUser(verifyRes.user);
-        localStorage.setItem("user", JSON.stringify(verifyRes.user));
+        sessionStorage.setItem("user", JSON.stringify(verifyRes.user));
         showToast(`Добро пожаловать, ${verifyRes.user.name}!`);
       } else {
         setLoginError(verifyRes?.error || "Ошибка проверки биометрии");
@@ -1089,7 +1089,7 @@ export default function LocmacoApp() {
           storeId: storeId || null,
         };
         setLoggedInUser(parsedUser);
-        localStorage.setItem("user", JSON.stringify(parsedUser));
+        sessionStorage.setItem("user", JSON.stringify(parsedUser));
       } else {
         setLoginError(res?.error || "Неверный код доступа");
         setLoginCode(""); // Clear pin so they can re-type immediately
@@ -1485,7 +1485,7 @@ export default function LocmacoApp() {
             </button>
             <button
               onClick={() => {
-                localStorage.removeItem("user");
+                sessionStorage.removeItem("user");
                 setLoggedInUser(null);
                 setLoginCode("");
               }}
