@@ -1074,6 +1074,7 @@ export default function LocmacoApp() {
     prep_chef: "Смесь-повар",
     bar: "Бармен",
     cashier: "Кассир",
+    manager: "Менеджер",
   };
 
   const hasAccess = (role, tabId) => {
@@ -1092,7 +1093,7 @@ export default function LocmacoApp() {
       case "cash":
         return role === "cashier";
       case "analytics":
-        return role === "director";
+        return ["director", "manager"].includes(role);
       case "balances":
         return true;
       default:
@@ -1948,6 +1949,7 @@ export default function LocmacoApp() {
             history={history}
             historyLoading={historyLoading}
             loadHistory={loadHistory}
+            loggedInUser={loggedInUser}
           />
         )}
         {tab === "employees" && (
@@ -5079,6 +5081,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       prep_chef: "Смесь-повар",
       bar: "Бармен",
       cashier: "Кассир",
+      manager: "Менеджер",
     };
     return labels[base] || base;
   };
@@ -5093,6 +5096,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       prep_chef: { bg: "#ffedd5", text: "#ea580c" }, // orange
       bar: { bg: "#ecfdf5", text: "#059669" }, // emerald
       cashier: { bg: "#fef9c3", text: "#ca8a04" }, // yellow
+      manager: { bg: "#fef3c7", text: "#d97706" }, // amber
     };
     return colors[base] || { bg: "#f1f5f9", text: "#475569" };
   };
@@ -5391,6 +5395,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
             >
               <option value="admin">Администратор (Полный доступ)</option>
               <option value="director">Руководитель (Только аналитика)</option>
+              <option value="manager">Менеджер (Топ продаж и официанты)</option>
               <option value="supplier">Снабженец</option>
               <option value="kitchen">Шеф-повар</option>
               <option value="prep_chef">Смесь-повар</option>
@@ -7071,8 +7076,9 @@ const storeBtn = {
 //  ANALYTICS VIEW — P&L + Касса + Топ продаж
 // ═══════════════════════════════════════════════════════════════
 
-function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
-  const [subTab, setSubTab] = useState("pl");
+function AnalyticsView({ showToast, history, historyLoading, loadHistory, loggedInUser }) {
+  const isManager = loggedInUser?.baseRole === "manager";
+  const [subTab, setSubTab] = useState(isManager ? "top" : "pl");
   const [loading, setLoading] = useState(false);
 
   // Date ranges
@@ -7312,7 +7318,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory }) {
             grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
             text: "#0369a1",
           },
-        ].map((sub) => (
+        ].filter((sub) => !isManager || (sub.id !== "pl" && sub.id !== "cash")).map((sub) => (
           <button
             key={sub.id}
             onClick={() => setSubTab(sub.id)}

@@ -4,6 +4,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   try {
+    const requesterRole = request.headers.get("x-user-role") || "";
+    const [baseRole] = requesterRole.split(":");
+    if (!["admin", "director"].includes(baseRole)) {
+      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const dateFrom = searchParams.get("from");
     const dateTo = searchParams.get("to");
