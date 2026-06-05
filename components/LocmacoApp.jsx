@@ -1062,7 +1062,7 @@ export default function LocmacoApp() {
     { id: "production", label: "Приготовление", icon: I.cooking },
     { id: "balances", label: "Остатки", icon: I.box },
     { id: "cash", label: "Касса", icon: I.cash },
-    { id: "analytics", label: "Аналитика", icon: I.analytics },
+    { id: "analytics", label: loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика", icon: I.analytics },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1809,14 +1809,18 @@ export default function LocmacoApp() {
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>
+                    {loggedInUser?.baseRole === "manager" ? "📈" : "📊"}
+                  </div>
                   <div
                     style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
                   >
-                    Аналитика
+                    {loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика"}
                   </div>
                   <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    P&L отчет, кассовая выручка и лидеры продаж
+                    {loggedInUser?.baseRole === "manager"
+                      ? "Лидеры продаж и статистика официантов"
+                      : "P&L отчет, кассовая выручка и лидеры продаж"}
                   </div>
                 </button>
               )}
@@ -5096,7 +5100,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       prep_chef: { bg: "#ffedd5", text: "#ea580c" }, // orange
       bar: { bg: "#ecfdf5", text: "#059669" }, // emerald
       cashier: { bg: "#fef9c3", text: "#ca8a04" }, // yellow
-      manager: { bg: "#fef3c7", text: "#d97706" }, // amber
+      manager: { bg: "#ccfbf1", text: "#0f766e" }, // teal
     };
     return colors[base] || { bg: "#f1f5f9", text: "#475569" };
   };
