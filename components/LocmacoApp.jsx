@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "КПК" },
@@ -143,6 +144,18 @@ const API = {
   },
   login(code) {
     return this.post("/login", { code });
+  },
+  getPasskeyRegisterOptions(user) {
+    return this.post("/auth/passkey/register/options", { user });
+  },
+  verifyPasskeyRegister(body) {
+    return this.post("/auth/passkey/register/verify", body);
+  },
+  getPasskeyLoginOptions() {
+    return this.post("/auth/passkey/login/options", {});
+  },
+  verifyPasskeyLogin(body) {
+    return this.post("/auth/passkey/login/verify", body);
   },
 };
 
@@ -884,6 +897,76 @@ export default function LocmacoApp() {
     setTimeout(() => setToast(null), 2500);
   };
 
+  const handleRegisterPasskey = async () => {
+    if (!loggedInUser) {
+      showToast("Вы должны быть авторизованы", "error");
+      return;
+    }
+    try {
+      showToast("Подготовка устройства...", "info");
+      const options = await API.getPasskeyRegisterOptions({
+        id: loggedInUser.id,
+        name: loggedInUser.name,
+      });
+
+      if (options.error) {
+        showToast(options.error, "error");
+        return;
+      }
+
+      const regResponse = await startRegistration(options);
+      const verifyRes = await API.verifyPasskeyRegister(regResponse);
+
+      if (verifyRes && verifyRes.verified) {
+        showToast("Устройство успешно привязано к FaceID/TouchID!");
+      } else {
+        showToast(verifyRes?.error || "Ошибка привязки устройства", "error");
+      }
+    } catch (e) {
+      console.error(e);
+      if (e.name === "NotAllowedError") {
+        showToast("Регистрация отменена пользователем", "error");
+      } else {
+        showToast(`Биометрия не поддерживается или произошла ошибка: ${e.message}`, "error");
+      }
+    }
+  };
+
+  const handleLoginPasskey = async () => {
+    try {
+      setLoginLoading(true);
+      setLoginError("");
+      const options = await API.getPasskeyLoginOptions();
+
+      if (options.error) {
+        setLoginError(options.error);
+        setLoginLoading(false);
+        return;
+      }
+
+      const authResponse = await startAuthentication(options);
+      const verifyRes = await API.verifyPasskeyLogin(authResponse);
+
+      setLoginLoading(false);
+
+      if (verifyRes && verifyRes.verified && verifyRes.user) {
+        setLoggedInUser(verifyRes.user);
+        localStorage.setItem("user", JSON.stringify(verifyRes.user));
+        showToast(`Добро пожаловать, ${verifyRes.user.name}!`);
+      } else {
+        setLoginError(verifyRes?.error || "Ошибка проверки биометрии");
+      }
+    } catch (e) {
+      console.error(e);
+      setLoginLoading(false);
+      if (e.name === "NotAllowedError") {
+        setLoginError("Авторизация отменена пользователем");
+      } else {
+        setLoginError(`Ошибка входа по биометрии: ${e.message}`);
+      }
+    }
+  };
+
   const tabs = [
     { id: "incoming", label: "Приход", icon: I.inbox },
     { id: "transfer", label: "Перемещение", icon: I.transfer },
@@ -1177,6 +1260,31 @@ export default function LocmacoApp() {
                 {loginLoading ? I.loader : "Войти"}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleLoginPasskey}
+              disabled={loginLoading}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 16,
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                transition: "all 0.15s ease",
+                marginTop: 10,
+              }}
+              className="pin-btn"
+            >
+              <span>🔑</span> Войти по FaceID / TouchID
+            </button>
           </form>
         </div>
       </div>
@@ -1293,6 +1401,26 @@ export default function LocmacoApp() {
                 })()}
               </div>
             </div>
+            <button
+              onClick={handleRegisterPasskey}
+              style={{
+                background: "rgba(99, 102, 241, 0.12)",
+                border: "1px solid rgba(99, 102, 241, 0.25)",
+                borderRadius: 8,
+                padding: "6px 10px",
+                color: "#818cf8",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                transition: "all 0.15s ease",
+              }}
+              title="Привязать FaceID/TouchID"
+            >
+              <span>🔑</span> Привязать FaceID
+            </button>
             <button
               onClick={() => {
                 localStorage.removeItem("user");

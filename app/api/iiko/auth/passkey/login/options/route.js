@@ -1,0 +1,27 @@
+import { generateAuthenticationOptions } from "@simplewebauthn/server";
+import { cookies } from "next/headers";
+
+export async function POST(request) {
+  try {
+    const url = new URL(request.url);
+    const rpID = url.hostname;
+
+    const options = await generateAuthenticationOptions({
+      rpID,
+      userVerification: "preferred",
+    });
+
+    // Save challenge in cookies
+    cookies().set("login_challenge", options.challenge, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 300,
+      path: "/",
+    });
+
+    return Response.json(options);
+  } catch (e) {
+    console.error("[Passkey Login Options]", e.message);
+    return Response.json({ error: e.message }, { status: 500 });
+  }
+}
