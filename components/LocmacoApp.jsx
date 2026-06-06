@@ -4037,7 +4037,9 @@ function TransferView({
       </div>
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {(pendingTransfers.incoming.length > 0 || pendingTransfers.returned.length > 0) && (
+          {(pendingTransfers.incoming.length > 0 ||
+            pendingTransfers.returned.length > 0 ||
+            pendingTransfers.outgoing.length > 0) && (
             <div
               style={{
                 background: "rgba(255, 255, 255, 0.45)",
@@ -4072,7 +4074,9 @@ function TransferView({
                     lineHeight: 1.2,
                   }}
                 >
-                  {pendingTransfers.incoming.length + pendingTransfers.returned.length}
+                  {pendingTransfers.incoming.length +
+                    pendingTransfers.returned.length +
+                    pendingTransfers.outgoing.length}
                 </span>
               </h3>
 
