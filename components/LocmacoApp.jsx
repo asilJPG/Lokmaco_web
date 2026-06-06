@@ -1204,6 +1204,7 @@ export default function LocmacoApp() {
     bar: "Бармен",
     cashier: "Кассир",
     manager: "Менеджер",
+    hall: "Зал",
   };
 
   const hasAccess = (role, tabId) => {
@@ -1212,7 +1213,7 @@ export default function LocmacoApp() {
       case "incoming":
         return role === "supplier";
       case "transfer":
-        return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
+        return ["kitchen", "prep_chef", "bar", "supplier", "hall"].includes(role);
       case "inventory":
         return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
       case "production":
@@ -5997,7 +5998,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
   }, [subTab]);
 
   const isStoreDependent = (role) => {
-    return ["supplier", "kitchen", "prep_chef", "bar"].includes(role);
+    return ["supplier", "kitchen", "prep_chef", "bar", "hall"].includes(role);
   };
 
   const getRoleLabel = (roleStr) => {
@@ -6011,6 +6012,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       bar: "Бармен",
       cashier: "Кассир",
       manager: "Менеджер",
+      hall: "Зал",
     };
     return labels[base] || base;
   };
@@ -6026,6 +6028,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       bar: { bg: "#ecfdf5", text: "#059669" }, // emerald
       cashier: { bg: "#fef9c3", text: "#ca8a04" }, // yellow
       manager: { bg: "#ccfbf1", text: "#0f766e" }, // teal
+      hall: { bg: "#f0fdf4", text: "#15803d" }, // green for hall
     };
     return colors[base] || { bg: "#f1f5f9", text: "#475569" };
   };
@@ -6598,6 +6601,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               <option value="prep_chef">Смесь-повар</option>
               <option value="bar">Бармен</option>
               <option value="cashier">Кассир</option>
+              <option value="hall">Зал</option>
             </select>
           </div>
 

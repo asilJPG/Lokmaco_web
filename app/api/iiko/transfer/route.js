@@ -96,7 +96,7 @@ export async function POST(request) {
     } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
-    const allowedRoles = ["admin", "director", "supplier", "kitchen", "prep_chef", "bar"];
+    const allowedRoles = ["admin", "director", "supplier", "kitchen", "prep_chef", "bar", "hall"];
     if (!allowedRoles.includes(baseRole)) {
       return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
     }
