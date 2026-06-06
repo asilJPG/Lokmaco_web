@@ -419,6 +419,37 @@ const I = {
       <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
     </svg>
   ),
+  home: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  ),
+  more: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="6" cy="12" r="1.5" />
+      <circle cx="18" cy="12" r="1.5" />
+    </svg>
+  ),
 };
 
 function PieChart({ data, total, revenue }) {
@@ -557,7 +588,7 @@ function PieChart({ data, total, revenue }) {
           </defs>
 
           {/* Central Backdrop for Donut text */}
-          <circle cx={CX} cy={CY} r={R_inner - 2} fill="#ffffff" filter="url(#shadow)" />
+          <circle cx={CX} cy={CY} r={R_inner - 2} fill="var(--bg-card, #ffffff)" filter="url(#shadow)" />
 
           {/* Render Donut Slices */}
           {segments.map((seg, idx) => {
@@ -651,7 +682,7 @@ function PieChart({ data, total, revenue }) {
                 x={CX}
                 y={CY - 15}
                 textAnchor="middle"
-                fill="#64748b"
+                fill="var(--text-muted)"
                 style={{
                   fontSize: "14px",
                   fontWeight: 600,
@@ -665,7 +696,7 @@ function PieChart({ data, total, revenue }) {
                 x={CX}
                 y={CY + 20}
                 textAnchor="middle"
-                fill="#0f172a"
+                fill="var(--text-main)"
                 style={{
                   fontSize: "24px",
                   fontWeight: 800,
@@ -680,7 +711,7 @@ function PieChart({ data, total, revenue }) {
                 x={CX}
                 y={CY - 35}
                 textAnchor="middle"
-                fill="#64748b"
+                fill="var(--text-muted)"
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
@@ -708,7 +739,7 @@ function PieChart({ data, total, revenue }) {
                 x={CX}
                 y={CY + 30}
                 textAnchor="middle"
-                fill="#0f172a"
+                fill="var(--text-main)"
                 style={{
                   fontSize: "22px",
                   fontWeight: 800,
@@ -720,7 +751,7 @@ function PieChart({ data, total, revenue }) {
                 x={CX}
                 y={CY + 55}
                 textAnchor="middle"
-                fill="#64748b"
+                fill="var(--text-muted)"
                 style={{
                   fontSize: "14px",
                   fontWeight: 700,
@@ -758,10 +789,10 @@ function PieChart({ data, total, revenue }) {
                 justifyContent: "space-between",
                 padding: "10px 14px",
                 borderRadius: "12px",
-                background: isHovered ? "rgba(99, 102, 241, 0.05)" : "transparent",
+                background: isHovered ? "var(--color-primary-glow)" : "transparent",
                 border: isHovered
-                  ? "1px solid rgba(99, 102, 241, 0.15)"
-                  : "1px solid rgba(226, 232, 240, 0.5)",
+                  ? "1px solid var(--color-primary)"
+                  : "1px solid var(--border-color)",
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -780,7 +811,7 @@ function PieChart({ data, total, revenue }) {
                   style={{
                     fontSize: "13.5px",
                     fontWeight: isHovered ? 700 : 500,
-                    color: isHovered ? "#4f46e5" : "#1e293b",
+                    color: isHovered ? "var(--color-primary)" : "var(--text-main)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -794,7 +825,7 @@ function PieChart({ data, total, revenue }) {
                   style={{
                     fontSize: "14px",
                     fontWeight: 800,
-                    color: "#0f172a",
+                    color: "var(--text-main)",
                     display: "block",
                   }}
                 >
@@ -804,7 +835,7 @@ function PieChart({ data, total, revenue }) {
                   style={{
                     fontSize: "11px",
                     fontWeight: 600,
-                    color: "#64748b",
+                    color: "var(--text-muted)",
                   }}
                 >
                   {seg.percentage.toFixed(1)}%
@@ -825,6 +856,31 @@ export default function LocmacoApp() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [regOptions, setRegOptions] = useState(null);
   const [loginOptions, setLoginOptions] = useState(null);
+
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("locmaco_theme");
+    if (savedTheme === "dark") {
+      setDarkMode(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add("dark-theme");
+    } else {
+      document.body.classList.remove("dark-theme");
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("locmaco_theme", next ? "dark" : "light");
+      return next;
+    });
+  };
 
   const [tab, setTab] = useState("menu");
   const [products, setProducts] = useState([]);
@@ -1149,16 +1205,16 @@ export default function LocmacoApp() {
     };
 
     const pinBtn = {
-      background: "rgba(255, 255, 255, 0.05)",
-      border: "1px solid rgba(255, 255, 255, 0.1)",
-      borderRadius: 16,
+      background: "var(--bg-card)",
+      border: "1px solid var(--border-color)",
+      borderRadius: 12,
       height: 55,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       fontSize: 20,
-      fontWeight: 700,
-      color: "#fff",
+      fontWeight: 600,
+      color: "var(--text-main)",
       cursor: "pointer",
       transition: "all 0.15s ease",
       outline: "none",
@@ -1167,14 +1223,15 @@ export default function LocmacoApp() {
     return (
       <div
         style={{
-          fontFamily: "'DM Sans','Segoe UI',system-ui,sans-serif",
+          fontFamily: "Inter, system-ui, -apple-system, sans-serif",
           minHeight: "100vh",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
-          color: "#fff",
+          background: "var(--bg-app)",
+          color: "var(--text-main)",
           padding: "20px",
+          transition: "background-color 0.25s, color 0.25s",
         }}
       >
         <style>{`
@@ -1187,41 +1244,123 @@ export default function LocmacoApp() {
           }
           .pin-btn:active {
             transform: scale(0.95);
-            background: rgba(255, 255, 255, 0.2) !important;
+            background: var(--bg-hover) !important;
           }
           .pin-btn:hover {
-            background: rgba(255, 255, 255, 0.1) !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
+            background: var(--bg-hover) !important;
+            border-color: var(--border-color) !important;
+          }
+          .submit-btn {
+            transition: all 0.2s ease !important;
+          }
+          .submit-btn:hover {
+            opacity: 0.9 !important;
+            transform: scale(0.98) !important;
+          }
+          .submit-btn:active {
+            transform: scale(0.95) !important;
+          }
+          .passkey-btn {
+            transition: all 0.2s ease !important;
+          }
+          .passkey-btn:hover {
+            background: var(--bg-hover) !important;
+            border-color: var(--border-color) !important;
+          }
+          .passkey-btn:active {
+            transform: scale(0.98) !important;
           }
         `}</style>
+
+        {/* Floating Theme Selector */}
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            zIndex: 150,
+          }}
+        >
+          <button
+            onClick={toggleDarkMode}
+            style={{
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "50%",
+              width: 40,
+              height: 40,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              color: darkMode ? "#fbbf24" : "#4b5563",
+              transition: "all 0.2s",
+            }}
+            title={darkMode ? "Светлая тема" : "Темная тема"}
+          >
+            {darkMode ? (
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                viewBox="0 0 24 24"
+              >
+                <circle cx="12" cy="12" r="5" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              </svg>
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                viewBox="0 0 24 24"
+              >
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         <div
           style={{
             maxWidth: 400,
             width: "100%",
-            background: "rgba(30, 41, 59, 0.7)",
-            backdropFilter: "blur(16px)",
+            background: "var(--bg-card)",
             borderRadius: 24,
-            border: "1px solid rgba(255, 255, 255, 0.1)",
+            border: "1px solid var(--border-color)",
             padding: "40px 30px",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+            boxShadow: darkMode
+              ? "0 8px 32px rgba(0, 0, 0, 0.4)"
+              : "0 8px 32px rgba(0, 0, 0, 0.04)",
             textAlign: "center",
+            transition: "background-color 0.25s, border-color 0.25s, box-shadow 0.25s",
           }}
         >
           <div
             style={{
               width: 60,
               height: 60,
-              borderRadius: 18,
-              background: "linear-gradient(135deg,#22d3ee,#818cf8)",
+              borderRadius: 16,
+              background: darkMode ? "#ffffff" : "#09090b",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 800,
               fontSize: 24,
-              color: "#fff",
-              margin: "0 auto 20px",
-              boxShadow: "0 8px 16px rgba(129, 140, 248, 0.3)",
+              color: darkMode ? "#09090b" : "#ffffff",
+              margin: "0 auto 24px",
+              border: "1px solid var(--border-color)",
+              boxShadow: darkMode ? "0 4px 12px rgba(255, 255, 255, 0.05)" : "0 4px 12px rgba(0, 0, 0, 0.05)",
+              transition: "all 0.25s ease",
             }}
           >
             L
@@ -1236,7 +1375,7 @@ export default function LocmacoApp() {
           >
             The Lokmaco
           </h2>
-          <p style={{ margin: "0 0 32px", fontSize: 13, color: "#94a3b8" }}>
+          <p style={{ margin: "0 0 32px", fontSize: 13, color: "var(--text-muted)" }}>
             Введите 4-значный пин-код доступа
           </p>
 
@@ -1249,37 +1388,40 @@ export default function LocmacoApp() {
                 marginBottom: 32,
               }}
             >
-              {[0, 1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 50,
-                    height: 50,
-                    borderRadius: 14,
-                    border: loginCode[i]
-                      ? "2px solid #818cf8"
-                      : "2px solid rgba(255,255,255,0.15)",
-                    background: loginCode[i]
-                      ? "rgba(129, 140, 248, 0.15)"
-                      : "transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 24,
-                    fontWeight: 700,
-                    color: "#fff",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  {loginCode[i] ? "•" : ""}
-                </div>
-              ))}
+              {[0, 1, 2, 3].map((i) => {
+                const isFilled = loginCode[i] !== undefined;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 12,
+                      border: isFilled
+                        ? "1.5px solid var(--text-main)"
+                        : "1.5px solid var(--border-color)",
+                      background: isFilled
+                        ? "var(--bg-hover)"
+                        : "var(--bg-input)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 26,
+                      fontWeight: 700,
+                      color: "var(--text-main)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {isFilled ? "•" : ""}
+                  </div>
+                );
+              })}
             </div>
 
             {loginError && (
               <div
                 style={{
-                  color: "#f87171",
+                  color: "var(--text-danger)",
                   fontSize: 13,
                   fontWeight: 500,
                   marginBottom: 20,
@@ -1319,7 +1461,7 @@ export default function LocmacoApp() {
                   ...pinBtn,
                   fontSize: 14,
                   fontWeight: 500,
-                  color: "#94a3b8",
+                  color: "var(--text-muted)",
                 }}
               >
                 Стереть
@@ -1335,15 +1477,15 @@ export default function LocmacoApp() {
               <button
                 type="submit"
                 disabled={loginLoading}
-                className="pin-btn"
+                className="submit-btn"
                 style={{
                   ...pinBtn,
-                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                  color: "#fff",
-                  fontSize: 13,
+                  background: "var(--text-main)",
+                  color: "var(--bg-card)",
+                  fontSize: 14,
                   fontWeight: 700,
                   border: "none",
-                  boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)",
+                  boxShadow: darkMode ? "0 4px 12px rgba(255, 255, 255, 0.05)" : "0 4px 12px rgba(0, 0, 0, 0.05)",
                 }}
               >
                 {loginLoading ? I.loader : "Войти"}
@@ -1355,11 +1497,11 @@ export default function LocmacoApp() {
               disabled={loginLoading}
               style={{
                 width: "100%",
-                padding: "12px 16px",
-                borderRadius: 16,
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                background: "rgba(255, 255, 255, 0.05)",
-                color: "#fff",
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-input)",
+                color: "var(--text-main)",
                 fontSize: 14,
                 fontWeight: 600,
                 cursor: "pointer",
@@ -1369,10 +1511,24 @@ export default function LocmacoApp() {
                 gap: 8,
                 transition: "all 0.15s ease",
                 marginTop: 10,
+                outline: "none",
               }}
-              className="pin-btn"
+              className="passkey-btn"
             >
-              <span>🔑</span> Войти по FaceID / TouchID
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                viewBox="0 0 24 24"
+                style={{ color: "var(--text-main)" }}
+              >
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+              </svg>
+              Войти по FaceID / TouchID
             </button>
           </form>
         </div>
@@ -1380,31 +1536,123 @@ export default function LocmacoApp() {
     );
   }
 
+  // Mobile navigation helper logic
+  const allowedTabs = tabs.filter((t) => hasAccess(loggedInUser.baseRole, t.id));
+  const showMore = allowedTabs.length > 4;
+  const mobileNavItems = [];
+  
+  mobileNavItems.push({
+    id: "menu",
+    label: "Меню",
+    icon: I.home
+  });
+
+  const maxTabsToShow = showMore ? 3 : 4;
+  for (let i = 0; i < Math.min(allowedTabs.length, maxTabsToShow); i++) {
+    mobileNavItems.push(allowedTabs[i]);
+  }
+
+  if (showMore) {
+    mobileNavItems.push({
+      id: "more",
+      label: "Еще",
+      icon: I.more,
+      onClick: () => setTab("menu")
+    });
+  }
+
+  const isItemActive = (item) => {
+    if (item.id === "menu") return tab === "menu";
+    if (item.id === "more") {
+      return tab !== "menu" && !mobileNavItems.slice(0, -1).some(x => x.id === tab);
+    }
+    return tab === item.id;
+  };
+
   return (
     <div
+      className={darkMode ? "dark-theme" : ""}
       style={{
         fontFamily: "'DM Sans','Segoe UI',system-ui,sans-serif",
         minHeight: "100vh",
-        background: "#f5f7fa",
-        color: "#0f1729",
+        background: "var(--bg-app)",
+        color: "var(--text-main)",
+        transition: "background 0.25s ease, color 0.25s ease",
       }}
     >
       <style>{`
+        :root {
+          --bg-app: #f9fafb;
+          --bg-card: #ffffff;
+          --bg-header: #ffffff;
+          --text-main: #111827;
+          --text-muted: #4b5563;
+          --border-color: #e5e7eb;
+          --bg-input: #ffffff;
+          --bg-hover: #f3f4f6;
+          --bg-pill: #f3f4f6;
+          --text-pill: #4b5563;
+          --color-primary: #2563eb;
+          --color-primary-glow: rgba(37, 99, 235, 0.1);
+          --bg-status-success: #d1fae5;
+          --text-status-success: #065f46;
+          --bg-status-neutral: #f3f4f6;
+          --text-status-neutral: #4b5563;
+          --text-success: #166534;
+          --text-danger: #991b1b;
+        }
+
+        .dark-theme {
+          --bg-app: #09090b;
+          --bg-card: #18181b;
+          --bg-header: #18181b;
+          --text-main: #ffffff;
+          --text-muted: #a1a1aa;
+          --border-color: #27272a;
+          --bg-input: #18181b;
+          --bg-hover: #27272a;
+          --bg-pill: #27272a;
+          --text-pill: #ffffff;
+          --color-primary: #3b82f6;
+          --color-primary-glow: rgba(59, 130, 246, 0.15);
+          --bg-status-success: rgba(16, 185, 129, 0.15);
+          --text-status-success: #34d399;
+          --bg-status-neutral: #27272a;
+          --text-status-neutral: #cbd5e1;
+          --text-success: #34d399;
+          --text-danger: #f87171;
+        }
+
+        body.dark-theme {
+          background-color: #09090b !important;
+          color: #ffffff !important;
+        }
+
         @keyframes spin { 100% { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fadeUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        @keyframes toastProgress { from { width: 100%; } to { width: 0%; } }
+        @keyframes slideLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        
+        .mobile-nav {
+          display: none !important;
+        }
+        
         @media (max-width: 767px) {
           .desktop-nav {
             display: none !important;
+          }
+          .mobile-nav {
+            display: flex !important;
           }
         }
         .dashboard-card {
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         .dashboard-card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 16px 30px rgba(0, 0, 0, 0.15) !important;
-          filter: brightness(1.05);
+          transform: translateY(-2px);
+          border-color: var(--color-primary) !important;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
         }
         .dashboard-card:active {
           transform: translateY(0);
@@ -1413,7 +1661,8 @@ export default function LocmacoApp() {
 
       <header
         style={{
-          background: "#0f1729",
+          background: "var(--bg-header)",
+          borderBottom: "1px solid var(--border-color)",
           position: "sticky",
           top: 0,
           zIndex: 100,
@@ -1436,7 +1685,7 @@ export default function LocmacoApp() {
                 width: 34,
                 height: 34,
                 borderRadius: 9,
-                background: "linear-gradient(135deg,#22d3ee,#818cf8)",
+                background: "linear-gradient(135deg,#2563eb,#818cf8)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1448,12 +1697,12 @@ export default function LocmacoApp() {
               L
             </div>
             <div>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
+              <div style={{ color: "var(--text-main)", fontWeight: 700, fontSize: 15 }}>
                 The Lokmaco
               </div>
               <div
                 style={{
-                  color: "#64748b",
+                  color: "var(--text-muted)",
                   fontSize: 10,
                   letterSpacing: 0.6,
                   textTransform: "uppercase",
@@ -1466,12 +1715,12 @@ export default function LocmacoApp() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>
+              <div style={{ color: "var(--text-main)", fontWeight: 600, fontSize: 13 }}>
                 {loggedInUser.name}
               </div>
               <div
                 style={{
-                  color: "#64748b",
+                  color: "var(--text-muted)",
                   fontSize: 10,
                   textTransform: "uppercase",
                   letterSpacing: 0.5,
@@ -1509,6 +1758,51 @@ export default function LocmacoApp() {
               title="Привязать FaceID/TouchID"
             >
               <span>🔑</span> Привязать FaceID
+            </button>
+            <button
+              onClick={toggleDarkMode}
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: 8,
+                padding: "6px",
+                color: darkMode ? "#fbbf24" : "#94a3b8",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s ease",
+              }}
+              title={darkMode ? "Светлая тема" : "Темная тема"}
+            >
+              {darkMode ? (
+                <svg
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="12" cy="12" r="5" />
+                  <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+              ) : (
+                <svg
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
             </button>
             <button
               onClick={() => {
@@ -1551,8 +1845,8 @@ export default function LocmacoApp() {
       <nav
         className="desktop-nav"
         style={{
-          background: "#fff",
-          borderBottom: "1px solid #e5e8ee",
+          background: "var(--bg-card)",
+          borderBottom: "1px solid var(--border-color)",
           position: "sticky",
           top: 60,
           zIndex: 90,
@@ -1583,10 +1877,10 @@ export default function LocmacoApp() {
                   cursor: "pointer",
                   fontSize: 13,
                   fontWeight: tab === t.id ? 700 : 500,
-                  color: tab === t.id ? "#6366f1" : "#64748b",
+                  color: tab === t.id ? "var(--color-primary)" : "var(--text-muted)",
                   borderBottom:
                     tab === t.id
-                      ? "2px solid #6366f1"
+                      ? "2px solid var(--color-primary)"
                       : "2px solid transparent",
                 }}
               >
@@ -1609,8 +1903,8 @@ export default function LocmacoApp() {
               gap: 8,
               padding: "10px 18px",
               borderRadius: 12,
-              background: "#fff",
-              border: "1px solid #e2e8f0",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-color)",
               fontSize: 13,
               fontWeight: 700,
               color: "#6366f1",
@@ -1633,7 +1927,7 @@ export default function LocmacoApp() {
               style={{
                 fontSize: 22,
                 fontWeight: 800,
-                color: "#1e293b",
+                color: "var(--text-main)",
                 marginBottom: 24,
                 letterSpacing: "-0.5px",
               }}
@@ -1653,25 +1947,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📥</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Приход накладных
+                    📥
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Оформление новых поставок товаров в iiko
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Приход накладных
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Оформление новых поставок товаров в iiko
+                    </div>
                   </div>
                 </button>
               )}
@@ -1682,25 +1994,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(6, 182, 212, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>🔁</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Перемещение
+                    🔁
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Внутреннее перемещение продуктов между складами
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Перемещение
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Внутреннее перемещение продуктов между складами
+                    </div>
                   </div>
                 </button>
               )}
@@ -1711,25 +2041,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(124, 58, 237, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Инвентаризация
+                    📋
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Фактический пересчет остатков с автосохранением
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Инвентаризация
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Фактический пересчет остатков с автосохранением
+                    </div>
                   </div>
                 </button>
               )}
@@ -1740,25 +2088,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #f97316 0%, #d97706 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(249, 115, 22, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>🍳</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Приготовление заготовок
+                    🍳
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Акт приготовления готовых заготовок/смесей в iiko
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Приготовление заготовок
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Акт приготовления готовых заготовок/смесей в iiko
+                    </div>
                   </div>
                 </button>
               )}
@@ -1769,25 +2135,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(16, 185, 129, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Сдать кассу
+                    💵
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Отчет кассовой смены и расходов для руководства
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Сдать кассу
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Отчет кассовой смены и расходов для руководства
+                    </div>
                   </div>
                 </button>
               )}
@@ -1798,29 +2182,45 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #ec4899 0%, #be185d 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(236, 72, 153, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
                     {loggedInUser?.baseRole === "manager" ? "📈" : "📊"}
                   </div>
-                  <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
-                  >
-                    {loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика"}
-                  </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    {loggedInUser?.baseRole === "manager"
-                      ? "Лидеры продаж и статистика официантов"
-                      : "P&L отчет, кассовая выручка и лидеры продаж"}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      {loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика"}
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      {loggedInUser?.baseRole === "manager"
+                        ? "Лидеры продаж и статистика официантов"
+                        : "P&L отчет, кассовая выручка и лидеры продаж"}
+                    </div>
                   </div>
                 </button>
               )}
@@ -1831,25 +2231,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(99, 102, 241, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Сотрудники
+                    👥
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Управление учетными записями персонала и правами
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Сотрудники
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Управление учетными записями персонала и правами
+                    </div>
                   </div>
                 </button>
               )}
@@ -1860,25 +2278,43 @@ export default function LocmacoApp() {
                   style={{
                     textAlign: "left",
                     padding: 24,
-                    borderRadius: 20,
-                    border: "none",
-                    background:
-                      "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
-                    color: "#fff",
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     cursor: "pointer",
-                    boxShadow: "0 10px 25px rgba(59, 130, 246, 0.25)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                     outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
                   }}
                   className="dashboard-card"
                 >
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>📦</div>
                   <div
-                    style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
                   >
-                    Остатки на складе
+                    📦
                   </div>
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Просмотр и контроль остатков товаров на складах
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Остатки на складе
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Просмотр и контроль остатков товаров на складах
+                    </div>
                   </div>
                 </button>
               )}
@@ -1929,6 +2365,7 @@ export default function LocmacoApp() {
         {tab === "production" && (
           <ProductionView
             products={products}
+            stores={stores}
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
@@ -1972,25 +2409,123 @@ export default function LocmacoApp() {
         )}
       </main>
 
+      {/* Mobile Bottom Navigation Bar */}
+      <div
+        className="mobile-nav"
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 64,
+          background: "var(--bg-card)",
+          borderTop: "1px solid var(--border-color)",
+          boxShadow: "0 -4px 12px rgba(0,0,0,0.03)",
+          zIndex: 150,
+          alignItems: "center",
+          justifyContent: "space-around",
+          padding: "0 8px",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+        }}
+      >
+        {mobileNavItems.map((item) => {
+          const active = isItemActive(item);
+          return (
+            <button
+              key={item.id}
+              onClick={item.onClick || (() => setTab(item.id))}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "none",
+                border: "none",
+                padding: "6px 0",
+                width: "60px",
+                color: active
+                  ? "var(--color-primary)"
+                  : "var(--text-muted)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <div
+                style={{
+                  transform: active ? "scale(1.1)" : "scale(1)",
+                  transition: "transform 0.2s ease",
+                  marginBottom: 3,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {item.icon}
+              </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: active ? 700 : 500,
+                  transition: "color 0.2s ease",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  width: "100%",
+                  textAlign: "center",
+                }}
+              >
+                {item.label === "Инвентаризация" ? "Инвентарь" : item.label === "Приготовление" ? "Приготовл." : item.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {toast && (
         <div
+          onClick={() => setToast(null)}
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: 24,
             left: "50%",
             transform: "translateX(-50%)",
-            background: toast.type === "error" ? "#ef4444" : "#1e293b",
+            background: toast.type === "error"
+              ? "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)"
+              : toast.type === "info"
+              ? "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)"
+              : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
             color: "#fff",
-            padding: "10px 22px",
-            borderRadius: 10,
+            padding: "12px 22px 14px",
+            borderRadius: 14,
             fontSize: 13,
-            fontWeight: 500,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.2)",
+            fontWeight: 600,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.1) inset",
             zIndex: 300,
-            animation: "fadeUp .2s ease",
+            animation: "fadeUp .25s cubic-bezier(0.16, 1, 0.3, 1)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            maxWidth: "90vw",
+            backdropFilter: "blur(8px)",
+            overflow: "hidden",
           }}
         >
-          {toast.msg}
+          <span style={{ fontSize: 18, flexShrink: 0 }}>
+            {toast.type === "error" ? "❌" : toast.type === "info" ? "ℹ️" : "✅"}
+          </span>
+          <span style={{ flex: 1, lineHeight: 1.4 }}>{toast.msg}</span>
+          {/* Progress bar */}
+          <div style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            height: 3,
+            background: "rgba(255,255,255,0.35)",
+            borderRadius: "0 0 14px 14px",
+            animation: "toastProgress 2.5s linear forwards",
+          }} />
         </div>
       )}
     </div>
@@ -2162,7 +2697,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
         }}
       >
         <h3
-          style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#475569" }}
+          style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}
         >
           🚚 Документы в iiko за текущий месяц
         </h3>
@@ -2189,13 +2724,13 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
           style={{
             padding: "30px 20px",
             textAlign: "center",
-            background: "#f8fafc",
+            background: "var(--bg-hover)",
             borderRadius: 12,
-            border: "1px dashed #e2e8f0",
+            border: "1px dashed var(--border-color)",
           }}
         >
           <div style={{ fontSize: 24, marginBottom: 8 }}>📦</div>
-          <div style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
             Документов этого типа за текущий месяц в iiko не найдено.
           </div>
         </div>
@@ -2210,9 +2745,9 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                 key={doc.id}
                 onClick={() => loadDetails(doc)}
                 style={{
-                  background: "#fff",
+                  background: "var(--bg-card)",
                   borderRadius: 12,
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid var(--border-color)",
                   padding: 14,
                   cursor: "pointer",
                   display: "flex",
@@ -2227,7 +2762,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                     "0 4px 10px rgba(16, 185, 129, 0.05)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e2e8f0";
+                  e.currentTarget.style.borderColor = "";
                   e.currentTarget.style.boxShadow =
                     "0 2px 5px rgba(0,0,0,0.01)";
                 }}
@@ -2242,8 +2777,8 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                         borderRadius: 4,
                         fontSize: 10,
                         fontWeight: 700,
-                        background: isProcessed ? "#d1fae5" : "#f3f4f6",
-                        color: isProcessed ? "#065f46" : "#4b5563",
+                        background: isProcessed ? "var(--bg-status-success)" : "var(--bg-status-neutral)",
+                        color: isProcessed ? "var(--text-status-success)" : "var(--text-status-neutral)",
                       }}
                     >
                       {doc.status}
@@ -2252,7 +2787,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       style={{
                         fontSize: 13,
                         fontWeight: 700,
-                        color: "#1e293b",
+                        color: "var(--text-main)",
                       }}
                     >
                       № {doc.documentNumber || "—"}
@@ -2265,7 +2800,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       gap: 12,
                       marginTop: 6,
                       fontSize: 12,
-                      color: "#64748b",
+                      color: "var(--text-muted)",
                     }}
                   >
                     {type === "INCOMING_INVOICE" ? (
@@ -2282,6 +2817,35 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                                 doc.storageToName ||
                                 doc.storageName ||
                                 doc.storage
+                            )}
+                          </strong>
+                        </span>
+                      </>
+                    ) : type === "INVENTORY" ? (
+                      <>
+                        <span>
+                          📦 Склад:{" "}
+                          <strong>
+                            {getStoreName(
+                              doc.storage ||
+                                doc.storageName ||
+                                doc.storageTo ||
+                                doc.storageToName
+                            )}
+                          </strong>
+                        </span>
+                      </>
+                    ) : type === "PRODUCTION_DOCUMENT" ? (
+                      <>
+                        <span>
+                          🏢 Склад:{" "}
+                          <strong>
+                            {getStoreName(
+                              doc.accountTo ||
+                                doc.storage ||
+                                doc.storageName ||
+                                doc.storageTo ||
+                                doc.storageToName
                             )}
                           </strong>
                         </span>
@@ -2315,7 +2879,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                     <div
                       style={{
                         fontSize: 11,
-                        color: "#94a3b8",
+                        color: "var(--text-muted)",
                         fontStyle: "italic",
                         marginTop: 4,
                       }}
@@ -2338,7 +2902,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       {fmtPrice(doc.sum)}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{date}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{date}</div>
                 </div>
               </div>
             );
@@ -2368,7 +2932,9 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
             style={{
               width: "100%",
               maxWidth: 550,
-              background: "#fff",
+              background: "var(--bg-card)",
+              color: "var(--text-main)",
+              borderLeft: "1px solid var(--border-color)",
               height: "100%",
               display: "flex",
               flexDirection: "column",
@@ -2385,7 +2951,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
-                borderBottom: "1px solid #f1f5f9",
+                borderBottom: "1px solid var(--border-color)",
                 paddingBottom: 16,
                 marginBottom: 20,
               }}
@@ -2406,22 +2972,38 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       fontSize: 11,
                       fontWeight: 700,
                       background:
-                        type === "INCOMING_INVOICE" ? "#ecfdf5" : "#e0e7ff",
+                        type === "INCOMING_INVOICE"
+                          ? "#ecfdf5"
+                          : type === "INVENTORY"
+                          ? "#fef3c7"
+                          : type === "PRODUCTION_DOCUMENT"
+                          ? "#ffedd5"
+                          : "#e0e7ff",
                       color:
-                        type === "INCOMING_INVOICE" ? "#059669" : "#4f46e5",
+                        type === "INCOMING_INVOICE"
+                          ? "#059669"
+                          : type === "INVENTORY"
+                          ? "#b45309"
+                          : type === "PRODUCTION_DOCUMENT"
+                          ? "#c2410c"
+                          : "#4f46e5",
                     }}
                   >
                     {type === "INCOMING_INVOICE"
                       ? "Приходная накладная"
+                      : type === "INVENTORY"
+                      ? "Акт инвентаризации"
+                      : type === "PRODUCTION_DOCUMENT"
+                      ? "Акт приготовления"
                       : "Внутреннее перемещение"}
                   </span>
                   <span
-                    style={{ fontSize: 14, fontWeight: 800, color: "#0f1729" }}
+                    style={{ fontSize: 14, fontWeight: 800, color: "var(--text-main)" }}
                   >
                     № {selectedDoc.documentNumber || "—"}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   📅 Дата:{" "}
                   <strong>{formatDateString(selectedDoc.dateIncoming)}</strong>
                 </div>
@@ -2429,7 +3011,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
               <button
                 onClick={() => setSelectedDoc(null)}
                 style={{
-                  background: "#f1f5f9",
+                  background: "var(--bg-hover)",
                   border: "none",
                   borderRadius: "50%",
                   width: 32,
@@ -2438,7 +3020,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "#64748b",
+                  color: "var(--text-muted)",
                 }}
               >
                 {I.x}
@@ -2448,7 +3030,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
             {/* Document Meta Info */}
             <div
               style={{
-                background: "#f8fafc",
+                background: "var(--bg-hover)",
                 borderRadius: 12,
                 padding: 16,
                 display: "flex",
@@ -2463,7 +3045,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                   <div
                     style={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <span style={{ color: "#64748b" }}>🏢 Поставщик:</span>
+                    <span style={{ color: "var(--text-muted)" }}>🏢 Поставщик:</span>
                     <span style={{ fontWeight: 600 }}>
                       {selectedDoc.supplierName || "—"}
                     </span>
@@ -2471,7 +3053,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                   <div
                     style={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <span style={{ color: "#64748b" }}>
+                    <span style={{ color: "var(--text-muted)" }}>
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
@@ -2488,12 +3070,12 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        borderTop: "1px dashed #e2e8f0",
+                        borderTop: "1px dashed var(--border-color)",
                         paddingTop: 8,
                         marginTop: 4,
                       }}
                     >
-                      <span style={{ color: "#64748b", fontWeight: 700 }}>
+                      <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>
                         💵 Итоговая сумма:
                       </span>
                       <span style={{ fontWeight: 800, color: "#059669" }}>
@@ -2502,12 +3084,45 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                     </div>
                   )}
                 </>
+              ) : type === "INVENTORY" ? (
+                <>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "var(--text-muted)" }}>📦 Склад:</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {getStoreName(
+                        selectedDoc.storage ||
+                          selectedDoc.storageName ||
+                          selectedDoc.storageTo ||
+                          selectedDoc.storageToName
+                      )}
+                    </span>
+                  </div>
+                </>
+              ) : type === "PRODUCTION_DOCUMENT" ? (
+                <>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: "var(--text-muted)" }}>🏢 Склад:</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {getStoreName(
+                        selectedDoc.accountTo ||
+                          selectedDoc.storage ||
+                          selectedDoc.storageName ||
+                          selectedDoc.storageTo ||
+                          selectedDoc.storageToName
+                      )}
+                    </span>
+                  </div>
+                </>
               ) : (
                 <>
                   <div
                     style={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <span style={{ color: "#64748b" }}>📤 Склад списания:</span>
+                    <span style={{ color: "var(--text-muted)" }}>📤 Склад списания:</span>
                     <span style={{ fontWeight: 600 }}>
                       {getStoreName(
                         selectedDoc.storageFrom ||
@@ -2519,7 +3134,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                   <div
                     style={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <span style={{ color: "#64748b" }}>
+                    <span style={{ color: "var(--text-muted)" }}>
                       📥 Склад получения:
                     </span>
                     <span style={{ fontWeight: 600 }}>
@@ -2540,15 +3155,15 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                     marginTop: 4,
                   }}
                 >
-                  <span style={{ color: "#64748b" }}>💬 Комментарий:</span>
+                  <span style={{ color: "var(--text-muted)" }}>💬 Комментарий:</span>
                   <div
                     style={{
                       marginTop: 4,
                       fontStyle: "italic",
-                      background: "#fff",
+                      background: "var(--bg-card)",
                       padding: "8px 12px",
                       borderRadius: 8,
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--border-color)",
                     }}
                   >
                     {selectedDoc.comment}
@@ -2563,7 +3178,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                 margin: "0 0 10px",
                 fontSize: 13,
                 fontWeight: 700,
-                color: "#475569",
+                color: "var(--text-muted)",
               }}
             >
               📦 Состав документа
@@ -2575,7 +3190,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
               <div style={{ flex: 1 }}>
                 <div
                   style={{
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     borderRadius: 12,
                     overflow: "hidden",
                   }}
@@ -2591,15 +3206,15 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                     <thead>
                       <tr
                         style={{
-                          background: "#f8fafc",
-                          borderBottom: "1px solid #e2e8f0",
+                          background: "var(--bg-hover)",
+                          borderBottom: "1px solid var(--border-color)",
                         }}
                       >
                         <th
                           style={{
                             padding: "10px 14px",
                             fontWeight: 700,
-                            color: "#475569",
+                            color: "var(--text-muted)",
                           }}
                         >
                           Товар
@@ -2608,7 +3223,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                           style={{
                             padding: "10px 14px",
                             fontWeight: 700,
-                            color: "#475569",
+                            color: "var(--text-muted)",
                             textAlign: "right",
                           }}
                         >
@@ -2620,7 +3235,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                               style={{
                                 padding: "10px 14px",
                                 fontWeight: 700,
-                                color: "#475569",
+                                color: "var(--text-muted)",
                                 textAlign: "right",
                               }}
                             >
@@ -2630,7 +3245,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                               style={{
                                 padding: "10px 14px",
                                 fontWeight: 700,
-                                color: "#475569",
+                                color: "var(--text-muted)",
                                 textAlign: "right",
                               }}
                             >
@@ -2660,7 +3275,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                               style={{
                                 padding: "10px 14px",
                                 fontWeight: 600,
-                                color: "#0f1729",
+                                color: "var(--text-main)",
                               }}
                             >
                               {getProductName(it)}
@@ -2669,7 +3284,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                               style={{
                                 padding: "10px 14px",
                                 fontWeight: 700,
-                                color: "#1e293b",
+                                color: "var(--text-main)",
                                 textAlign: "right",
                               }}
                             >
@@ -2680,7 +3295,7 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
                                 <td
                                   style={{
                                     padding: "10px 14px",
-                                    color: "#64748b",
+                                    color: "var(--text-muted)",
                                     textAlign: "right",
                                   }}
                                 >
@@ -2730,6 +3345,7 @@ function IncomingView({
   historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
+  const [subTab, setSubTab] = useState("db_history");
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -2860,55 +3476,97 @@ function IncomingView({
       </div>
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div>
-            <IikoHistoryList
-              type="INCOMING_INVOICE"
-              showToast={showToast}
-              stores={stores}
-              products={products}
-            />
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+            {[
+              {
+                id: "db_history",
+                label: "📋 История сайта",
+                grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+                text: "#0369a1",
+              },
+              {
+                id: "iiko_history",
+                label: "🌐 История iiko",
+                grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                text: "#4338ca",
+              },
+            ].map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSubTab(sub.id)}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                  background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                  color: subTab === sub.id ? sub.text : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow:
+                    subTab === sub.id
+                      ? "0 4px 10px rgba(99, 102, 241, 0.08)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
           </div>
-          <div>
-            <HistoryList
-              history={history.filter((act) => act.action_type === "invoice")}
-              loading={historyLoading}
-              onRefresh={loadHistory}
-              emptyText="История приходов пуста"
-              onRestore={(act) => {
-                if (act.details) {
-                  setForm({
-                    supplierId: act.details.supplier_id || "",
-                    supplierName: act.details.supplier_name || "",
-                    storeId: act.details.store_id || "",
-                    storeName: act.details.store_name || "",
-                    comment: act.details.comment || "",
-                  });
-                  setItems(
-                    (act.details.items || []).map((it) => ({
-                      product_id: it.product_id,
-                      product_name: it.product_name,
-                      quantity: it.quantity,
-                      unit: it.unit || "шт",
-                      totalPrice: it.price
-                        ? String(it.price * it.quantity)
-                        : "",
-                    }))
-                  );
-                  setMode("new");
-                  setStep(2);
-                  showToast("Черновик успешно восстановлен!");
-                }
-              }}
-            />
-          </div>
+
+          {subTab === "iiko_history" ? (
+            <div>
+              <IikoHistoryList
+                type="INCOMING_INVOICE"
+                showToast={showToast}
+                stores={stores}
+                products={products}
+              />
+            </div>
+          ) : (
+            <div>
+              <HistoryList
+                history={history.filter((act) => act.action_type === "invoice")}
+                loading={historyLoading}
+                onRefresh={loadHistory}
+                emptyText="История приходов пуста"
+                onRestore={(act) => {
+                  if (act.details) {
+                    setForm({
+                      supplierId: act.details.supplier_id || "",
+                      supplierName: act.details.supplier_name || "",
+                      storeId: act.details.store_id || "",
+                      storeName: act.details.store_name || "",
+                      comment: act.details.comment || "",
+                    });
+                    setItems(
+                      (act.details.items || []).map((it) => ({
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        quantity: it.quantity,
+                        unit: it.unit || "шт",
+                        totalPrice: it.price
+                          ? String(it.price * it.quantity)
+                          : "",
+                      }))
+                    );
+                    setMode("new");
+                    setStep(2);
+                    showToast("Черновик успешно восстановлен!");
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
       {mode === "new" && (
         <div
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 14,
-            border: "1px solid #e8ecf0",
+            border: "1px solid var(--border-color)",
             padding: 24,
           }}
         >
@@ -2978,7 +3636,7 @@ function IncomingView({
                   {items.length > 0 && (
                     <div
                       style={{
-                        border: "1px solid #e8ecf0",
+                        border: "1px solid var(--border-color)",
                         borderRadius: 10,
                         overflow: "hidden",
                         marginTop: 12,
@@ -3017,7 +3675,7 @@ function IncomingView({
                                 <div style={{ fontWeight: 500 }}>
                                   {it.product_name}
                                 </div>
-                                <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                   {it.unit}
                                 </div>
                               </td>
@@ -3050,7 +3708,7 @@ function IncomingView({
                                   <span
                                     style={{
                                       fontSize: 12,
-                                      color: "#64748b",
+                                      color: "var(--text-muted)",
                                       minWidth: 24,
                                       textAlign: "left",
                                       fontWeight: 600,
@@ -3361,7 +4019,7 @@ function TransferView({
                   margin: "0 0 16px 0",
                   fontSize: 15,
                   fontWeight: 700,
-                  color: "#1e293b",
+                  color: "var(--text-main)",
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
@@ -3388,9 +4046,9 @@ function TransferView({
                   <div
                     key={item.id}
                     style={{
-                      background: "#fff",
+                      background: "var(--bg-card)",
                       borderRadius: 12,
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--border-color)",
                       padding: 16,
                       boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
                       animation: "fadeIn .25s ease",
@@ -3425,7 +4083,7 @@ function TransferView({
                           style={{
                             fontSize: 14,
                             fontWeight: 700,
-                            color: "#1e293b",
+                            color: "var(--text-main)",
                             marginTop: 6,
                             display: "flex",
                             alignItems: "center",
@@ -3436,7 +4094,7 @@ function TransferView({
                           <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
                           <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
                         </div>
-                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                           Создал: <b>{item.creator_name}</b> • {new Date(item.created_at).toLocaleString("ru-RU")}
                         </div>
                       </div>
@@ -3445,12 +4103,12 @@ function TransferView({
                         <div
                           style={{
                             background: "#f8fafb",
-                            border: "1px solid #e8ecf0",
+                            border: "1px solid var(--border-color)",
                             borderRadius: 8,
                             padding: "8px 12px",
                             fontSize: 12,
                             maxWidth: 300,
-                            color: "#475569",
+                            color: "var(--text-muted)",
                             wordBreak: "break-word",
                           }}
                         >
@@ -3464,7 +4122,7 @@ function TransferView({
                         <label style={lbl}>Введите фактически полученное количество:</label>
                         <div
                           style={{
-                            border: "1px solid #e2e8f0",
+                            border: "1px solid var(--border-color)",
                             borderRadius: 10,
                             overflow: "hidden",
                             marginTop: 6,
@@ -3480,12 +4138,12 @@ function TransferView({
                             </thead>
                             <tbody>
                               {editedItems.map((it, idx) => (
-                                <tr key={idx} style={{ borderTop: "1px solid #e2e8f0" }}>
+                                <tr key={idx} style={{ borderTop: "1px solid var(--border-color)" }}>
                                   <td style={td}>
                                     <div style={{ fontWeight: 500 }}>{it.product_name}</div>
-                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{it.unit}</div>
                                   </td>
-                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#64748b" }}>
+                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "var(--text-muted)" }}>
                                     {it.quantity} {it.unit}
                                   </td>
                                   <td style={{ ...td, textAlign: "center" }}>
@@ -3512,7 +4170,7 @@ function TransferView({
                                         placeholder={it.quantity}
                                         style={{ ...numInput, width: 70 }}
                                       />
-                                      <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
                                         {it.unit}
                                       </span>
                                     </div>
@@ -3573,9 +4231,9 @@ function TransferView({
                                 <tr key={idx} style={{ borderTop: "1px solid #f1f5f9" }}>
                                   <td style={td}>
                                     <div style={{ fontWeight: 500 }}>{it.product_name}</div>
-                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{it.unit}</div>
                                   </td>
-                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#334155" }}>
+                                  <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "var(--text-main)" }}>
                                     {it.quantity} {it.unit}
                                   </td>
                                 </tr>
@@ -3662,7 +4320,7 @@ function TransferView({
                     <div
                       key={item.id}
                       style={{
-                        background: "#fff",
+                        background: "var(--bg-card)",
                         borderRadius: 12,
                         border: "1px solid #fbcfe8",
                         padding: 16,
@@ -3699,7 +4357,7 @@ function TransferView({
                             style={{
                               fontSize: 14,
                               fontWeight: 700,
-                              color: "#1e293b",
+                              color: "var(--text-main)",
                               marginTop: 6,
                               display: "flex",
                               alignItems: "center",
@@ -3710,7 +4368,7 @@ function TransferView({
                             <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
                             <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
                           </div>
-                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                             Отправлено: {new Date(item.created_at).toLocaleString("ru-RU")}
                           </div>
                         </div>
@@ -3762,7 +4420,7 @@ function TransferView({
                                 >
                                   <td style={td}>
                                     <div style={{ fontWeight: 500 }}>{it.product_name}</div>
-                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{it.unit}</div>
+                                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{it.unit}</div>
                                   </td>
                                   <td
                                     style={{
@@ -3858,9 +4516,9 @@ function TransferView({
                 style={{
                   padding: "9px 15px",
                   borderRadius: 10,
-                  border: subTab === sub.id ? "none" : "1px solid #e2e8f0",
-                  background: subTab === sub.id ? sub.grad : "#fff",
-                  color: subTab === sub.id ? sub.text : "#64748b",
+                  border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                  background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                  color: subTab === sub.id ? sub.text : "var(--text-muted)",
                   fontWeight: 700,
                   fontSize: 12,
                   cursor: "pointer",
@@ -3925,9 +4583,9 @@ function TransferView({
       {mode === "new" && (
         <div
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 14,
-            border: "1px solid #e8ecf0",
+            border: "1px solid var(--border-color)",
             padding: 24,
           }}
         >
@@ -4006,7 +4664,7 @@ function TransferView({
                   {items.length > 0 && (
                     <div
                       style={{
-                        border: "1px solid #e8ecf0",
+                        border: "1px solid var(--border-color)",
                         borderRadius: 10,
                         overflow: "hidden",
                         marginTop: 12,
@@ -4040,7 +4698,7 @@ function TransferView({
                                 <div style={{ fontWeight: 500 }}>
                                   {it.product_name}
                                 </div>
-                                <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                   {it.unit}
                                 </div>
                               </td>
@@ -4073,7 +4731,7 @@ function TransferView({
                                   <span
                                     style={{
                                       fontSize: 12,
-                                      color: "#64748b",
+                                      color: "var(--text-muted)",
                                       minWidth: 24,
                                       textAlign: "left",
                                       fontWeight: 600,
@@ -4161,6 +4819,7 @@ function InventoryView({
   historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
+  const [subTab, setSubTab] = useState("db_history");
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     storeId: "",
@@ -4374,39 +5033,93 @@ function InventoryView({
         )}
       </div>
       {mode === "idle" && (
-        <HistoryList
-          history={history.filter((act) => act.action_type === "inventory")}
-          loading={historyLoading}
-          onRefresh={loadHistory}
-          emptyText="История инвентаризаций пуста"
-          onRestore={(act) => {
-            if (act.details) {
-              setForm({
-                storeId: act.details.store_id || "",
-                storeName: act.details.store_name || "",
-                comment: act.details.comment || "",
-              });
-              setItems(
-                (act.details.items || []).map((it) => ({
-                  product_id: it.product_id,
-                  product_name: it.product_name,
-                  quantity: it.quantity,
-                  unit: it.unit || "шт",
-                }))
-              );
-              setMode("new");
-              setStep(1); // Jump to items step!
-              showToast("Черновик успешно восстановлен!");
-            }
-          }}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+            {[
+              {
+                id: "db_history",
+                label: "📋 История сайта",
+                grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+                text: "#0369a1",
+              },
+              {
+                id: "iiko_history",
+                label: "🌐 История iiko",
+                grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                text: "#4338ca",
+              },
+            ].map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSubTab(sub.id)}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                  background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                  color: subTab === sub.id ? sub.text : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow:
+                    subTab === sub.id
+                      ? "0 4px 10px rgba(99, 102, 241, 0.08)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {subTab === "iiko_history" ? (
+            <div>
+              <IikoHistoryList
+                type="INVENTORY"
+                showToast={showToast}
+                stores={stores}
+                products={products}
+              />
+            </div>
+          ) : (
+            <div>
+              <HistoryList
+                history={history.filter((act) => act.action_type === "inventory")}
+                loading={historyLoading}
+                onRefresh={loadHistory}
+                emptyText="История инвентаризаций пуста"
+                onRestore={(act) => {
+                  if (act.details) {
+                    setForm({
+                      storeId: act.details.store_id || "",
+                      storeName: act.details.store_name || "",
+                      comment: act.details.comment || "",
+                    });
+                    setItems(
+                      (act.details.items || []).map((it) => ({
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        quantity: it.quantity,
+                        unit: it.unit || "шт",
+                      }))
+                    );
+                    setMode("new");
+                    setStep(1); // Jump to items step!
+                    showToast("Черновик успешно восстановлен!");
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
       )}
       {mode === "new" && (
         <div
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 14,
-            border: "1px solid #e8ecf0",
+            border: "1px solid var(--border-color)",
             padding: 24,
           }}
         >
@@ -4473,7 +5186,7 @@ function InventoryView({
                   style={{
                     background: "#f0fdf4",
                     border: "1px solid #bbf7d0",
-                    color: "#166534",
+                    color: "var(--text-success)",
                     padding: "10px 14px",
                     borderRadius: 8,
                     fontSize: 12,
@@ -4496,7 +5209,7 @@ function InventoryView({
                   {items.length > 0 && (
                     <div
                       style={{
-                        border: "1px solid #e8ecf0",
+                        border: "1px solid var(--border-color)",
                         borderRadius: 10,
                         overflow: "hidden",
                         marginTop: 12,
@@ -4530,7 +5243,7 @@ function InventoryView({
                                 <div style={{ fontWeight: 500 }}>
                                   {it.product_name}
                                 </div>
-                                <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                   {it.unit}
                                 </div>
                               </td>
@@ -4563,7 +5276,7 @@ function InventoryView({
                                   <span
                                     style={{
                                       fontSize: 12,
-                                      color: "#64748b",
+                                      color: "var(--text-muted)",
                                       minWidth: 24,
                                       textAlign: "left",
                                       fontWeight: 600,
@@ -4643,6 +5356,7 @@ function InventoryView({
 
 function ProductionView({
   products,
+  stores = [],
   showToast,
   loading,
   onRetry,
@@ -4652,6 +5366,7 @@ function ProductionView({
   historyLoading,
 }) {
   const [mode, setMode] = useState("idle");
+  const [subTab, setSubTab] = useState("db_history");
   const [items, setItems] = useState([]);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -4810,36 +5525,90 @@ function ProductionView({
       </div>
 
       {mode === "idle" && (
-        <HistoryList
-          history={history.filter((act) => act.action_type === "production")}
-          loading={historyLoading}
-          onRefresh={loadHistory}
-          emptyText="История актов приготовления пуста"
-          onRestore={(act) => {
-            if (act.details) {
-              setComment(act.details.comment || "");
-              setItems(
-                (act.details.items || []).map((it) => ({
-                  product_id: it.product_id,
-                  product_name: it.product_name,
-                  code: it.code || "",
-                  quantity: it.quantity,
-                  unit: it.unit || "шт",
-                }))
-              );
-              setMode("new");
-              showToast("Черновик успешно восстановлен!");
-            }
-          }}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+            {[
+              {
+                id: "db_history",
+                label: "📋 История сайта",
+                grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+                text: "#0369a1",
+              },
+              {
+                id: "iiko_history",
+                label: "🌐 История iiko",
+                grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                text: "#4338ca",
+              },
+            ].map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSubTab(sub.id)}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                  background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                  color: subTab === sub.id ? sub.text : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow:
+                    subTab === sub.id
+                      ? "0 4px 10px rgba(99, 102, 241, 0.08)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {subTab === "iiko_history" ? (
+            <div>
+              <IikoHistoryList
+                type="PRODUCTION_DOCUMENT"
+                showToast={showToast}
+                stores={stores}
+                products={products}
+              />
+            </div>
+          ) : (
+            <div>
+              <HistoryList
+                history={history.filter((act) => act.action_type === "production")}
+                loading={historyLoading}
+                onRefresh={loadHistory}
+                emptyText="История актов приготовления пуста"
+                onRestore={(act) => {
+                  if (act.details) {
+                    setComment(act.details.comment || "");
+                    setItems(
+                      (act.details.items || []).map((it) => ({
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        code: it.code || "",
+                        quantity: it.quantity,
+                        unit: it.unit || "шт",
+                      }))
+                    );
+                    setMode("new");
+                    showToast("Черновик успешно восстановлен!");
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {mode === "new" && (
         <div
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 14,
-            border: "1px solid #e8ecf0",
+            border: "1px solid var(--border-color)",
             padding: 24,
           }}
         >
@@ -4902,7 +5671,7 @@ function ProductionView({
               {items.length > 0 && (
                 <div
                   style={{
-                    border: "1px solid #e8ecf0",
+                    border: "1px solid var(--border-color)",
                     borderRadius: 10,
                     overflow: "hidden",
                     marginTop: 12,
@@ -4934,7 +5703,7 @@ function ProductionView({
                             <div style={{ fontWeight: 500 }}>
                               {it.product_name}
                             </div>
-                            <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                               {it.unit}
                             </div>
                           </td>
@@ -4967,7 +5736,7 @@ function ProductionView({
                               <span
                                 style={{
                                   fontSize: 12,
-                                  color: "#64748b",
+                                  color: "var(--text-muted)",
                                   minWidth: 24,
                                   textAlign: "left",
                                   fontWeight: 600,
@@ -5174,7 +5943,17 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     }
   };
 
-  const filtered = employees.filter((emp) => {
+  const sortedEmployees = [...employees].sort((a, b) => {
+    const aName = (a.name || "").toLowerCase();
+    const bName = (b.name || "").toLowerCase();
+    const aIsAz = aName.includes("azimbek") || aName.includes("азимбек");
+    const bIsAz = bName.includes("azimbek") || bName.includes("азимбек");
+    if (aIsAz && !bIsAz) return -1;
+    if (!aIsAz && bIsAz) return 1;
+    return 0;
+  });
+
+  const filtered = sortedEmployees.filter((emp) => {
     const q = searchQuery.toLowerCase();
     const nameMatch = emp.name?.toLowerCase().includes(q);
     const codeMatch = emp.access_code?.includes(q);
@@ -5227,7 +6006,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               style={{
                 ...inp,
                 paddingLeft: 40,
-                background: "#fff",
+                background: "var(--bg-card)",
               }}
             />
             <div
@@ -5236,7 +6015,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                 left: 12,
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#94a3b8",
+                color: "var(--text-muted)",
                 display: "flex",
               }}
             >
@@ -5247,18 +6026,18 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
           {loading ? (
             <LoadingBlock text="Загрузка списка сотрудников..." />
           ) : filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 20px", background: "#fff", borderRadius: 14, border: "1px solid #e8ecf0" }}>
+            <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border-color)" }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
-              <div style={{ fontWeight: 600, color: "#64748b" }}>
+              <div style={{ fontWeight: 600, color: "var(--text-muted)" }}>
                 {searchQuery ? "Ничего не найдено" : "Сотрудники не найдены"}
               </div>
             </div>
           ) : (
             <div
               style={{
-                background: "#fff",
+                background: "var(--bg-card)",
                 borderRadius: 14,
-                border: "1px solid #e8ecf0",
+                border: "1px solid var(--border-color)",
                 overflow: "hidden",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
               }}
@@ -5266,7 +6045,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: "#f8fafb", borderBottom: "1px solid #e8ecf0" }}>
+                    <tr style={{ background: "#f8fafb", borderBottom: "1px solid var(--border-color)" }}>
                       <th style={{ ...th, padding: "14px 16px" }}>Имя</th>
                       <th style={th}>Должность</th>
                       <th style={th}>Склад</th>
@@ -5279,7 +6058,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                       const color = getRoleColor(emp.role);
                       return (
                         <tr key={emp.id} style={{ borderBottom: "1px solid #f0f2f5" }}>
-                          <td style={{ ...td, padding: "14px 16px", fontWeight: 600, color: "#1e293b" }}>
+                          <td style={{ ...td, padding: "14px 16px", fontWeight: 600, color: "var(--text-main)" }}>
                             {emp.name}
                           </td>
                           <td style={td}>
@@ -5297,10 +6076,10 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                               {getRoleLabel(emp.role)}
                             </span>
                           </td>
-                          <td style={{ ...td, color: "#475569", fontWeight: 500 }}>
+                          <td style={{ ...td, color: "var(--text-muted)", fontWeight: 500 }}>
                             {getStoreName(emp.role)}
                           </td>
-                          <td style={{ ...td, textAlign: "center", fontFamily: "monospace", fontWeight: 700, letterSpacing: 1, color: "#64748b" }}>
+                          <td style={{ ...td, textAlign: "center", fontFamily: "monospace", fontWeight: 700, letterSpacing: 1, color: "var(--text-muted)" }}>
                             {emp.access_code}
                           </td>
                           <td style={td}>
@@ -5368,9 +6147,9 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
         <form
           onSubmit={handleSubmit}
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 14,
-            border: "1px solid #e8ecf0",
+            border: "1px solid var(--border-color)",
             padding: 24,
             display: "flex",
             flexDirection: "column",
@@ -5443,7 +6222,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               }}
               required
             />
-            <small style={{ color: "#64748b", marginTop: 4, display: "block" }}>
+            <small style={{ color: "var(--text-muted)", marginTop: 4, display: "block" }}>
               Этот уникальный код сотрудник будет вводить на главном экране для входа
             </small>
           </div>
@@ -5557,10 +6336,10 @@ function BalancesView({ stores, showToast, loggedInUser }) {
       {/* Title & Refresh */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1e293b", marginBottom: 4 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text-main)", marginBottom: 4 }}>
             Остатки на складе
           </h2>
-          <p style={{ fontSize: 13, color: "#64748b" }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Просмотр текущих запасов ингредиентов и товаров в режиме реального времени
           </p>
         </div>
@@ -5573,11 +6352,11 @@ function BalancesView({ stores, showToast, loggedInUser }) {
             gap: 8,
             padding: "8px 16px",
             borderRadius: 12,
-            background: "#fff",
-            border: "1px solid #e2e8f0",
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-color)",
             fontSize: 13,
             fontWeight: 600,
-            color: "#475569",
+            color: "var(--text-muted)",
             cursor: "pointer",
             transition: "all 0.15s ease",
             boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
@@ -5593,10 +6372,10 @@ function BalancesView({ stores, showToast, loggedInUser }) {
       {/* Filter Toolbar */}
       <div
         style={{
-          background: "#fff",
+          background: "var(--bg-card)",
           borderRadius: 20,
           padding: 20,
-          border: "1px solid #e2e8f0",
+          border: "1px solid var(--border-color)",
           boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
           marginBottom: 20,
           display: "flex",
@@ -5613,11 +6392,11 @@ function BalancesView({ stores, showToast, loggedInUser }) {
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
-                  background: "#f1f5f9",
-                  border: "1px solid #e2e8f0",
+                  background: "var(--bg-pill)",
+                  border: "1px solid var(--border-color)",
                   fontSize: 13,
                   fontWeight: 600,
-                  color: "#334155",
+                  color: "var(--text-main)",
                   display: "flex",
                   alignItems: "center",
                   gap: 8
@@ -5629,7 +6408,7 @@ function BalancesView({ stores, showToast, loggedInUser }) {
               <select
                 value={selectedStoreId}
                 onChange={(e) => setSelectedStoreId(e.target.value)}
-                style={{ ...inp, background: "#fff", fontWeight: 500 }}
+                style={{ ...inp, background: "var(--bg-card)", fontWeight: 500 }}
               >
                 <option value="">Выберите склад...</option>
                 {storesList.map((s) => (
@@ -5652,7 +6431,7 @@ function BalancesView({ stores, showToast, loggedInUser }) {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ ...inp, paddingLeft: 36 }}
               />
-              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}>
+              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
                 {I.search}
               </div>
             </div>
@@ -5663,7 +6442,7 @@ function BalancesView({ stores, showToast, loggedInUser }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 12, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
           {/* Statistics summary */}
           <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ fontSize: 12, background: "#f1f5f9", padding: "6px 12px", borderRadius: 8, color: "#475569", fontWeight: 600 }}>
+            <div style={{ fontSize: 12, background: "var(--bg-pill)", padding: "6px 12px", borderRadius: 8, color: "var(--text-muted)", fontWeight: 600 }}>
               Товаров: <span style={{ color: "#6366f1" }}>{totalCount}</span>
             </div>
             {canSeeFinance && selectedStoreId && (
@@ -5685,9 +6464,9 @@ function BalancesView({ stores, showToast, loggedInUser }) {
       ) : (
         <div
           style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: 20,
-            border: "1px solid #e2e8f0",
+            border: "1px solid var(--border-color)",
             boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
             overflow: "hidden"
           }}
@@ -5695,7 +6474,7 @@ function BalancesView({ stores, showToast, loggedInUser }) {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafb", borderBottom: "1px solid #e8ecf0" }}>
+                <tr style={{ background: "#f8fafb", borderBottom: "1px solid var(--border-color)" }}>
                   <th style={{ ...th, width: 60, textAlign: "center" }}>№</th>
                   <th style={th}>Артикул</th>
                   <th style={{ ...th, paddingLeft: 16 }}>Наименование товара</th>
@@ -5716,13 +6495,13 @@ function BalancesView({ stores, showToast, loggedInUser }) {
 
                   return (
                     <tr key={p.id || idx} style={{ borderBottom: "1px solid #f0f2f5", background: isZeroOrNegative ? "rgba(239, 68, 68, 0.01)" : "none" }}>
-                      <td style={{ ...td, textAlign: "center", color: "#94a3b8", fontSize: 11 }}>
+                      <td style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontSize: 11 }}>
                         {idx + 1}
                       </td>
-                      <td style={{ ...td, color: "#64748b", fontFamily: "monospace", fontSize: 12 }}>
+                      <td style={{ ...td, color: "var(--text-muted)", fontFamily: "monospace", fontSize: 12 }}>
                         {p.num || "—"}
                       </td>
-                      <td style={{ ...td, paddingLeft: 16, fontWeight: 600, color: "#1e293b" }}>
+                      <td style={{ ...td, paddingLeft: 16, fontWeight: 600, color: "var(--text-main)" }}>
                         {p.name || "Без названия"}
                       </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>
@@ -5748,10 +6527,10 @@ function BalancesView({ stores, showToast, loggedInUser }) {
                       </td>
                       {canSeeFinance && (
                         <>
-                          <td style={{ ...td, textAlign: "right", color: "#475569" }}>
+                          <td style={{ ...td, textAlign: "right", color: "var(--text-muted)" }}>
                             {fmtPrice(item.costPrice)}
                           </td>
-                          <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "#0f172a", paddingRight: 16 }}>
+                          <td style={{ ...td, textAlign: "right", fontWeight: 600, color: "var(--text-main)", paddingRight: 16 }}>
                             {fmtPrice(item.sum)}
                           </td>
                         </>
@@ -5913,9 +6692,9 @@ function CashView({
 
       <div
         style={{
-          background: "#fff",
+          background: "var(--bg-card)",
           borderRadius: 14,
-          border: "1px solid #e8ecf0",
+          border: "1px solid var(--border-color)",
           padding: 24,
           marginBottom: 24,
         }}
@@ -5940,7 +6719,7 @@ function CashView({
               margin: 0,
               fontSize: 14,
               fontWeight: 700,
-              color: "#475569",
+              color: "var(--text-muted)",
             }}
           >
             💵 Выручка по типам оплат
@@ -6036,7 +6815,7 @@ function CashView({
 
           <div
             style={{
-              background: "#f8fafc",
+              background: "var(--bg-hover)",
               padding: 12,
               borderRadius: 10,
               display: "flex",
@@ -6064,7 +6843,7 @@ function CashView({
                   margin: 0,
                   fontSize: 14,
                   fontWeight: 700,
-                  color: "#475569",
+                  color: "var(--text-muted)",
                 }}
               >
                 💸 Расходы из кассы
@@ -6139,7 +6918,7 @@ function CashView({
                     display: "flex",
                     justifyContent: "space-between",
                     fontWeight: 700,
-                    color: "#991b1b",
+                    color: "var(--text-danger)",
                     fontSize: 13,
                     marginTop: 4,
                   }}
@@ -6150,7 +6929,7 @@ function CashView({
               </div>
             ) : (
               <div
-                style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}
+                style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}
               >
                 Расходов по смене не зафиксировано
               </div>
@@ -6167,7 +6946,7 @@ function CashView({
             }}
           >
             <div>
-              <label style={{ ...lbl, color: "#166534" }}>Излишки (сум)</label>
+              <label style={{ ...lbl, color: "var(--text-success)" }}>Излишки (сум)</label>
               <input
                 type="number"
                 value={form.surplus}
@@ -6177,7 +6956,7 @@ function CashView({
               />
             </div>
             <div>
-              <label style={{ ...lbl, color: "#991b1b" }}>
+              <label style={{ ...lbl, color: "var(--text-danger)" }}>
                 Недостача (сум)
               </label>
               <input
@@ -6233,6 +7012,7 @@ function ProductSearch({ products, onSelect }) {
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
   const ref = useRef(null);
+
   useEffect(() => {
     const h = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setFocused(false);
@@ -6240,14 +7020,43 @@ function ProductSearch({ products, onSelect }) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
   const filtered =
     q.length >= 1
       ? products
           .filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
           .slice(0, 10)
       : [];
+
+  const highlightMatch = (text, query) => {
+    if (!query) return <span>{text}</span>;
+    const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+    return (
+      <span>
+        {parts.map((part, i) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <mark
+              key={i}
+              style={{
+                background: "var(--color-primary-glow)",
+                color: "var(--text-main)",
+                borderRadius: 4,
+                padding: "1px 3px",
+                fontWeight: 600,
+              }}
+            >
+              {part}
+            </mark>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </span>
+    );
+  };
+
   return (
-    <div ref={ref} style={{ position: "relative", marginBottom: 4 }}>
+    <div ref={ref} style={{ position: "relative", marginBottom: 8 }}>
       <div style={{ position: "relative" }}>
         <span
           style={{
@@ -6255,7 +7064,10 @@ function ProductSearch({ products, onSelect }) {
             left: 12,
             top: "50%",
             transform: "translateY(-50%)",
-            color: "#94a3b8",
+            color: focused ? "var(--color-primary)" : "var(--text-muted)",
+            transition: "color 0.2s ease",
+            display: "flex",
+            alignItems: "center",
           }}
         >
           {I.search}
@@ -6270,44 +7082,84 @@ function ProductSearch({ products, onSelect }) {
           placeholder="Найти и добавить товар..."
           style={{
             width: "100%",
-            padding: "11px 14px 11px 40px",
+            padding: "11px 40px 11px 40px",
             borderRadius: 10,
-            border: "1px solid #e2e8f0",
+            border: focused
+              ? "1px solid var(--color-primary)"
+              : "1px solid var(--border-color)",
             fontSize: 14,
             outline: "none",
-            background: "#fff",
+            background: "var(--bg-input)",
+            color: "var(--text-main)",
+            boxShadow: focused ? "0 0 0 3px var(--color-primary-glow)" : "none",
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         />
+        {q && (
+          <button
+            onClick={() => {
+              setQ("");
+              setFocused(false);
+            }}
+            style={{
+              position: "absolute",
+              right: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              padding: 4,
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "50%",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--text-main)";
+              e.currentTarget.style.background = "var(--bg-hover)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-muted)";
+              e.currentTarget.style.background = "none";
+            }}
+          >
+            {I.x}
+          </button>
+        )}
       </div>
       {focused && q.length >= 1 && (
         <div
           style={{
             position: "absolute",
-            top: "calc(100% + 4px)",
+            top: "calc(100% + 6px)",
             left: 0,
             right: 0,
-            background: "#fff",
-            borderRadius: 10,
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
-            zIndex: 50,
+            background: "var(--bg-card)",
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            zIndex: 150,
             maxHeight: 260,
             overflow: "auto",
+            animation: "fadeIn 0.15s ease-out",
           }}
         >
           {filtered.length === 0 && (
             <div
               style={{
-                padding: 16,
+                padding: "20px 16px",
                 textAlign: "center",
                 fontSize: 13,
-                color: "#94a3b8",
+                color: "var(--text-muted)",
               }}
             >
-              Не найдено
+              Товары не найдены
             </div>
           )}
-          {filtered.map((p) => (
+          {filtered.map((p, index) => (
             <button
               key={p.id}
               onClick={() => {
@@ -6317,24 +7169,37 @@ function ProductSearch({ products, onSelect }) {
               }}
               style={{
                 width: "100%",
-                padding: "10px 14px",
+                padding: "12px 16px",
                 border: "none",
-                borderTop: "1px solid #f5f7f9",
-                background: "#fff",
+                borderTop: index === 0 ? "none" : "1px solid var(--border-color)",
+                background: "transparent",
+                color: "var(--text-main)",
                 cursor: "pointer",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
                 fontSize: 13,
                 textAlign: "left",
+                transition: "background 0.15s ease",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#f8f7ff")
+                (e.currentTarget.style.background = "var(--bg-hover)")
               }
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
             >
-              <span style={{ fontWeight: 500 }}>{p.name}</span>
-              <span style={{ color: "#94a3b8", fontSize: 11 }}>
+              <span style={{ fontWeight: 500 }}>{highlightMatch(p.name, q)}</span>
+              <span
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  background: "var(--bg-pill)",
+                  padding: "2px 6px",
+                  borderRadius: 6,
+                  fontWeight: 600,
+                }}
+              >
                 {p.mainUnit || "шт"}
               </span>
             </button>
@@ -6380,7 +7245,7 @@ function StepBar({ steps, current }) {
 function LoadingBlock({ text }) {
   return (
     <div
-      style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}
+      style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted)" }}
     >
       <div
         style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}
@@ -6394,7 +7259,7 @@ function LoadingBlock({ text }) {
 function ErrorBlock({ text, onRetry }) {
   return (
     <div
-      style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}
+      style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted)" }}
     >
       <div style={{ fontSize: 44, marginBottom: 8 }}>⚠️</div>
       <div style={{ fontSize: 14, color: "#ef4444", marginBottom: 12 }}>
@@ -6406,8 +7271,8 @@ function ErrorBlock({ text, onRetry }) {
           style={{
             padding: "8px 16px",
             borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-card)",
             color: "#6366f1",
             fontSize: 13,
             fontWeight: 600,
@@ -6426,7 +7291,7 @@ function ErrorBlock({ text, onRetry }) {
 function Empty({ icon, text }) {
   return (
     <div
-      style={{ textAlign: "center", padding: "50px 20px", color: "#94a3b8" }}
+      style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)" }}
     >
       <div style={{ fontSize: 44, marginBottom: 8 }}>{icon}</div>
       <div style={{ fontSize: 14, fontWeight: 500 }}>{text}</div>
@@ -6468,7 +7333,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
     return (
       <div style={{ textAlign: "center", padding: "40px 20px" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>📜</div>
-        <div style={{ fontWeight: 600, color: "#64748b" }}>
+        <div style={{ fontWeight: 600, color: "var(--text-muted)" }}>
           {emptyText || "История действий пуста"}
         </div>
         <div
@@ -6494,7 +7359,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
         }}
       >
         <h3
-          style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#475569" }}
+          style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text-muted)" }}
         >
           История операций
         </h3>
@@ -6546,18 +7411,32 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
           }
           const items = details.items || [];
 
+          const typeColor = isFailed
+            ? "#ef4444"
+            : isInvoice
+            ? "#10b981"
+            : isInventory
+            ? "#7c3aed"
+            : isCash
+            ? "#059669"
+            : isProduction
+            ? "#f97316"
+            : "#06b6d4";
+
           return (
             <div
               key={act.id}
               style={{
-                background: isFailed ? "#fffbfa" : "#fff",
+                background: isFailed ? "#fffbfa" : "var(--bg-card)",
                 borderRadius: 14,
-                border: isFailed ? "1px solid #fee2e2" : "1px solid #e8ecf0",
-                padding: 18,
+                border: isFailed ? "1px solid #fee2e2" : "1px solid var(--border-color)",
+                borderLeft: `4px solid ${typeColor}`,
+                padding: "16px 18px",
                 boxShadow: isFailed
                   ? "0 4px 12px rgba(239, 68, 68, 0.04)"
-                  : "0 2px 4px rgba(0,0,0,0.02)",
+                  : "0 2px 8px rgba(0,0,0,0.03)",
                 animation: "fadeIn .25s ease",
+                transition: "all 0.15s ease",
               }}
             >
               <div
@@ -6565,7 +7444,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
-                  borderBottom: "1px dashed #e8ecf0",
+                  borderBottom: "1px dashed var(--border-color)",
                   paddingBottom: 12,
                   marginBottom: 12,
                 }}
@@ -6608,7 +7487,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                             : isInventory
                             ? "#7c3aed"
                             : isCash
-                            ? "#166534"
+                            ? "var(--text-success)"
                             : isProduction
                             ? "#c2410c"
                             : "#4f46e5",
@@ -6629,15 +7508,15 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                       style={{
                         fontSize: 13,
                         fontWeight: 700,
-                        color: isFailed ? "#ef4444" : "#334155",
+                        color: isFailed ? "#ef4444" : "var(--text-main)",
                       }}
                     >
                       {act.document_number || "Без номера"}
                     </span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                     👤 Выполнил:{" "}
-                    <b style={{ color: "#475569" }}>
+                    <b style={{ color: "var(--text-main)" }}>
                       {act.user_name || "Неизвестный"}
                     </b>{" "}
                     (через{" "}
@@ -6649,7 +7528,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                   </div>
                 </div>
                 <div
-                  style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}
+                  style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}
                 >
                   {formattedDate}
                 </div>
@@ -6660,7 +7539,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                   <div>
                     <div
                       style={{
-                        background: "#f8fafc",
+                        background: "var(--bg-hover)",
                         borderRadius: 8,
                         padding: 12,
                         display: "flex",
@@ -6674,7 +7553,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>💵 Наличные:</span>
+                        <span style={{ color: "var(--text-muted)" }}>💵 Наличные:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(
                             details.payments?.cash || details.cash || 0
@@ -6688,7 +7567,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                             justifyContent: "space-between",
                           }}
                         >
-                          <span style={{ color: "#64748b" }}>💰 Инкассация:</span>
+                          <span style={{ color: "var(--text-muted)" }}>💰 Инкассация:</span>
                           <span style={{ fontWeight: 600 }}>
                             {fmtPrice(
                               details.payments?.encashment || details.encashment || 0
@@ -6702,7 +7581,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>💳 Uzcard:</span>
+                        <span style={{ color: "var(--text-muted)" }}>💳 Uzcard:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(details.payments?.uzcard || 0)}
                         </span>
@@ -6713,7 +7592,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>💳 Humo:</span>
+                        <span style={{ color: "var(--text-muted)" }}>💳 Humo:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(details.payments?.humo || 0)}
                         </span>
@@ -6724,7 +7603,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>
+                        <span style={{ color: "var(--text-muted)" }}>
                           📱 Click / Payme:
                         </span>
                         <span style={{ fontWeight: 600 }}>
@@ -6739,7 +7618,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>💳 RAHMAT:</span>
+                        <span style={{ color: "var(--text-muted)" }}>💳 RAHMAT:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(details.payments?.rahmat || 0)}
                         </span>
@@ -6750,7 +7629,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>💳 Uzum:</span>
+                        <span style={{ color: "var(--text-muted)" }}>💳 Uzum:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(details.payments?.uzum || 0)}
                         </span>
@@ -6761,7 +7640,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                           justifyContent: "space-between",
                         }}
                       >
-                        <span style={{ color: "#64748b" }}>🛵 Яндекс Еда:</span>
+                        <span style={{ color: "var(--text-muted)" }}>🛵 Яндекс Еда:</span>
                         <span style={{ fontWeight: 600 }}>
                           {fmtPrice(details.payments?.yandex || 0)}
                         </span>
@@ -6797,7 +7676,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                         >
                           <span
                             style={{
-                              color: "#64748b",
+                              color: "var(--text-muted)",
                               fontWeight: 700,
                               fontSize: 11,
                             }}
@@ -6850,7 +7729,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
-                                color: "#166534",
+                                color: "var(--text-success)",
                               }}
                             >
                               <span>🟢 Излишки:</span>
@@ -6864,7 +7743,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
-                                color: "#991b1b",
+                                color: "var(--text-danger)",
                               }}
                             >
                               <span>🔴 Недостача:</span>
@@ -6882,7 +7761,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                     <div
                       style={{
                         marginBottom: 8,
-                        color: "#475569",
+                        color: "var(--text-muted)",
                         fontWeight: 600,
                       }}
                     >
@@ -6915,7 +7794,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
 
                     <div
                       style={{
-                        background: "#f8fafc",
+                        background: "var(--bg-hover)",
                         borderRadius: 8,
                         padding: 10,
                       }}
@@ -6931,7 +7810,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                               idx < items.length - 1
                                 ? "1px solid #f1f5f9"
                                 : "none",
-                            color: "#334155",
+                            color: "var(--text-main)",
                           }}
                         >
                           <span>{it.product_name || "Товар"}</span>
@@ -6970,7 +7849,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                     style={{
                       marginTop: 8,
                       fontStyle: "italic",
-                      color: "#64748b",
+                      color: "var(--text-muted)",
                       fontSize: 11,
                     }}
                   >
@@ -7031,7 +7910,7 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
 const lbl = {
   fontSize: 12,
   fontWeight: 600,
-  color: "#475569",
+  color: "var(--text-muted)",
   marginBottom: 6,
   display: "block",
 };
@@ -7039,16 +7918,18 @@ const th = {
   padding: "8px 12px",
   textAlign: "left",
   fontWeight: 600,
-  color: "#64748b",
+  color: "var(--text-muted)",
   fontSize: 11,
 };
 const td = { padding: "8px 12px" };
-const crumb = { fontSize: 12, color: "#64748b", marginBottom: 12 };
+const crumb = { fontSize: 12, color: "var(--text-muted)", marginBottom: 12 };
 const inp = {
   width: "100%",
   padding: "10px 12px",
   borderRadius: 9,
-  border: "1px solid #e2e8f0",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-input)",
+  color: "var(--text-main)",
   fontSize: 13,
   outline: "none",
 };
@@ -7056,7 +7937,9 @@ const numInput = {
   width: 80,
   padding: "6px 8px",
   borderRadius: 6,
-  border: "1px solid #e2e8f0",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-input)",
+  color: "var(--text-main)",
   fontSize: 13,
   textAlign: "center",
   outline: "none",
@@ -7064,8 +7947,9 @@ const numInput = {
 const storeBtn = {
   padding: "14px 16px",
   borderRadius: 10,
-  border: "1px solid #e2e8f0",
-  background: "#fff",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-card)",
+  color: "var(--text-main)",
   cursor: "pointer",
   textAlign: "left",
   fontSize: 14,
@@ -7293,7 +8177,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           display: "flex",
           gap: 10,
           marginBottom: 24,
-          borderBottom: "1px solid #e2e8f0",
+          borderBottom: "1px solid var(--border-color)",
           paddingBottom: 10,
         }}
       >
@@ -7329,9 +8213,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             style={{
               padding: "10px 16px",
               borderRadius: 12,
-              border: subTab === sub.id ? "none" : "1px solid #e2e8f0",
-              background: subTab === sub.id ? sub.grad : "#fff",
-              color: subTab === sub.id ? sub.text : "#64748b",
+              border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+              background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+              color: subTab === sub.id ? sub.text : "var(--text-muted)",
               fontWeight: 700,
               fontSize: 13,
               cursor: "pointer",
@@ -7366,7 +8250,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginLeft: 8,
               fontSize: 13,
               fontWeight: 500,
-              color: "#64748b",
+              color: "var(--text-muted)",
             }}
           >
             Загрузка аналитики...
@@ -7431,11 +8315,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
-                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
                 <input
                   type="date"
                   value={plDates.to}
@@ -7445,7 +8329,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
@@ -7649,9 +8533,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               {/* Expenses Chart Container */}
               <div
                 style={{
-                  background: "#fff",
+                  background: "var(--bg-card)",
                   borderRadius: 16,
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid var(--border-color)",
                   padding: 20,
                 }}
               >
@@ -7719,7 +8603,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                 alignItems: "center",
                               }}
                             >
-                              <span style={{ color: "#0f172a", fontWeight: 700 }}>{exp.name}</span>
+                              <span style={{ color: "var(--text-main)", fontWeight: 700 }}>{exp.name}</span>
                               <span
                                 style={{
                                   background: "rgba(99, 102, 241, 0.08)",
@@ -7758,7 +8642,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               width: "100%",
                               height: 6,
                               borderRadius: 3,
-                              background: "#f1f5f9",
+                              background: "var(--bg-pill)",
                               overflow: "hidden",
                             }}
                           >
@@ -7779,7 +8663,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     <div
                       style={{
                         fontStyle: "italic",
-                        color: "#64748b",
+                        color: "var(--text-muted)",
                         fontSize: 13,
                         textAlign: "center",
                         padding: "20px 0",
@@ -7796,7 +8680,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             <div
               style={{
                 fontStyle: "italic",
-                color: "#64748b",
+                color: "var(--text-muted)",
                 fontSize: 13,
                 textAlign: "center",
                 padding: 40,
@@ -7826,8 +8710,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
                   fontSize: 12,
                   fontWeight: 700,
                   outline: "none",
@@ -7875,7 +8759,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
               >
                 <span
-                  style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}
+                  style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}
                 >
                   Выбор даты:
                 </span>
@@ -7890,7 +8774,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                     outline: "none",
                   }}
@@ -7911,11 +8795,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
-                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
                 <input
                   type="date"
                   value={cashDates.to}
@@ -7925,7 +8809,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
@@ -8095,7 +8979,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 11,
                           fontWeight: 700,
-                          color: "#64748b",
+                          color: "var(--text-muted)",
                           textTransform: "uppercase",
                           letterSpacing: 0.5,
                         }}
@@ -8106,14 +8990,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 24,
                           fontWeight: 800,
-                          color: "#0f1729",
+                          color: "var(--text-main)",
                           marginTop: 8,
                         }}
                       >
                         {cashData.orderCount}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                        style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}
                       >
                         Выставлено счетов в iiko
                       </div>
@@ -8124,7 +9008,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 11,
                           fontWeight: 700,
-                          color: "#64748b",
+                          color: "var(--text-muted)",
                           textTransform: "uppercase",
                           letterSpacing: 0.5,
                         }}
@@ -8135,14 +9019,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 24,
                           fontWeight: 800,
-                          color: "#0f1729",
+                          color: "var(--text-main)",
                           marginTop: 8,
                         }}
                       >
                         {fmtPrice(cashData.avgCheck)}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                        style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}
                       >
                         Средняя стоимость заказа
                       </div>
@@ -8153,7 +9037,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 11,
                           fontWeight: 700,
-                          color: "#64748b",
+                          color: "var(--text-muted)",
                           textTransform: "uppercase",
                           letterSpacing: 0.5,
                         }}
@@ -8164,14 +9048,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         style={{
                           fontSize: 24,
                           fontWeight: 800,
-                          color: "#0f1729",
+                          color: "var(--text-main)",
                           marginTop: 8,
                         }}
                       >
                         {cashData.guestCount || "—"}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}
+                        style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}
                       >
                         Общее число посетителей
                       </div>
@@ -8181,9 +9065,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   {/* Audit Comparison Table comparing iiko vs cashier */}
                   <div
                     style={{
-                      background: "#fff",
+                      background: "var(--bg-card)",
                       borderRadius: 16,
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--border-color)",
                       padding: 20,
                       boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
                     }}
@@ -8203,7 +9087,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           margin: 0,
                           fontSize: 15,
                           fontWeight: 800,
-                          color: "#0f1729",
+                          color: "var(--text-main)",
                         }}
                       >
                         ⚖️ Сверка выручки и оплат (iiko vs Сдача кассира)
@@ -8338,17 +9222,17 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                       const thStyle = {
                         padding: "10px 8px",
                         borderBottom: "2px solid #cbd5e1",
-                        background: "#f8fafc",
+                        background: "var(--bg-hover)",
                         fontSize: "11px",
                         fontWeight: "700",
-                        color: "#475569",
+                        color: "var(--text-muted)",
                         textAlign: "right",
                       };
                       const tdStyle = {
                         padding: "10px 8px",
-                        borderBottom: "1px solid #e2e8f0",
+                        borderBottom: "1px solid var(--border-color)",
                         fontSize: "12px",
-                        color: "#334155",
+                        color: "var(--text-main)",
                         textAlign: "right",
                       };
 
@@ -8357,7 +9241,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           style={{
                             overflowX: "auto",
                             borderRadius: 10,
-                            border: "1px solid #e2e8f0",
+                            border: "1px solid var(--border-color)",
                           }}
                         >
                           <table
@@ -8406,7 +9290,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                         ...tdStyle,
                                         textAlign: "left",
                                         fontWeight: "600",
-                                        background: "#f8fafc",
+                                        background: "var(--bg-hover)",
                                       }}
                                     >
                                       {row.label}
@@ -8429,7 +9313,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       style={{
                                         ...tdStyle,
                                         fontWeight: "700",
-                                        color: "#1e293b",
+                                        color: "var(--text-main)",
                                         background: "#fafafa",
                                       }}
                                     >
@@ -8494,7 +9378,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                 return (
                                   <tr
                                     style={{
-                                      background: "#f8fafc",
+                                      background: "var(--bg-hover)",
                                       fontWeight: "800",
                                     }}
                                   >
@@ -8552,7 +9436,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       style={{
                                         ...tdStyle,
                                         borderTop: "2px solid #cbd5e1",
-                                        background: "#f1f5f9",
+                                        background: "var(--bg-pill)",
                                       }}
                                     >
                                       {cashierTotals
@@ -8610,7 +9494,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             <div
               style={{
                 fontStyle: "italic",
-                color: "#64748b",
+                color: "var(--text-muted)",
                 fontSize: 13,
                 textAlign: "center",
                 padding: 40,
@@ -8674,11 +9558,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
-                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
                 <input
                   type="date"
                   value={topDates.to}
@@ -8688,7 +9572,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
@@ -8724,9 +9608,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   <div
                     key={idx}
                     style={{
-                      background: "#fff",
+                      background: "var(--bg-card)",
                       borderRadius: 16,
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--border-color)",
                       padding: 20,
                     }}
                   >
@@ -8745,7 +9629,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           margin: 0,
                           fontSize: 14,
                           fontWeight: 800,
-                          color: "#0f1729",
+                          color: "var(--text-main)",
                         }}
                       >
                         📂 {cat.name}
@@ -8838,21 +9722,21 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                         style={{
                                           flex: 1,
                                           fontWeight: 600,
-                                          color: "#1e293b",
+                                          color: "var(--text-main)",
                                         }}
                                       >
                                         {dish.name}
                                       </div>
                                       <div
                                         style={{
-                                          color: "#64748b",
+                                          color: "var(--text-muted)",
                                           textAlign: "right",
                                         }}
                                       >
                                         <div
                                           style={{
                                             fontWeight: 700,
-                                            color: "#1e293b",
+                                            color: "var(--text-main)",
                                           }}
                                         >
                                           {dish.amount} шт
@@ -8873,7 +9757,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                   style={{
                                     fontSize: 10,
                                     fontWeight: 800,
-                                    color: "#64748b",
+                                    color: "var(--text-muted)",
                                     textTransform: "uppercase",
                                     letterSpacing: "0.5px",
                                     marginBottom: 8,
@@ -8906,7 +9790,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                           fontSize: 14,
                                           width: 20,
                                           textAlign: "center",
-                                          color: "#94a3b8",
+                                          color: "var(--text-muted)",
                                         }}
                                       >
                                         •
@@ -8915,21 +9799,21 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                         style={{
                                           flex: 1,
                                           fontWeight: 500,
-                                          color: "#475569",
+                                          color: "var(--text-muted)",
                                         }}
                                       >
                                         {dish.name}
                                       </div>
                                       <div
                                         style={{
-                                          color: "#94a3b8",
+                                          color: "var(--text-muted)",
                                           textAlign: "right",
                                         }}
                                       >
                                         <div
                                           style={{
                                             fontWeight: 600,
-                                            color: "#475569",
+                                            color: "var(--text-muted)",
                                           }}
                                         >
                                           {dish.amount} шт
@@ -8953,7 +9837,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 <div
                   style={{
                     fontStyle: "italic",
-                    color: "#64748b",
+                    color: "var(--text-muted)",
                     fontSize: 13,
                     textAlign: "center",
                     padding: 40,
@@ -8968,7 +9852,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             <div
               style={{
                 fontStyle: "italic",
-                color: "#64748b",
+                color: "var(--text-muted)",
                 fontSize: 13,
                 textAlign: "center",
                 padding: 40,
@@ -9038,11 +9922,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
-                <span style={{ fontSize: 12, color: "#64748b" }}>до</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
                 <input
                   type="date"
                   value={waitersDates.to}
@@ -9052,7 +9936,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     fontSize: 12,
                   }}
                 />
@@ -9080,9 +9964,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           {waitersData ? (
             <div
               style={{
-                background: "#fff",
+                background: "var(--bg-card)",
                 borderRadius: 16,
-                border: "1px solid #e2e8f0",
+                border: "1px solid var(--border-color)",
                 padding: 20,
                 boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
               }}
@@ -9092,7 +9976,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   margin: "0 0 20px",
                   fontSize: 16,
                   fontWeight: 800,
-                  color: "#0f1729",
+                  color: "var(--text-main)",
                 }}
               >
                 🏆 Продажи по сотрудникам / официантам
@@ -9142,7 +10026,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               style={{
                                 fontSize: 16,
                                 fontWeight: 800,
-                                color: "#64748b",
+                                color: "var(--text-muted)",
                                 width: 24,
                               }}
                             >
@@ -9158,7 +10042,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               style={{
                                 fontSize: 13,
                                 fontWeight: 700,
-                                color: "#1e293b",
+                                color: "var(--text-main)",
                               }}
                             >
                               {waiter.name}
@@ -9181,7 +10065,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                             display: "flex",
                             gap: 16,
                             fontSize: 11,
-                            color: "#64748b",
+                            color: "var(--text-muted)",
                             marginTop: 2,
                             marginBottom: 2,
                             zIndex: 1,
@@ -9189,7 +10073,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         >
                           <span>
                             🧾 Чеков:{" "}
-                            <strong style={{ color: "#334155" }}>
+                            <strong style={{ color: "var(--text-main)" }}>
                               {waiter.orders}
                             </strong>
                           </span>
@@ -9200,7 +10084,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           )}
                           <span>
                             📈 Ср. чек:{" "}
-                            <strong style={{ color: "#334155" }}>
+                            <strong style={{ color: "var(--text-main)" }}>
                               {fmtPrice(waiter.avgCheck)}
                             </strong>
                           </span>
@@ -9212,7 +10096,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                             width: "100%",
                             height: 6,
                             borderRadius: 3,
-                            background: "#f1f5f9",
+                            background: "var(--bg-pill)",
                             overflow: "hidden",
                             marginTop: 4,
                           }}
@@ -9235,7 +10119,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 <div
                   style={{
                     fontStyle: "italic",
-                    color: "#64748b",
+                    color: "var(--text-muted)",
                     fontSize: 13,
                     textAlign: "center",
                     padding: "40px 0",
@@ -9249,7 +10133,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             <div
               style={{
                 fontStyle: "italic",
-                color: "#64748b",
+                color: "var(--text-muted)",
                 fontSize: 13,
                 textAlign: "center",
                 padding: 40,
