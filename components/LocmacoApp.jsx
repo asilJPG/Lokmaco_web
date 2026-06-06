@@ -2,11 +2,9 @@
 import { useState, useEffect, useRef } from "react";
 
 const FALLBACK_SUPPLIERS = [
-  { id: "16c6e655-945c-4002-a117-934749aea133", name: "КПК" },
-  {
-    id: "3bdcfdbb-e66c-4b16-9025-03dedb7905fa",
-    name: "Наличка без поставщика",
-  },
+  { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
+  { id: "3bdcfdbb-e66c-4b16-9025-03dedb7905fa", name: "Наличные" },
+  { id: "4268b082-79b2-4df6-8335-4b6b2e610f37", name: "Оплата по счету" },
 ];
 
 const FALLBACK_STORES = [
