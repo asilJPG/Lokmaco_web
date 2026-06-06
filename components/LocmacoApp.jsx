@@ -4526,6 +4526,97 @@ function TransferView({
                     </div>
                   );
                 })}
+
+                {pendingTransfers.outgoing.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: "var(--bg-card)",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-color)",
+                      padding: 16,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.01)",
+                      animation: "fadeIn .25s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 12,
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <span
+                          style={{
+                            background: "#fef3c7",
+                            color: "#b45309",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          {item.status === "pending_receiver"
+                            ? "На согласовании у получателя"
+                            : "На согласовании у отправителя"}
+                        </span>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "var(--text-main)",
+                            marginTop: 6,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span>{STORE_ICONS[item.store_from] || "📦"} {item.store_from_name}</span>
+                          <span style={{ color: "#6366f1", fontSize: 12 }}>{I.arrow || "→"}</span>
+                          <span>{STORE_ICONS[item.store_to] || "📦"} {item.store_to_name}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                          Создано вами: {new Date(item.created_at).toLocaleString("ru-RU")}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ border: "1px solid var(--border-color)", borderRadius: 10, overflow: "hidden" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: "var(--bg-hover)" }}>
+                            <th style={th}>Товар</th>
+                            <th style={{ ...th, textAlign: "right", width: 120 }}>Кол-во</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.items.map((it, idx) => (
+                            <tr key={idx} style={{ borderTop: "1px solid var(--border-color)" }}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 500 }}>{it.product_name}</div>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{it.unit}</div>
+                              </td>
+                              <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                                {it.quantity} {it.unit}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {item.comment && (
+                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                        💬 Комментарий: {item.comment}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

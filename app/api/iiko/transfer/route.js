@@ -50,8 +50,14 @@ export async function GET(request) {
     const returned = list.filter(
       (item) => item.status === "pending_creator" && String(item.creator_tg_id) === String(tgId)
     );
+    const outgoing = list.filter(
+      (item) =>
+        (item.status === "pending_receiver" || item.status === "pending_sender") &&
+        String(item.creator_tg_id) === String(tgId) &&
+        !incoming.some((inc) => inc.id === item.id)
+    );
 
-    return Response.json({ success: true, incoming, returned });
+    return Response.json({ success: true, incoming, returned, outgoing });
   } catch (e) {
     console.error("[/api/iiko/transfer GET]", e.message);
     return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
