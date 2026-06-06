@@ -945,6 +945,80 @@ export default function LocmacoApp() {
     }
   }, []);
 
+  const performLogout = (reason = "manual") => {
+    sessionStorage.removeItem("user");
+    setLoggedInUser(null);
+    setLoginCode("");
+    fetch("/api/iiko/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }).catch((err) => {
+      console.error("Failed server logout:", err);
+    });
+  };
+
+  useEffect(() => {
+    if (!loggedInUser || loggedInUser.baseRole !== "director") return;
+
+    let timeoutId = null;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Screen locked or tab minimized. Start 20s logout timer
+        timeoutId = setTimeout(() => {
+          performLogout("visibility");
+        }, 20000); // 20 seconds
+      } else {
+        // User came back. Cancel the timer
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [loggedInUser]);
+
+  useEffect(() => {
+    if (!loggedInUser || loggedInUser.baseRole !== "director") return;
+
+    let idleTimeoutId = null;
+    const IDLE_TIME_LIMIT = 5 * 60 * 1000; // 5 minutes in ms
+
+    const resetIdleTimer = () => {
+      if (idleTimeoutId) {
+        clearTimeout(idleTimeoutId);
+      }
+      idleTimeoutId = setTimeout(() => {
+        performLogout("idle");
+      }, IDLE_TIME_LIMIT);
+    };
+
+    const events = ["mousemove", "mousedown", "keypress", "touchstart", "scroll"];
+    resetIdleTimer();
+
+    events.forEach((evt) => {
+      window.addEventListener(evt, resetIdleTimer);
+    });
+
+    return () => {
+      if (idleTimeoutId) {
+        clearTimeout(idleTimeoutId);
+      }
+      events.forEach((evt) => {
+        window.removeEventListener(evt, resetIdleTimer);
+      });
+    };
+  }, [loggedInUser]);
+
   const loadData = async () => {
     setProductsLoading(true);
     const [p, sup, st] = await Promise.all([
@@ -1805,14 +1879,7 @@ export default function LocmacoApp() {
               )}
             </button>
             <button
-              onClick={() => {
-                sessionStorage.removeItem("user");
-                setLoggedInUser(null);
-                setLoginCode("");
-                fetch("/api/iiko/logout", { method: "POST" }).catch((err) => {
-                  console.error("Failed server logout:", err);
-                });
-              }}
+              onClick={() => performLogout("manual")}
               style={{
                 background: "rgba(255, 255, 255, 0.05)",
                 border: "1px solid rgba(255, 255, 255, 0.1)",
@@ -6267,10 +6334,10 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "var(--bg-hover)", borderBottom: "1px solid var(--border-color)" }}>
-                      <th style={{ ...th, padding: "14px 16px" }}>Время входа</th>
+                      <th style={{ ...th, padding: "14px 16px" }}>Дата / Время</th>
                       <th style={th}>Сотрудник</th>
-                      <th style={th}>Способ авторизации</th>
-                      <th style={{ ...th, textAlign: "right", paddingRight: 16 }}>Статус</th>
+                      <th style={th}>Событие</th>
+                      <th style={{ ...th, textAlign: "right", paddingRight: 16 }}>Действие</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6285,7 +6352,8 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                         second: "2-digit",
                       });
 
-                      const isPasskey = log.action_type === "LOGIN_PASSKEY";
+                      const actType = log.action_type;
+                      const isLogin = actType.startsWith("LOGIN_");
 
                       return (
                         <tr
@@ -6302,42 +6370,104 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                             {log.user_name}
                           </td>
                           <td style={{ padding: "14px 16px" }}>
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 6,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                background: "var(--bg-pill)",
-                                color: "var(--text-pill)",
-                                border: "1px solid var(--border-color)",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              {isPasskey ? (
-                                <>
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-                                  </svg>
-                                  Face ID / Touch ID
-                                </>
-                              ) : (
-                                <>
-                                  ⌨️ PIN-код
-                                </>
-                              )}
-                            </span>
+                            {actType === "LOGIN_PASSKEY" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: "var(--bg-pill)",
+                                  color: "var(--text-pill)",
+                                  border: "1px solid var(--border-color)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                <svg
+                                  width="10"
+                                  height="10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                                </svg>
+                                Face ID / Touch ID
+                              </span>
+                            ) : actType === "LOGIN_PIN" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: "var(--bg-pill)",
+                                  color: "var(--text-pill)",
+                                  border: "1px solid var(--border-color)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                ⌨️ PIN-код
+                              </span>
+                            ) : actType === "LOGOUT_SCREEN" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: "var(--bg-pill)",
+                                  color: "var(--text-pill)",
+                                  border: "1px solid var(--border-color)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                📱 Блокировка экрана
+                              </span>
+                            ) : actType === "LOGOUT_IDLE" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: "var(--bg-pill)",
+                                  color: "var(--text-pill)",
+                                  border: "1px solid var(--border-color)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                💤 Неактивность (5 мин)
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  background: "var(--bg-pill)",
+                                  color: "var(--text-pill)",
+                                  border: "1px solid var(--border-color)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                🚪 Ручной выход
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: "14px 16px", textAlign: "right", paddingRight: 16 }}>
                             <span
@@ -6346,11 +6476,11 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                 borderRadius: 6,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                background: "var(--bg-status-success)",
-                                color: "var(--text-status-success)",
+                                background: isLogin ? "var(--bg-status-success)" : "var(--bg-status-neutral)",
+                                color: isLogin ? "var(--text-status-success)" : "var(--text-status-neutral)",
                               }}
                             >
-                              Успешно
+                              {isLogin ? "Вход" : "Выход"}
                             </span>
                           </td>
                         </tr>
