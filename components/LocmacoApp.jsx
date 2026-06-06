@@ -5818,6 +5818,10 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const [subTab, setSubTab] = useState("list"); // list, login_history
+  const [loginHistory, setLoginHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const [form, setForm] = useState({
     name: "",
     role: "bar",
@@ -5836,9 +5840,31 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     setLoading(false);
   };
 
+  const loadLoginHistory = async () => {
+    setHistoryLoading(true);
+    const res = await API.getHistory();
+    if (res && res.success && Array.isArray(res.history)) {
+      // Filter events starting with "LOGIN_"
+      const loginLogs = res.history.filter(
+        (act) => act.action_type === "LOGIN_PIN" || act.action_type === "LOGIN_PASSKEY"
+      );
+      setLoginHistory(loginLogs);
+    } else {
+      showToast(res?.error || "Не удалось загрузить историю входов", "error");
+    }
+    setHistoryLoading(false);
+  };
+
   useEffect(() => {
     loadEmployees();
   }, []);
+
+  useEffect(() => {
+    setSearchQuery("");
+    if (subTab === "login_history") {
+      loadLoginHistory();
+    }
+  }, [subTab]);
 
   const isStoreDependent = (role) => {
     return ["supplier", "kitchen", "prep_chef", "bar"].includes(role);
@@ -5962,6 +5988,14 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     return nameMatch || codeMatch || roleMatch || storeMatch;
   });
 
+  const filteredHistory = loginHistory.filter((log) => {
+    const q = searchQuery.toLowerCase();
+    const nameMatch = log.user_name?.toLowerCase().includes(q);
+    const methodMatch = (log.action_type === "LOGIN_PASSKEY" ? "faceid touchid биометрия" : "pin пинкод").includes(q);
+    const detailMatch = log.details?.toLowerCase().includes(q);
+    return nameMatch || methodMatch || detailMatch;
+  });
+
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
       <div
@@ -5975,20 +6009,22 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
           {mode === "edit" ? "Редактирование сотрудника" : "Сотрудники"}
         </h2>
-        {mode === "idle" ? (
+        {mode === "idle" && subTab === "list" && (
           <Btn
             onClick={() => {
               setMode("new");
               setForm({ name: "", role: "bar", storeId: "", access_code: "" });
             }}
             style={{
-              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-              boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)",
+              background: "var(--text-main)",
+              color: "var(--bg-card)",
+              boxShadow: "none",
             }}
           >
             {I.plus} Добавить сотрудника
           </Btn>
-        ) : (
+        )}
+        {mode !== "idle" && (
           <Btn outline onClick={() => { setMode("idle"); setEditingId(null); }}>
             {I.x} Отмена
           </Btn>
@@ -5996,6 +6032,43 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       </div>
 
       {mode === "idle" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button
+            onClick={() => setSubTab("list")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--border-color)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: subTab === "list" ? "var(--text-main)" : "var(--bg-card)",
+              color: subTab === "list" ? "var(--bg-card)" : "var(--text-muted)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            👥 Список сотрудников
+          </button>
+          <button
+            onClick={() => setSubTab("login_history")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--border-color)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: subTab === "login_history" ? "var(--text-main)" : "var(--bg-card)",
+              color: subTab === "login_history" ? "var(--bg-card)" : "var(--text-muted)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            🕒 История посещений
+          </button>
+        </div>
+      )}
+
+      {mode === "idle" && subTab === "list" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ position: "relative" }}>
             <input
@@ -6045,7 +6118,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: "#f8fafb", borderBottom: "1px solid var(--border-color)" }}>
+                    <tr style={{ background: "var(--bg-hover)", borderBottom: "1px solid var(--border-color)" }}>
                       <th style={{ ...th, padding: "14px 16px" }}>Имя</th>
                       <th style={th}>Должность</th>
                       <th style={th}>Склад</th>
@@ -6057,7 +6130,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                     {filtered.map((emp) => {
                       const color = getRoleColor(emp.role);
                       return (
-                        <tr key={emp.id} style={{ borderBottom: "1px solid #f0f2f5" }}>
+                        <tr key={emp.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
                           <td style={{ ...td, padding: "14px 16px", fontWeight: 600, color: "var(--text-main)" }}>
                             {emp.name}
                           </td>
@@ -6106,7 +6179,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                   borderRadius: 8,
                                   transition: "background 0.15s ease",
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = "#e0e7ff"}
+                                onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
                                 onMouseLeave={(e) => e.currentTarget.style.background = "none"}
                               >
                                 {I.edit}
@@ -6131,6 +6204,154 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                 </button>
                               ) : null}
                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "idle" && subTab === "login_history" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="Поиск по сотруднику или способу входа..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                ...inp,
+                paddingLeft: 40,
+                background: "var(--bg-card)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-muted)",
+                display: "flex",
+              }}
+            >
+              {I.search}
+            </div>
+          </div>
+
+          {historyLoading ? (
+            <LoadingBlock text="Загрузка истории посещений..." />
+          ) : filteredHistory.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border-color)" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🕒</div>
+              <div style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                {searchQuery ? "История входов не найдена" : "История входов пуста"}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: "var(--bg-card)",
+                borderRadius: 14,
+                border: "1px solid var(--border-color)",
+                overflow: "hidden",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg-hover)", borderBottom: "1px solid var(--border-color)" }}>
+                      <th style={{ ...th, padding: "14px 16px" }}>Время входа</th>
+                      <th style={th}>Сотрудник</th>
+                      <th style={th}>Способ авторизации</th>
+                      <th style={{ ...th, textAlign: "right", paddingRight: 16 }}>Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredHistory.map((log) => {
+                      const date = new Date(log.created_at);
+                      const formattedDate = date.toLocaleDateString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      });
+
+                      const isPasskey = log.action_type === "LOGIN_PASSKEY";
+
+                      return (
+                        <tr
+                          key={log.id}
+                          style={{
+                            borderBottom: "1px solid var(--border-color)",
+                            transition: "background 0.2s",
+                          }}
+                        >
+                          <td style={{ padding: "14px 16px", color: "var(--text-muted)" }}>
+                            {formattedDate}
+                          </td>
+                          <td style={{ padding: "14px 16px", fontWeight: 600 }}>
+                            {log.user_name}
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: "var(--bg-pill)",
+                                color: "var(--text-pill)",
+                                border: "1px solid var(--border-color)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              {isPasskey ? (
+                                <>
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                                  </svg>
+                                  Face ID / Touch ID
+                                </>
+                              ) : (
+                                <>
+                                  ⌨️ PIN-код
+                                </>
+                              )}
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px", textAlign: "right", paddingRight: 16 }}>
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: "var(--bg-status-success)",
+                                color: "var(--text-status-success)",
+                              }}
+                            >
+                              Успешно
+                            </span>
                           </td>
                         </tr>
                       );
