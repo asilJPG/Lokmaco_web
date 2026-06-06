@@ -21,7 +21,7 @@ export async function POST(request) {
 
     if (!code || String(code).length < 4) {
       limiter.increment();
-      return Response.json({ success: false, error: "Код должен быть 4-значным числом" }, { status: 400 });
+      return Response.json({ success: false, error: "Пароль должен быть не менее 4 символов" }, { status: 400 });
     }
 
     const user = await getUserByCode(code);
@@ -57,7 +57,7 @@ export async function POST(request) {
 
       // Log login event in Supabase
       try {
-        await logAction(user.tg_id, user.name, "LOGIN_PIN", "-", "Вход по PIN-коду");
+        await logAction(user.tg_id, user.name, "LOGIN_PASSWORD", "-", "Вход по паролю");
       } catch (logErr) {
         console.error("[Login Log Error]", logErr.message);
       }

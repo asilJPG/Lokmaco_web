@@ -850,6 +850,7 @@ function PieChart({ data, total, revenue }) {
 export default function LocmacoApp() {
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [loginCode, setLoginCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [regOptions, setRegOptions] = useState(null);
@@ -1246,50 +1247,22 @@ export default function LocmacoApp() {
         setLoggedInUser(parsedUser);
         sessionStorage.setItem("user", JSON.stringify(parsedUser));
       } else {
-        setLoginError(res?.error || "Неверный код доступа");
-        setLoginCode(""); // Clear pin so they can re-type immediately
+        setLoginError(res?.error || "Неверный пароль");
+        setLoginCode(""); // Clear password so they can re-type
       }
     };
 
     const handleLogin = async (e) => {
       if (e) e.preventDefault();
+      if (!loginCode) {
+        setLoginError("Введите пароль");
+        return;
+      }
       if (loginCode.length < 4) {
-        setLoginError("Введите 4-значный код");
+        setLoginError("Пароль должен быть не менее 4 символов");
         return;
       }
       await triggerLogin(loginCode);
-    };
-
-    const pressPin = (num) => {
-      setLoginError("");
-      if (loginCode.length < 4) {
-        const nextCode = loginCode + num;
-        setLoginCode(nextCode);
-        if (nextCode.length === 4) {
-          triggerLogin(nextCode);
-        }
-      }
-    };
-
-    const deletePin = () => {
-      setLoginError("");
-      setLoginCode((prev) => prev.slice(0, -1));
-    };
-
-    const pinBtn = {
-      background: "var(--bg-card)",
-      border: "1px solid var(--border-color)",
-      borderRadius: 12,
-      height: 55,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 20,
-      fontWeight: 600,
-      color: "var(--text-main)",
-      cursor: "pointer",
-      transition: "all 0.15s ease",
-      outline: "none",
     };
 
     return (
@@ -1314,13 +1287,9 @@ export default function LocmacoApp() {
             25% { transform: translateX(-6px); }
             75% { transform: translateX(6px); }
           }
-          .pin-btn:active {
-            transform: scale(0.95);
-            background: var(--bg-hover) !important;
-          }
-          .pin-btn:hover {
-            background: var(--bg-hover) !important;
-            border-color: var(--border-color) !important;
+          .password-input:focus {
+            border-color: var(--text-main) !important;
+            box-shadow: 0 0 0 2px var(--color-primary-glow) !important;
           }
           .submit-btn {
             transition: all 0.2s ease !important;
@@ -1448,46 +1417,64 @@ export default function LocmacoApp() {
             The Lokmaco
           </h2>
           <p style={{ margin: "0 0 32px", fontSize: 13, color: "var(--text-muted)" }}>
-            Введите 4-значный пин-код доступа
+            Введите пароль для входа
           </p>
 
           <form onSubmit={handleLogin}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                gap: 16,
-                marginBottom: 32,
-              }}
-            >
-              {[0, 1, 2, 3].map((i) => {
-                const isFilled = loginCode[i] !== undefined;
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 12,
-                      border: isFilled
-                        ? "1.5px solid var(--text-main)"
-                        : "1.5px solid var(--border-color)",
-                      background: isFilled
-                        ? "var(--bg-hover)"
-                        : "var(--bg-input)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 26,
-                      fontWeight: 700,
-                      color: "var(--text-main)",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {isFilled ? "•" : ""}
-                  </div>
-                );
-              })}
+            <div style={{ position: "relative", marginBottom: loginError ? 12 : 24 }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={loginCode}
+                onChange={(e) => {
+                  setLoginError("");
+                  setLoginCode(e.target.value);
+                }}
+                placeholder="Введите пароль"
+                disabled={loginLoading}
+                style={{
+                  width: "100%",
+                  padding: "16px 48px 16px 16px",
+                  borderRadius: 12,
+                  border: "1.5px solid var(--border-color)",
+                  background: "var(--bg-input)",
+                  color: "var(--text-main)",
+                  fontSize: 16,
+                  fontWeight: 500,
+                  outline: "none",
+                  transition: "all 0.2s ease",
+                }}
+                className="password-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: "absolute",
+                  right: 14,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  padding: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  outline: "none",
+                }}
+              >
+                {showPassword ? (
+                  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.43 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
             </div>
 
             {loginError && (
@@ -1498,71 +1485,53 @@ export default function LocmacoApp() {
                   fontWeight: 500,
                   marginBottom: 20,
                   animation: "shake 0.3s ease",
+                  textAlign: "center",
                 }}
               >
                 ⚠️ {loginError}
               </div>
             )}
 
-            {/* Premium PIN Pad */}
-            <div
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="submit-btn"
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 16,
-                maxWidth: 280,
-                margin: "0 auto 30px",
+                width: "100%",
+                padding: "16px 20px",
+                borderRadius: 12,
+                background: "var(--text-main)",
+                color: "var(--bg-card)",
+                fontSize: 15,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                boxShadow: darkMode ? "0 4px 12px rgba(255, 255, 255, 0.05)" : "0 4px 12px rgba(0, 0, 0, 0.05)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                outline: "none",
+                marginBottom: 20,
               }}
             >
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => pressPin(num)}
-                  className="pin-btn"
-                  style={pinBtn}
+              {loginLoading ? (
+                <svg
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  viewBox="0 0 24 24"
+                  style={{ animation: "spin 1s linear infinite" }}
                 >
-                  {num}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={deletePin}
-                className="pin-btn"
-                style={{
-                  ...pinBtn,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: "var(--text-muted)",
-                }}
-              >
-                Стереть
-              </button>
-              <button
-                type="button"
-                onClick={() => pressPin(0)}
-                className="pin-btn"
-                style={pinBtn}
-              >
-                0
-              </button>
-              <button
-                type="submit"
-                disabled={loginLoading}
-                className="submit-btn"
-                style={{
-                  ...pinBtn,
-                  background: "var(--text-main)",
-                  color: "var(--bg-card)",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  border: "none",
-                  boxShadow: darkMode ? "0 4px 12px rgba(255, 255, 255, 0.05)" : "0 4px 12px rgba(0, 0, 0, 0.05)",
-                }}
-              >
-                {loginLoading ? I.loader : "Войти"}
-              </button>
-            </div>
+                  <path d="M21 12a9 9 0 11-6.219-8.56" />
+                </svg>
+              ) : (
+                "Войти"
+              )}
+            </button>
             <button
               type="button"
               onClick={handleLoginPasskey}
@@ -5982,8 +5951,8 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       showToast("Выберите склад для данной должности", "error");
       return;
     }
-    if (!/^\d{4}$/.test(form.access_code)) {
-      showToast("Код доступа должен состоять ровно из 4 цифр", "error");
+    if (!form.access_code || form.access_code.length < 4) {
+      showToast("Пароль должен быть не менее 4 символов", "error");
       return;
     }
 
@@ -6056,7 +6025,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
   const filteredHistory = loginHistory.filter((log) => {
     const q = searchQuery.toLowerCase();
     const nameMatch = log.user_name?.toLowerCase().includes(q);
-    const methodMatch = (log.action_type === "LOGIN_PASSKEY" ? "faceid touchid биометрия" : "pin пинкод").includes(q);
+    const methodMatch = (log.action_type === "LOGIN_PASSKEY" ? "faceid touchid биометрия" : "pin пинкод пароль password").includes(q);
     const detailMatch = log.details?.toLowerCase().includes(q);
     return nameMatch || methodMatch || detailMatch;
   });
@@ -6187,7 +6156,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                       <th style={{ ...th, padding: "14px 16px" }}>Имя</th>
                       <th style={th}>Должность</th>
                       <th style={th}>Склад</th>
-                      <th style={{ ...th, textAlign: "center", width: 100 }}>Код доступа</th>
+                      <th style={{ ...th, textAlign: "center", width: 100 }}>Пароль</th>
                       <th style={{ ...th, width: 90 }}></th>
                     </tr>
                   </thead>
@@ -6397,7 +6366,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                 </svg>
                                 Face ID / Touch ID
                               </span>
-                            ) : actType === "LOGIN_PIN" ? (
+                            ) : (actType === "LOGIN_PIN" || actType === "LOGIN_PASSWORD") ? (
                               <span
                                 style={{
                                   padding: "4px 8px",
@@ -6412,7 +6381,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                   gap: 6,
                                 }}
                               >
-                                ⌨️ PIN-код
+                                🔑 Пароль
                               </span>
                             ) : actType === "LOGOUT_SCREEN" ? (
                               <span
@@ -6554,25 +6523,18 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
           )}
 
           <div>
-            <label style={lbl}>Код доступа (4 цифры)</label>
+            <label style={lbl}>Пароль (минимум 4 символа)</label>
             <input
               type="text"
-              pattern="[0-9]{4}"
-              maxLength="4"
+              minLength="4"
               value={form.access_code}
-              onChange={(e) => setForm({ ...form, access_code: e.target.value.replace(/[^0-9]/g, "") })}
-              placeholder="Например, 1234"
-              style={{
-                ...inp,
-                fontFamily: "monospace",
-                fontSize: 16,
-                fontWeight: 700,
-                letterSpacing: 2,
-              }}
+              onChange={(e) => setForm({ ...form, access_code: e.target.value })}
+              placeholder="Введите пароль сотрудника"
+              style={inp}
               required
             />
             <small style={{ color: "var(--text-muted)", marginTop: 4, display: "block" }}>
-              Этот уникальный код сотрудник будет вводить на главном экране для входа
+              Этот уникальный пароль сотрудник будет вводить на главном экране для входа
             </small>
           </div>
 
