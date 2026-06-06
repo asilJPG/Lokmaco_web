@@ -42,13 +42,19 @@ export async function GET(request) {
     // Filter list:
     // - incoming: (status === 'pending_receiver' && store_to === storeId) || (status === 'pending_sender' && store_from === storeId)
     // - returned: status === 'pending_creator' && creator_tg_id === tgId
+    const isAdminOrDirector = ["admin", "director"].includes(baseRole);
+
     const incoming = list.filter(
       (item) =>
-        (item.status === "pending_receiver" && String(item.store_to) === String(storeId)) ||
-        (item.status === "pending_sender" && String(item.store_from) === String(storeId))
+        (item.status === "pending_receiver" || item.status === "pending_sender") &&
+        (isAdminOrDirector ||
+          (item.status === "pending_receiver" && String(item.store_to) === String(storeId)) ||
+          (item.status === "pending_sender" && String(item.store_from) === String(storeId)))
     );
     const returned = list.filter(
-      (item) => item.status === "pending_creator" && String(item.creator_tg_id) === String(tgId)
+      (item) =>
+        item.status === "pending_creator" &&
+        (isAdminOrDirector || String(item.creator_tg_id) === String(tgId))
     );
     const outgoing = list.filter(
       (item) =>
