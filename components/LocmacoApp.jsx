@@ -3854,7 +3854,7 @@ function TransferView({
   const [submitting, setSubmitting] = useState(false);
 
   // States for pending transfers workflow
-  const [pendingTransfers, setPendingTransfers] = useState({ incoming: [], returned: [] });
+  const [pendingTransfers, setPendingTransfers] = useState({ incoming: [], returned: [], outgoing: [] });
   const [pendingLoading, setPendingLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editedItems, setEditedItems] = useState([]);
@@ -3871,6 +3871,7 @@ function TransferView({
         setPendingTransfers({
           incoming: res.incoming || [],
           returned: res.returned || [],
+          outgoing: res.outgoing || [],
         });
       }
     } catch (e) {
