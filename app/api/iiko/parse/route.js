@@ -123,6 +123,6 @@ export async function POST(request) {
     return Response.json(items);
   } catch (e) {
     console.error("[/api/iiko/parse]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

@@ -56,6 +56,6 @@ export async function POST(request) {
     return Response.json(options);
   } catch (e) {
     console.error("[Passkey Register Options]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

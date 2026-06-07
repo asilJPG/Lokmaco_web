@@ -4,7 +4,7 @@ import { http1Fetch } from "@/lib/iiko";
 export const dynamic = "force-dynamic";
 
 const IIKO_WEB_URL = (process.env.IIKO_WEB_URL || "https://the-lokmako.iikoweb.ru").replace(/\/+$/, "");
-const STORE_NUM = "170243";
+const STORE_NUM = process.env.IIKO_STORE_NUM || "170243";
 
 export async function GET(request) {
   try {
@@ -63,6 +63,6 @@ export async function GET(request) {
     return Response.json(data);
   } catch (e) {
     console.error("[/api/iiko/documents] error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

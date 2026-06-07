@@ -148,6 +148,6 @@ export async function GET(request) {
     return Response.json({ success: true, data });
   } catch (e) {
     console.error("[/api/iiko/analytics/cash] error:", e.message);
-    return Response.json({ success: false, error: e.message }, { status: 500 });
+    return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

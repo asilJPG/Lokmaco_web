@@ -8,6 +8,6 @@ export async function GET(_request) {
     return Response.json(data);
   } catch (e) {
     console.error("[/api/iiko/balances] GET error:", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

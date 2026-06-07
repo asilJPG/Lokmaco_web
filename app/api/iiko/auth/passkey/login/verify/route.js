@@ -98,6 +98,6 @@ export async function POST(request) {
     return Response.json({ verified: false, error: "Verification failed" }, { status: 400 });
   } catch (e) {
     console.error("[Passkey Login Verify]", e.message);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
