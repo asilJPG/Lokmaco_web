@@ -42,19 +42,19 @@ export async function GET(request) {
     // Filter list:
     // - incoming: (status === 'pending_receiver' && store_to === storeId) || (status === 'pending_sender' && store_from === storeId)
     // - returned: status === 'pending_creator' && creator_tg_id === tgId
-    const isAdminOrDirector = ["admin", "director"].includes(baseRole);
+    const isAdmin = baseRole === "admin";
 
     const incoming = list.filter(
       (item) =>
         (item.status === "pending_receiver" || item.status === "pending_sender") &&
-        (isAdminOrDirector ||
+        (isAdmin ||
           (item.status === "pending_receiver" && String(item.store_to) === String(storeId)) ||
           (item.status === "pending_sender" && String(item.store_from) === String(storeId)))
     );
     const returned = list.filter(
       (item) =>
         item.status === "pending_creator" &&
-        (isAdminOrDirector || String(item.creator_tg_id) === String(tgId))
+        (isAdmin || String(item.creator_tg_id) === String(tgId))
     );
     const outgoing = list.filter(
       (item) =>
@@ -173,7 +173,7 @@ export async function POST(request) {
       return Response.json({ error: "Перемещение не найдено" }, { status: 404 });
     }
 
-    const isBypassRole = ["admin", "director"].includes(baseRole);
+    const isBypassRole = ["admin"].includes(baseRole);
 
     // Authorization checks for receiver actions
     if (["approve_by_receiver", "reject_by_receiver", "modify_by_receiver"].includes(action)) {
