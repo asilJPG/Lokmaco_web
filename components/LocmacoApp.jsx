@@ -5958,6 +5958,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     role: "bar",
     storeId: "",
     access_code: "",
+    tg_id: "",
   });
 
   const loadEmployees = async () => {
@@ -6067,6 +6068,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
         name: form.name.trim(),
         role: finalRole,
         access_code: form.access_code,
+        tg_id: form.tg_id,
         user: { role: loggedInUser.baseRole },
       });
     } else {
@@ -6074,6 +6076,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
         name: form.name.trim(),
         role: finalRole,
         access_code: form.access_code,
+        tg_id: form.tg_id,
         user: { role: loggedInUser.baseRole },
       });
     }
@@ -6081,7 +6084,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
 
     if (res && res.success) {
       showToast(mode === "edit" ? "Сотрудник успешно изменен!" : "Сотрудник успешно создан!");
-      setForm({ name: "", role: "bar", storeId: "", access_code: "" });
+      setForm({ name: "", role: "bar", storeId: "", access_code: "", tg_id: "" });
       setMode("idle");
       setEditingId(null);
       loadEmployees();
@@ -6146,7 +6149,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
           <Btn
             onClick={() => {
               setMode("new");
-              setForm({ name: "", role: "bar", storeId: "", access_code: "" });
+              setForm({ name: "", role: "bar", storeId: "", access_code: "", tg_id: "" });
             }}
             style={{
               background: "var(--text-main)",
@@ -6256,6 +6259,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                       <th style={th}>Должность</th>
                       <th style={th}>Склад</th>
                       <th style={{ ...th, textAlign: "center", width: 100 }}>Пароль</th>
+                      <th style={{ ...th, textAlign: "center", width: 120 }}>Telegram ID</th>
                       <th style={{ ...th, width: 90 }}></th>
                     </tr>
                   </thead>
@@ -6288,6 +6292,9 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                           <td style={{ ...td, textAlign: "center", fontFamily: "monospace", fontWeight: 700, letterSpacing: 1, color: "var(--text-muted)" }}>
                             {emp.access_code}
                           </td>
+                          <td style={{ ...td, textAlign: "center", fontFamily: "monospace", color: "var(--text-muted)", fontSize: 12 }}>
+                            {emp.tg_id || "—"}
+                          </td>
                           <td style={td}>
                             <div style={{ display: "flex", gap: 4 }}>
                               <button
@@ -6298,6 +6305,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                     role: baseRole || "bar",
                                     storeId: storeId || "",
                                     access_code: emp.access_code,
+                                    tg_id: emp.tg_id || "",
                                   });
                                   setEditingId(emp.id);
                                   setMode("edit");
@@ -6635,6 +6643,20 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
             />
             <small style={{ color: "var(--text-muted)", marginTop: 4, display: "block" }}>
               Этот уникальный пароль сотрудник будет вводить на главном экране для входа
+            </small>
+          </div>
+
+          <div>
+            <label style={lbl}>Telegram ID (опционально)</label>
+            <input
+              type="text"
+              value={form.tg_id || ""}
+              onChange={(e) => setForm({ ...form, tg_id: e.target.value })}
+              placeholder="Например, 123456789"
+              style={inp}
+            />
+            <small style={{ color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+              Используется для отправки личных уведомлений о перемещениях
             </small>
           </div>
 

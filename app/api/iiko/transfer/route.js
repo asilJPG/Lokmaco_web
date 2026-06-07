@@ -1,22 +1,73 @@
 import { createTransfer } from "@/lib/iiko-web";
 import { logAction, createPendingTransfer, getPendingTransfersList, updatePendingTransfer, getPendingTransferById } from "@/lib/supabase.js";
 
-// Helper to send Telegram notifications
-async function sendTelegramAlert(message) {
+// Helper to send Telegram notifications to targeted users
+async function sendTelegramAlert(message, targets = {}) {
   try {
     const tgToken = process.env.TG_BOT_TOKEN;
-    const tgChatId = process.env.TG_CHAT_ID;
-    if (tgToken && tgChatId) {
-      await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: tgChatId,
-          text: message,
-          parse_mode: "Markdown",
-        }),
-      });
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY;
+    if (!tgToken || !supabaseUrl || !supabaseKey) return;
+
+    const targetChatIds = new Set();
+
+    // 1. Explicit tg_id target (e.g. creator of the transfer)
+    if (targets.tg_id) {
+      targetChatIds.add(String(targets.tg_id));
     }
+
+    // 2. Roles/Stores targets
+    if (targets.notifyAdmins || targets.storeId) {
+      const usersUrl = `${supabaseUrl}/rest/v1/bot_users?select=*`;
+      const res = await fetch(usersUrl, {
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+      });
+
+      if (res.ok) {
+        const users = await res.json();
+        users.forEach(u => {
+          if (!u.tg_id) return;
+          const [baseRole, userStoreId] = (u.role || "").split(":");
+
+          // Admin or director notification
+          if (targets.notifyAdmins && (baseRole === "admin" || baseRole === "director")) {
+            targetChatIds.add(String(u.tg_id));
+          }
+
+          // Specific store personnel notification
+          if (targets.storeId && userStoreId && String(userStoreId) === String(targets.storeId)) {
+            targetChatIds.add(String(u.tg_id));
+          }
+        });
+      } else {
+        console.error("Failed to fetch users from Supabase for notifications:", await res.text());
+      }
+    }
+
+    // 3. Send messages to all unique targets in parallel
+    const sendPromises = Array.from(targetChatIds)
+      .filter(chatId => chatId && chatId.length >= 5 && !chatId.startsWith("-"))
+      .map(async (chatId) => {
+        try {
+          await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: message,
+              parse_mode: "Markdown",
+            }),
+          });
+        } catch (err) {
+          console.error(`Failed to send TG message to ${chatId}:`, err.message);
+        }
+      });
+
+    await Promise.all(sendPromises);
   } catch (tgError) {
     console.error("Failed to send Telegram notification:", tgError.message);
   }
@@ -155,7 +206,7 @@ export async function POST(request) {
           `📥 *Куда:* ${store_to_name}\n\n` +
           `📦 *Состав:* \n${itemsText}\n\n` +
           `💬 *Комментарий:* ${comment || "нет"}`;
-        await sendTelegramAlert(alertMsg);
+        await sendTelegramAlert(alertMsg, { notifyAdmins: true, storeId: status === "pending_sender" ? store_from : store_to });
 
         return Response.json({ success: true, pending: true, id: inserted.id });
       } else {
@@ -220,7 +271,7 @@ export async function POST(request) {
           `📥 *Куда:* ${store_to_name}\n\n` +
           `📦 *Состав:* \n${itemsText}\n\n` +
           `💬 *Комментарий:* ${comment || "нет"}`;
-        await sendTelegramAlert(alertMsg);
+        await sendTelegramAlert(alertMsg, { tg_id: pendingDoc.creator_tg_id, notifyAdmins: true });
 
         return Response.json({ success: true, documentNumber: result.documentNumber });
       } else {
@@ -245,7 +296,7 @@ export async function POST(request) {
         `📤 *Откуда:* ${store_from_name}\n` +
         `📥 *Куда:* ${store_to_name}\n\n` +
         `💬 *Комментарий получателя:* ${receiver_comment || "нет"}`;
-      await sendTelegramAlert(alertMsg);
+      await sendTelegramAlert(alertMsg, { tg_id: pendingDoc.creator_tg_id, notifyAdmins: true });
 
       return Response.json({ success: true });
     }
@@ -268,7 +319,7 @@ export async function POST(request) {
         `📥 *Куда:* ${store_to_name}\n\n` +
         `📦 *Корректировки:* \n${itemsText}\n\n` +
         `💬 *Комментарий получателя:* ${receiver_comment || "нет"}`;
-      await sendTelegramAlert(alertMsg);
+      await sendTelegramAlert(alertMsg, { tg_id: pendingDoc.creator_tg_id, notifyAdmins: true });
 
       return Response.json({ success: true });
     }
@@ -300,7 +351,7 @@ export async function POST(request) {
           `📥 *Куда:* ${store_to_name}\n\n` +
           `📦 *Итоговый состав:* \n${itemsText}\n\n` +
           `💬 *Комментарий получателя:* ${receiver_comment || "нет"}`;
-        await sendTelegramAlert(alertMsg);
+        await sendTelegramAlert(alertMsg, { notifyAdmins: true, storeId: store_to });
 
         return Response.json({ success: true, documentNumber: result.documentNumber });
       } else {
@@ -324,7 +375,7 @@ export async function POST(request) {
         `👤 *Кто отклонил:* ${user.name}\n` +
         `📤 *Откуда:* ${store_from_name}\n` +
         `📥 *Куда:* ${store_to_name}`;
-      await sendTelegramAlert(alertMsg);
+      await sendTelegramAlert(alertMsg, { notifyAdmins: true, storeId: store_to });
 
       return Response.json({ success: true });
     }

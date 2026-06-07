@@ -36,14 +36,16 @@ export async function POST(request) {
       return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
     }
 
-    const { name, role, access_code } = await request.json();
+    const { name, role, access_code, tg_id: req_tg_id } = await request.json();
 
     if (!name || !role || !access_code) {
       return Response.json({ success: false, error: "Укажите имя, должность и код доступа" }, { status: 400 });
     }
 
-    // Generate a unique random tg_id since tg_id cannot be null and must be unique
-    const tg_id = Math.floor(100000000 + Math.random() * 900000000);
+    // Use provided tg_id if valid, otherwise generate random 9-digit
+    const tg_id = req_tg_id && !isNaN(parseInt(String(req_tg_id).trim(), 10))
+      ? parseInt(String(req_tg_id).trim(), 10)
+      : Math.floor(100000000 + Math.random() * 900000000);
 
     const body = {
       name,
@@ -65,7 +67,7 @@ export async function POST(request) {
       const errText = await res.text();
       let errorMsg = "Код доступа уже используется другим сотрудником";
       if (errText.includes("bot_users_tg_id_key")) {
-        errorMsg = "Ошибка генерации ID. Попробуйте еще раз";
+        errorMsg = "Указанный Telegram ID уже используется другим сотрудником";
       }
       return Response.json({ success: false, error: errorMsg }, { status: 409 });
     }
@@ -124,7 +126,7 @@ export async function PUT(request) {
       return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
     }
 
-    const { id, name, role, access_code } = await request.json();
+    const { id, name, role, access_code, tg_id: req_tg_id } = await request.json();
 
     if (!id || !name || !role || !access_code) {
       return Response.json({ success: false, error: "Укажите все обязательные поля" }, { status: 400 });
@@ -135,10 +137,16 @@ export async function PUT(request) {
       return Response.json({ success: false, error: "Invalid id" }, { status: 400 });
     }
 
+    // Use provided tg_id if valid, otherwise generate random 9-digit
+    const tg_id = req_tg_id && !isNaN(parseInt(String(req_tg_id).trim(), 10))
+      ? parseInt(String(req_tg_id).trim(), 10)
+      : Math.floor(100000000 + Math.random() * 900000000);
+
     const body = {
       name,
       role,
       access_code,
+      tg_id
     };
 
     const res = await http1Fetch(`${SUPABASE_URL}/rest/v1/bot_users?id=eq.${parsedId}`, {
@@ -151,7 +159,12 @@ export async function PUT(request) {
     });
 
     if (res.status === 409) {
-      return Response.json({ success: false, error: "Код доступа уже используется другим сотрудником" }, { status: 409 });
+      const errText = await res.text();
+      let errorMsg = "Код доступа уже используется другим сотрудником";
+      if (errText.includes("bot_users_tg_id_key")) {
+        errorMsg = "Указанный Telegram ID уже используется другим сотрудником";
+      }
+      return Response.json({ success: false, error: errorMsg }, { status: 409 });
     }
 
     if (!res.ok) {
