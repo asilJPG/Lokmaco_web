@@ -249,7 +249,8 @@ export async function POST(request) {
     }
 
     if (action === "approve_by_receiver") {
-      const result = await createTransfer(store_from, store_to, items, comment || "");
+      const finalComment = `Принял: ${user.name}${comment ? ` | ${comment}` : ""}`;
+      const result = await createTransfer(store_from, store_to, items, finalComment);
       if (result.success) {
         await updatePendingTransfer(id, "accepted");
         const details = {
@@ -260,7 +261,7 @@ export async function POST(request) {
             quantity: it.quantity,
             unit: it.unit || "шт"
           })),
-          comment: comment || ""
+          comment: finalComment
         };
         await logAction(user.tg_id, user.name, "transfer", result.documentNumber, details);
 
@@ -332,14 +333,15 @@ export async function POST(request) {
         unit: it.unit || "шт"
       })).filter(it => it.quantity > 0);
 
-      const result = await createTransfer(store_from, store_to, prepared, receiver_comment || comment || "");
+      const finalComment = `Принял: ${user.name}${receiver_comment || comment ? ` | ${receiver_comment || comment}` : ""}`;
+      const result = await createTransfer(store_from, store_to, prepared, finalComment);
       if (result.success) {
         await updatePendingTransfer(id, "accepted");
         const details = {
           store_from_name,
           store_to_name,
           items: prepared,
-          comment: comment || "",
+          comment: finalComment,
           receiver_comment: receiver_comment || ""
         };
         await logAction(user.tg_id, user.name, "transfer", result.documentNumber, details);
