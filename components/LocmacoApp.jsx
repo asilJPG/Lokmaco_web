@@ -8421,12 +8421,28 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   const [waitersPeriod, setWaitersPeriod] = useState("today");
   const [waitersDates, setWaitersDates] = useState({ from: "", to: "" });
 
-  // Data
   const [plData, setPlData] = useState(null);
   const [cashData, setCashData] = useState(null);
   const [topData, setTopData] = useState(null);
   const [waitersData, setWaitersData] = useState(null);
   const [showExpensesDetail, setShowExpensesDetail] = useState(false);
+
+  // Cash and Admin Expenses states
+  const [cashExpensesData, setCashExpensesData] = useState(null);
+  const [expensePeriod, setExpensePeriod] = useState("this_month");
+  const [expenseDates, setExpenseDates] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const format = (d) => d.toISOString().split("T")[0];
+    const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
+    return { from: format(d1), to: format(tzNow) };
+  });
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [expenseForm, setExpenseForm] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return { name: "", amount: "", date: tzNow.toISOString().split("T")[0] };
+  });
 
   // Helper date calculators
   const getDatesForPeriod = (periodType) => {
@@ -8576,6 +8592,98 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     }
   };
 
+  // Cash Expenses Loader
+  const loadCashExpenses = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(
+        `/api/iiko/analytics/cash-expenses?from=${from}&to=${to}`
+      );
+      const res = await r.json();
+      if (res && res.success) {
+        setCashExpensesData(res.data);
+      } else {
+        showToast(res?.error || "Ошибка загрузки наличных и расходов", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при загрузке наличных и расходов", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddExpense = async (e) => {
+    e.preventDefault();
+    if (!expenseForm.name.trim() || !expenseForm.amount || !expenseForm.date) {
+      showToast("Заполните все поля", "error");
+      return;
+    }
+    const amt = parseFloat(expenseForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      showToast("Сумма должна быть больше 0", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const r = await fetch("/api/iiko/analytics/cash-expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: expenseForm.name.trim(),
+          amount: amt,
+          date: expenseForm.date,
+        }),
+      });
+      const res = await r.json();
+      if (res && res.success) {
+        showToast("Расход успешно добавлен!");
+        const now = new Date();
+        const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+        setExpenseForm({ name: "", amount: "", date: tzNow.toISOString().split("T")[0] });
+        setShowAddExpenseModal(false);
+        loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+      } else {
+        showToast(res?.error || "Ошибка добавления расхода", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при добавлении расхода", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (!window.confirm("Удалить этот расход?")) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/cash-expenses?id=${id}`, {
+        method: "DELETE",
+      });
+      const res = await r.json();
+      if (res && res.success) {
+        showToast("Расход успешно удален!");
+        loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+      } else {
+        showToast(res?.error || "Ошибка удаления расхода", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при удалении расхода", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Init loaders on SubTab change
   useEffect(() => {
     if (subTab === "pl") {
@@ -8590,6 +8698,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       loadTop(topPeriod, topDates.from, topDates.to);
     } else if (subTab === "waiters") {
       loadWaiters(waitersPeriod, waitersDates.from, waitersDates.to);
+    } else if (subTab === "cash_expenses") {
+      loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
     }
   }, [subTab]);
 
@@ -8639,7 +8749,17 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
             text: "#0369a1",
           },
-        ].filter((sub) => !isManager || (sub.id !== "pl" && sub.id !== "cash")).map((sub) => (
+          {
+            id: "cash_expenses",
+            label: "💰 Наличные и Расходы",
+            grad: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
+            text: "#991b1b",
+          },
+        ].filter((sub) => {
+          if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
+          if (sub.id === "cash_expenses" && loggedInUser?.baseRole !== "admin") return false;
+          return true;
+        }).map((sub) => (
           <button
             key={sub.id}
             onClick={() => setSubTab(sub.id)}
@@ -9329,9 +9449,10 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                       return sum;
                     }, 0);
 
-                    cashierTotals.encashment += (parseFloat(
+                    const reportEncashment = parseFloat(
                       det.payments?.encashment || det.encashment || 0
-                    ) + encFromExp);
+                    );
+                    cashierTotals.encashment += Math.max(reportEncashment, encFromExp);
                     
                     cashierTotals.encashmentFromExpenses += encFromExp;
 
@@ -9704,7 +9825,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
                                 if (row.field === "cash") {
                                   iikoVal = iikoPayments.cash;
-                                  cashVal = cashierPayments.encashment - encFromExp;
+                                  cashVal = cashierPayments.encashment;
                                 } else if (row.field === "encashment") {
                                   iikoVal = iikoPayments.encashment;
                                   cashVal = cashierPayments.cash;
@@ -9792,7 +9913,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
                                   if (row.field === "cash") {
                                     iikoVal = iikoPayments.cash;
-                                    cashVal = cashierPayments.encashment - encFromExp;
+                                    cashVal = cashierPayments.encashment;
                                   } else if (row.field === "encashment") {
                                     iikoVal = iikoPayments.encashment;
                                     cashVal = cashierPayments.cash;
@@ -10575,6 +10696,434 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               Выберите период для построения отчета.
             </div>
           )}
+        </div>
+      )}
+
+      {/* 💰 CASH & EXPENSES VIEW */}
+      {!loading && subTab === "cash_expenses" && (
+        <div>
+          {/* Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "today", label: "Сегодня" },
+              { id: "yesterday", label: "Вчера" },
+              { id: "this_month", label: "Этот месяц" },
+              { id: "last_month", label: "Прошлый месяц" },
+              { id: "custom", label: "Период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setExpensePeriod(p.id);
+                  if (p.id !== "custom") loadCashExpenses(p.id);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: expensePeriod === p.id ? "none" : "1px solid var(--border-color)",
+                  background: expensePeriod === p.id ? "#ef4444" : "var(--bg-card)",
+                  color: expensePeriod === p.id ? "#fff" : "var(--text-muted)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {expensePeriod === "custom" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: 6,
+                  alignItems: "center",
+                  marginLeft: 10,
+                }}
+              >
+                <input
+                  type="date"
+                  value={expenseDates.from}
+                  onChange={(e) =>
+                    setExpenseDates({ ...expenseDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 12,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
+                <input
+                  type="date"
+                  value={expenseDates.to}
+                  onChange={(e) =>
+                    setExpenseDates({ ...expenseDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 12,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+                <button
+                  onClick={() =>
+                    loadCashExpenses("custom", expenseDates.from, expenseDates.to)
+                  }
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#ef4444",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowAddExpenseModal(true)}
+              style={{
+                marginLeft: "auto",
+                padding: "8px 14px",
+                borderRadius: 8,
+                background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                color: "#fff",
+                border: "none",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {I.plus} Добавить расход
+            </button>
+          </div>
+
+          {cashExpensesData ? (
+            <div>
+              {/* Summary Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 16,
+                  marginBottom: 24,
+                }}
+              >
+                <div style={cardStyle("linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)", "1px solid #fca5a5")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    💰 Накоплено в сейфе (Итоговый баланс)
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#7f1d1d", marginTop: 8 }}>
+                    {fmtPrice(cashExpensesData.allTimeBalance)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#991b1b", marginTop: 4 }}>
+                    Все чистые кассы минус все расходы
+                  </div>
+                </div>
+
+                <div style={cardStyle("linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)", "1px solid #6ee7b7")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    💵 Чистая касса за период
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#064e3b", marginTop: 8 }}>
+                    {fmtPrice(cashExpensesData.periodNetCashTotal)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#065f46", marginTop: 4 }}>
+                    Наличные кассира за минусом расходов кассы
+                  </div>
+                </div>
+
+                <div style={cardStyle("linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)", "1px solid #fdba74")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9a3412", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    💸 Админ. расходы за период
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#7c2d12", marginTop: 8 }}>
+                    {fmtPrice(cashExpensesData.periodAdminExpensesTotal)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#9a3412", marginTop: 4 }}>
+                    Списания из сейфа за указанные даты
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Column Layout */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+                  gap: 20,
+                  alignItems: "start",
+                }}
+              >
+                {/* Left: Cashier Reports */}
+                <div
+                  style={{
+                    background: "var(--bg-card)",
+                    borderRadius: 16,
+                    border: "1px solid var(--border-color)",
+                    padding: 20,
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-main)" }}>
+                    📥 Чистая касса по дням
+                  </h3>
+                  {cashExpensesData.cashReports.length > 0 ? (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
+                            <th style={{ padding: "8px 4px" }}>Дата</th>
+                            <th style={{ padding: "8px 4px" }}>Кассир</th>
+                            <th style={{ padding: "8px 4px" }}>Наличные</th>
+                            <th style={{ padding: "8px 4px" }}>Расходы</th>
+                            <th style={{ padding: "8px 4px" }}>Чистыми</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cashExpensesData.cashReports.map((report) => (
+                            <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
+                              <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
+                              <td style={{ padding: "10px 4px", color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
+                              <td style={{ padding: "10px 4px", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
+                              <td style={{ padding: "10px 4px", fontWeight: 700, color: report.netCash >= 0 ? "#10b981" : "#ef4444" }}>{fmtPrice(report.netCash)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                      Нет отчетов кассы за этот период.
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Administrative Expenses */}
+                <div
+                  style={{
+                    background: "var(--bg-card)",
+                    borderRadius: 16,
+                    border: "1px solid var(--border-color)",
+                    padding: 20,
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-main)" }}>
+                    📤 Административные расходы (списания)
+                  </h3>
+                  {cashExpensesData.adminExpenses.length > 0 ? (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
+                            <th style={{ padding: "8px 4px" }}>Дата</th>
+                            <th style={{ padding: "8px 4px" }}>Название</th>
+                            <th style={{ padding: "8px 4px" }}>Сумма</th>
+                            <th style={{ padding: "8px 4px", width: 40 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cashExpensesData.adminExpenses.map((expense) => (
+                            <tr key={expense.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{expense.date}</td>
+                              <td style={{ padding: "10px 4px", color: "var(--text-main)" }}>{expense.name}</td>
+                              <td style={{ padding: "10px 4px", fontWeight: 700, color: "#ef4444" }}>{fmtPrice(expense.amount)}</td>
+                              <td style={{ padding: "10px 4px" }}>
+                                <button
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#ef4444",
+                                    cursor: "pointer",
+                                    padding: 4,
+                                    display: "flex",
+                                    alignItems: "center",
+                                  }}
+                                  title="Удалить"
+                                >
+                                  {I.trash}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                      Нет расходов за этот период.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 40, textAlign: "center" }}>
+              Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add Expense Modal */}
+      {showAddExpenseModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-card)",
+              borderRadius: 16,
+              border: "1px solid var(--border-color)",
+              padding: 24,
+              width: "100%",
+              maxWidth: 400,
+              boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+            }}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>
+              📝 Внести новый расход
+            </h3>
+            <form onSubmit={handleAddExpense} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Название расхода
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Например, Закупка хозтоваров"
+                  value={expenseForm.name}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, name: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Сумма (UZS)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="Например, 150000"
+                  value={expenseForm.amount}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Дата расхода
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={expenseForm.date}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddExpenseModal(false)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#ef4444",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Добавить
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
