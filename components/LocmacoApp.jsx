@@ -6737,7 +6737,7 @@ function BalancesView({ stores, showToast, loggedInUser }) {
     fetchBalances();
   }, [loggedInUser.storeId]);
 
-  const canSeeFinance = ["admin", "director", "supplier"].includes(loggedInUser.baseRole);
+  const canSeeFinance = ["admin", "director"].includes(loggedInUser.baseRole);
 
   const selectedStoreData = balances.find((b) => b.storage?.id === selectedStoreId);
   const rawItems = selectedStoreData?.balanceItems || [];
