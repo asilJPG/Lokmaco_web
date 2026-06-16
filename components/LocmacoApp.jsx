@@ -1702,6 +1702,7 @@ export default function LocmacoApp() {
       `}</style>
 
       <header
+        className="app-header"
         style={{
           background: "var(--bg-header)",
           borderBottom: "1px solid var(--border-color)",
@@ -1711,6 +1712,7 @@ export default function LocmacoApp() {
         }}
       >
         <div
+          className="header-inner"
           style={{
             maxWidth: 1120,
             margin: "0 auto",
@@ -1756,7 +1758,7 @@ export default function LocmacoApp() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ textAlign: "right" }}>
+            <div className="user-info-desktop" style={{ textAlign: "right" }}>
               <div style={{ color: "var(--text-main)", fontWeight: 600, fontSize: 13 }}>
                 {loggedInUser.name}
               </div>
@@ -1799,7 +1801,7 @@ export default function LocmacoApp() {
               }}
               title="Привязать FaceID/TouchID"
             >
-              <span>🔑</span> Привязать FaceID
+              <span>🔑</span> <span className="hide-mobile">Привязать FaceID</span>
             </button>
             <button
               onClick={toggleDarkMode}
@@ -1954,6 +1956,7 @@ export default function LocmacoApp() {
       )}
 
       <main
+        className="app-main"
         style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 20px 100px" }}
       >
         {tab === "menu" && (
@@ -3511,7 +3514,7 @@ function IncomingView({
       </div>
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+          <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
             {[
               {
                 id: "db_history",
@@ -4626,7 +4629,7 @@ function TransferView({
               </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+          <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
             {[
               {
                 id: "db_history",
@@ -5165,7 +5168,7 @@ function InventoryView({
       </div>
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+          <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
             {[
               {
                 id: "db_history",
@@ -5657,7 +5660,7 @@ function ProductionView({
 
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+          <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
             {[
               {
                 id: "db_history",
@@ -6168,7 +6171,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       </div>
 
       {mode === "idle" && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <div className="horizontal-scroll-container" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           <button
             onClick={() => setSubTab("list")}
             style={{
@@ -8716,6 +8719,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     <div style={{ animation: "fadeIn .25s ease" }}>
       {/* Tab Selectors */}
       <div
+        className="horizontal-scroll-container"
         style={{
           display: "flex",
           gap: 10,

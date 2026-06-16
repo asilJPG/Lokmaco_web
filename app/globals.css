@@ -66,3 +66,49 @@ button:hover {
     transform: rotate(360deg);
   }
 }
+
+/* Mobile optimizations and adaptations */
+@media (max-width: 767px) {
+  /* Prevent auto-zooming on iOS Safari when focusing on inputs */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Make sure tables are scrollable and don't cut off */
+  div:has(> table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Adjust padding layout for mobile viewports */
+  .header-inner {
+    padding: 0 12px !important;
+  }
+  .app-main {
+    padding: 16px 12px 100px !important;
+  }
+
+  /* Hide element classes on mobile to save layout space */
+  .hide-mobile {
+    display: none !important;
+  }
+  .user-info-desktop {
+    display: none !important;
+  }
+
+  /* Enable smooth horizontal scrolling for subtab lists */
+  .horizontal-scroll-container {
+    overflow-x: auto !important;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px !important;
+    /* Hide scrollbars for a clean native touch-scroll UI */
+    scrollbar-width: none; /* Firefox */
+  }
+  .horizontal-scroll-container::-webkit-scrollbar {
+    display: none; /* Safari and Chrome */
+  }
+}
+
