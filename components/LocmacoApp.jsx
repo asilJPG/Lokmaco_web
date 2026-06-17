@@ -9748,32 +9748,21 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         ? cashierTotals.totalExpenses
                         : 0;
 
-                      const encFromExp = cashierTotals ? cashierTotals.encashmentFromExpenses : 0;
-
                       const rows = [
-                        {
-                          label: "💵 Наличные",
-                          field: "cash",
-                          exp: encFromExp,
-                        },
-                        {
-                          label: "💵 Наличные-",
-                          field: "encashment",
-                          exp: totalExpenses - encFromExp,
-                        },
-                        { label: "💳 Uzcard", field: "uzcard", exp: 0 },
-                        { label: "💳 Humo", field: "humo", exp: 0 },
-                        { label: "📱 Click / Payme", field: "online", exp: 0 },
-                        { label: "💳 RAHMAT", field: "rahmat", exp: 0 },
-                        { label: "💳 Uzum", field: "uzum", exp: 0 },
-                        { label: "🛵 Яндекс Еда", field: "yandex", exp: 0 },
+                        { label: "💵 Наличные", field: "cash" },
+                        { label: "💵 Наличные-", field: "encashment" },
+                        { label: "💳 Uzcard", field: "uzcard" },
+                        { label: "💳 Humo", field: "humo" },
+                        { label: "📱 Click / Payme", field: "online" },
+                        { label: "💳 RAHMAT", field: "rahmat" },
+                        { label: "💳 Uzum", field: "uzum" },
+                        { label: "🛵 Яндекс Еда", field: "yandex" },
                       ];
 
                       if (iikoPayments.other > 0) {
                         rows.push({
                           label: "⚙️ Другие оплаты (iiko)",
                           field: "other",
-                          exp: 0,
                         });
                       }
 
@@ -9815,10 +9804,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                   Тип оплаты
                                 </th>
                                 <th style={thStyle}>Сумма из iiko</th>
-                                <th style={thStyle}>Факт сдачи (+расходы)</th>
                                 <th style={thStyle}>Расходы кассира</th>
                                 <th style={thStyle}>Расчетный остаток</th>
-                                <th style={thStyle}>Факт сдачи (без расходов)</th>
+                                <th style={thStyle}>Факт сдачи</th>
                                 <th style={thStyle}>Разница излишек/недосдача</th>
                               </tr>
                             </thead>
@@ -9826,17 +9814,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               {rows.map((row, idx) => {
                                 let iikoVal = iikoPayments[row.field] || 0;
                                 let cashVal = cashierPayments[row.field] || 0;
+                                let expVal = 0;
 
                                 if (row.field === "cash") {
-                                  iikoVal = iikoPayments.cash;
-                                  cashVal = cashierPayments.encashment;
-                                } else if (row.field === "encashment") {
-                                  iikoVal = iikoPayments.encashment;
-                                  cashVal = cashierPayments.cash;
+                                  expVal = totalExpenses;
                                 }
 
-                                const isCashRow = row.field === "cash";
-                                const calculatedBalance = isCashRow ? iikoVal : (iikoVal - row.exp);
+                                const calculatedBalance = iikoVal - expVal;
                                 const diff = cashierTotals
                                   ? cashVal - calculatedBalance
                                   : 0;
@@ -9854,17 +9838,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       {row.label}
                                     </td>
                                     <td style={tdStyle}>{fmtPrice(iikoVal)}</td>
-                                    <td style={{ ...tdStyle, fontWeight: "600" }}>
-                                      {cashierTotals ? fmtPrice(isCashRow ? cashVal : (cashVal + row.exp)) : "—"}
-                                    </td>
                                     <td
                                       style={{
                                         ...tdStyle,
                                         color:
-                                          row.exp > 0 ? "#ef4444" : "#64748b",
+                                          expVal > 0 ? "#ef4444" : "#64748b",
                                       }}
                                     >
-                                      {row.exp > 0 ? fmtPrice(row.exp) : "—"}
+                                      {expVal > 0 ? fmtPrice(expVal) : "—"}
                                     </td>
                                     <td style={tdStyle}>{fmtPrice(calculatedBalance)}</td>
                                     <td
@@ -9909,25 +9890,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               {(() => {
                                 let totalIiko = 0;
                                 let totalCashier = 0;
-                                let displayTotalExpenses = 0;
+                                let displayTotalExpenses = totalExpenses;
 
                                 rows.forEach((row) => {
                                   let iikoVal = iikoPayments[row.field] || 0;
                                   let cashVal = cashierPayments[row.field] || 0;
 
-                                  if (row.field === "cash") {
-                                    iikoVal = iikoPayments.cash;
-                                    cashVal = cashierPayments.encashment;
-                                  } else if (row.field === "encashment") {
-                                    iikoVal = iikoPayments.encashment;
-                                    cashVal = cashierPayments.cash;
-                                  }
-
                                   totalIiko += iikoVal;
                                   totalCashier += cashVal;
-                                  if (row.field !== "cash") {
-                                    displayTotalExpenses += row.exp;
-                                  }
                                 });
 
                                 const totalCalc = totalIiko - displayTotalExpenses;
@@ -9956,17 +9926,6 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       }}
                                     >
                                       {fmtPrice(totalIiko)}
-                                    </td>
-                                    <td
-                                      style={{
-                                        ...tdStyle,
-                                        borderTop: "2px solid #cbd5e1",
-                                        fontWeight: "800",
-                                      }}
-                                    >
-                                      {cashierTotals
-                                        ? fmtPrice(totalCashier + displayTotalExpenses)
-                                        : "—"}
                                     </td>
                                     <td
                                       style={{
