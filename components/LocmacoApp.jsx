@@ -9817,8 +9817,10 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                 let expVal = 0;
 
                                 if (row.field === "cash") {
-                                  expVal = cashierPayments.encashment || 0;
+                                  cashVal = cashierPayments.encashment || 0;
+                                  expVal = 0;
                                 } else if (row.field === "encashment") {
+                                  cashVal = cashierPayments.cash || 0;
                                   expVal = totalExpenses;
                                 }
 
@@ -9892,11 +9894,16 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               {(() => {
                                 let totalIiko = 0;
                                 let totalCashier = 0;
-                                let displayTotalExpenses = (cashierPayments.encashment || 0) + totalExpenses;
+                                let displayTotalExpenses = totalExpenses;
 
                                 rows.forEach((row) => {
                                   let iikoVal = iikoPayments[row.field] || 0;
                                   let cashVal = cashierPayments[row.field] || 0;
+                                  if (row.field === "cash") {
+                                    cashVal = cashierPayments.encashment || 0;
+                                  } else if (row.field === "encashment") {
+                                    cashVal = cashierPayments.cash || 0;
+                                  }
 
                                   totalIiko += iikoVal;
                                   totalCashier += cashVal;
