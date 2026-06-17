@@ -8433,6 +8433,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   // Cash and Admin Expenses states
   const [cashExpensesData, setCashExpensesData] = useState(null);
   const [expensePeriod, setExpensePeriod] = useState("this_month");
+  const [cashReportsPage, setCashReportsPage] = useState(1);
+  const [adminExpensesPage, setAdminExpensesPage] = useState(1);
   const [expenseDates, setExpenseDates] = useState(() => {
     const now = new Date();
     const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
@@ -8476,6 +8478,10 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
         );
         const d2 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 0, 12, 0, 0);
         return { from: format(d1), to: format(d2) };
+      }
+      case "all_time": {
+        const start = new Date(2020, 0, 1, 12, 0, 0);
+        return { from: format(start), to: format(tzNow) };
       }
       default:
         return { from: "", to: "" };
@@ -8614,6 +8620,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       const res = await r.json();
       if (res && res.success) {
         setCashExpensesData(res.data);
+        setCashReportsPage(1);
+        setAdminExpensesPage(1);
       } else {
         showToast(res?.error || "Ошибка загрузки наличных и расходов", "error");
       }
@@ -10706,6 +10714,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               { id: "yesterday", label: "Вчера" },
               { id: "this_month", label: "Этот месяц" },
               { id: "last_month", label: "Прошлый месяц" },
+              { id: "all_time", label: "За все время" },
               { id: "custom", label: "Период" },
             ].map((p) => (
               <button
@@ -10883,26 +10892,83 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   </h3>
                   {cashExpensesData.cashReports.length > 0 ? (
                     <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
-                            <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
-                            <th style={{ padding: "8px 4px", textAlign: "left" }}>Кассир</th>
-                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Наличные</th>
-                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cashExpensesData.cashReports.map((report) => (
-                            <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
-                              <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
-                              <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
-                              <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {(() => {
+                        const ITEMS_PER_PAGE = 10;
+                        const cashReportsTotalPages = Math.ceil(cashExpensesData.cashReports.length / ITEMS_PER_PAGE);
+                        const indexOfLastCashReport = cashReportsPage * ITEMS_PER_PAGE;
+                        const indexOfFirstCashReport = indexOfLastCashReport - ITEMS_PER_PAGE;
+                        const currentCashReports = cashExpensesData.cashReports.slice(indexOfFirstCashReport, indexOfLastCashReport);
+
+                        return (
+                          <>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
+                                  <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "left" }}>Кассир</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Наличные</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {currentCashReports.map((report) => (
+                                  <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                    <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
+                                    <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
+                                    <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
+                                    <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {/* Pagination Controls */}
+                            {cashReportsTotalPages > 1 && (
+                              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 16 }}>
+                                <button
+                                  type="button"
+                                  disabled={cashReportsPage === 1}
+                                  onClick={() => setCashReportsPage((p) => p - 1)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: cashReportsPage === 1 ? "not-allowed" : "pointer",
+                                    opacity: cashReportsPage === 1 ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  ◀ Назад
+                                </button>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                                  Стр. {cashReportsPage} из {cashReportsTotalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={cashReportsPage === cashReportsTotalPages}
+                                  onClick={() => setCashReportsPage((p) => p + 1)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: cashReportsPage === cashReportsTotalPages ? "not-allowed" : "pointer",
+                                    opacity: cashReportsPage === cashReportsTotalPages ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Вперед ▶
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
@@ -10926,42 +10992,99 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   </h3>
                   {cashExpensesData.adminExpenses.length > 0 ? (
                     <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
-                            <th style={{ padding: "8px 4px" }}>Дата</th>
-                            <th style={{ padding: "8px 4px" }}>Название</th>
-                            <th style={{ padding: "8px 4px" }}>Сумма</th>
-                            <th style={{ padding: "8px 4px", width: 40 }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cashExpensesData.adminExpenses.map((expense) => (
-                            <tr key={expense.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{expense.date}</td>
-                              <td style={{ padding: "10px 4px", color: "var(--text-main)" }}>{expense.name}</td>
-                              <td style={{ padding: "10px 4px", fontWeight: 700, color: "#ef4444" }}>{fmtPrice(expense.amount)}</td>
-                              <td style={{ padding: "10px 4px" }}>
+                      {(() => {
+                        const ITEMS_PER_PAGE = 10;
+                        const adminExpensesTotalPages = Math.ceil(cashExpensesData.adminExpenses.length / ITEMS_PER_PAGE);
+                        const indexOfLastAdminExpense = adminExpensesPage * ITEMS_PER_PAGE;
+                        const indexOfFirstAdminExpense = indexOfLastAdminExpense - ITEMS_PER_PAGE;
+                        const currentAdminExpenses = cashExpensesData.adminExpenses.slice(indexOfFirstAdminExpense, indexOfLastAdminExpense);
+
+                        return (
+                          <>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
+                                  <th style={{ padding: "8px 4px" }}>Дата</th>
+                                  <th style={{ padding: "8px 4px" }}>Название</th>
+                                  <th style={{ padding: "8px 4px" }}>Сумма</th>
+                                  <th style={{ padding: "8px 4px", width: 40 }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {currentAdminExpenses.map((expense) => (
+                                  <tr key={expense.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                    <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{expense.date}</td>
+                                    <td style={{ padding: "10px 4px", color: "var(--text-main)" }}>{expense.name}</td>
+                                    <td style={{ padding: "10px 4px", fontWeight: 700, color: "#ef4444" }}>{fmtPrice(expense.amount)}</td>
+                                    <td style={{ padding: "10px 4px" }}>
+                                      <button
+                                        onClick={() => handleDeleteExpense(expense.id)}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          color: "#ef4444",
+                                          cursor: "pointer",
+                                          padding: 4,
+                                          display: "flex",
+                                          alignItems: "center",
+                                        }}
+                                        title="Удалить"
+                                      >
+                                        {I.trash}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {/* Pagination Controls */}
+                            {adminExpensesTotalPages > 1 && (
+                              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 16 }}>
                                 <button
-                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  type="button"
+                                  disabled={adminExpensesPage === 1}
+                                  onClick={() => setAdminExpensesPage((p) => p - 1)}
                                   style={{
-                                    background: "none",
-                                    border: "none",
-                                    color: "#ef4444",
-                                    cursor: "pointer",
-                                    padding: 4,
-                                    display: "flex",
-                                    alignItems: "center",
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: adminExpensesPage === 1 ? "not-allowed" : "pointer",
+                                    opacity: adminExpensesPage === 1 ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
                                   }}
-                                  title="Удалить"
                                 >
-                                  {I.trash}
+                                  ◀ Назад
                                 </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                                  Стр. {adminExpensesPage} из {adminExpensesTotalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={adminExpensesPage === adminExpensesTotalPages}
+                                  onClick={() => setAdminExpensesPage((p) => p + 1)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: adminExpensesPage === adminExpensesTotalPages ? "not-allowed" : "pointer",
+                                    opacity: adminExpensesPage === adminExpensesTotalPages ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Вперед ▶
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
