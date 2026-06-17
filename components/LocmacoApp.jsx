@@ -9323,19 +9323,36 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 <input
                   type="date"
                   value={cashSingleDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCashSingleDate(val);
-                    loadCash("single", val, val);
-                  }}
+                  onChange={(e) => setCashSingleDate(e.target.value)}
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
                     border: "1px solid var(--border-color)",
                     fontSize: 12,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
                     outline: "none",
                   }}
                 />
+                <button
+                  onClick={() => {
+                    if (cashSingleDate) {
+                      loadCash("single", cashSingleDate, cashSingleDate);
+                    }
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#ef4444",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
               </div>
             )}
 
