@@ -57,22 +57,11 @@ export async function GET(request) {
 
       if (rec.action_type === "cash") {
         const details = rec.details || {};
-        const iikoCash = parseFloat(details.payments?.cash) || 0;
+        const cashVal = parseFloat(details.payments?.cash) || 0;
+        const cashierExpenses = parseFloat(details.total_expenses) || 0;
+        const netCash = cashVal;
 
-        const reportExpenses = details.expenses || [];
-        const encFromExp = reportExpenses.reduce((sum, item) => {
-          const name = (item.name || "").toLowerCase();
-          if (name.includes("инкасс")) {
-            return sum + (parseFloat(item.amount) || 0);
-          }
-          return sum;
-        }, 0);
-
-        const cashierExpenses = (parseFloat(details.total_expenses) || 0) - encFromExp;
-        const grossCash = parseFloat(details.payments?.encashment || details.encashment || 0);
-        const netCash = iikoCash - cashierExpenses;
-
-        allTimeNetCash += grossCash;
+        allTimeNetCash += netCash;
 
         // Check if falls within selected period
         if (dateKey >= dateFrom && dateKey <= dateTo) {
@@ -81,17 +70,15 @@ export async function GET(request) {
               id: dateKey,
               date: dateKey,
               cashierName: details.cashier_name || rec.user_name || "Кассир",
-              iikoCash: 0,
-              cashierExpenses: 0,
               grossCash: 0,
+              cashierExpenses: 0,
               netCash: 0,
               comments: [],
             };
           }
           const item = cashReportsMap[dateKey];
-          item.iikoCash += iikoCash;
+          item.grossCash += cashVal;
           item.cashierExpenses += cashierExpenses;
-          item.grossCash += grossCash;
           item.netCash += netCash;
           if (details.comment) {
             item.comments.push(details.comment);
@@ -124,9 +111,8 @@ export async function GET(request) {
       id: item.id,
       date: item.date,
       cashierName: item.cashierName,
-      iikoCash: item.iikoCash,
-      cashierExpenses: item.cashierExpenses,
       grossCash: item.grossCash,
+      cashierExpenses: item.cashierExpenses,
       netCash: item.netCash,
       comment: item.comments.join("; "),
     }));
@@ -138,7 +124,7 @@ export async function GET(request) {
     periodAdminExpenses.sort((a, b) => b.date.localeCompare(a.date));
 
     // Calculate totals for the selected period
-    const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.grossCash, 0);
+    const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.netCash, 0);
     const periodAdminExpensesTotal = periodAdminExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     return Response.json({

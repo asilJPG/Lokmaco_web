@@ -10871,33 +10871,19 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
                             <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
                             <th style={{ padding: "8px 4px", textAlign: "left" }}>Кассир</th>
-                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Касса iiko</th>
+                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Наличные</th>
                             <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы</th>
-                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Итого сдал</th>
-                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Разница</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {cashExpensesData.cashReports.map((report) => {
-                            const diff = report.grossCash - report.netCash;
-                            return (
-                              <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
-                                <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
-                                <td style={{ padding: "10px 4px", textAlign: "right", color: "var(--text-main)" }}>{fmtPrice(report.iikoCash || 0)}</td>
-                                <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
-                                <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
-                                <td style={{
-                                  padding: "10px 4px",
-                                  textAlign: "right",
-                                  fontWeight: 700,
-                                  color: diff > 0 ? "#10b981" : diff < 0 ? "#ef4444" : "var(--text-muted)"
-                                }}>
-                                  {diff > 0 ? "+" : ""}{fmtPrice(diff)}
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {cashExpensesData.cashReports.map((report) => (
+                            <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
+                              <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
+                              <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
+                              <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
