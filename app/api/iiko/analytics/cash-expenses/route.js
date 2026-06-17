@@ -57,7 +57,7 @@ export async function GET(request) {
 
       if (rec.action_type === "cash") {
         const details = rec.details || {};
-        const cashVal = parseFloat(details.payments?.cash) || 0;
+        const iikoCash = parseFloat(details.payments?.cash) || 0;
 
         const reportExpenses = details.expenses || [];
         const encFromExp = reportExpenses.reduce((sum, item) => {
@@ -69,9 +69,10 @@ export async function GET(request) {
         }, 0);
 
         const cashierExpenses = (parseFloat(details.total_expenses) || 0) - encFromExp;
-        const netCash = cashVal - cashierExpenses;
+        const grossCash = parseFloat(details.payments?.encashment || details.encashment || 0);
+        const netCash = iikoCash - cashierExpenses;
 
-        allTimeNetCash += netCash;
+        allTimeNetCash += grossCash;
 
         // Check if falls within selected period
         if (dateKey >= dateFrom && dateKey <= dateTo) {
@@ -80,15 +81,17 @@ export async function GET(request) {
               id: dateKey,
               date: dateKey,
               cashierName: details.cashier_name || rec.user_name || "Кассир",
-              grossCash: 0,
+              iikoCash: 0,
               cashierExpenses: 0,
+              grossCash: 0,
               netCash: 0,
               comments: [],
             };
           }
           const item = cashReportsMap[dateKey];
-          item.grossCash += cashVal;
+          item.iikoCash += iikoCash;
           item.cashierExpenses += cashierExpenses;
+          item.grossCash += grossCash;
           item.netCash += netCash;
           if (details.comment) {
             item.comments.push(details.comment);
@@ -121,8 +124,9 @@ export async function GET(request) {
       id: item.id,
       date: item.date,
       cashierName: item.cashierName,
-      grossCash: item.grossCash,
+      iikoCash: item.iikoCash,
       cashierExpenses: item.cashierExpenses,
+      grossCash: item.grossCash,
       netCash: item.netCash,
       comment: item.comments.join("; "),
     }));
@@ -134,7 +138,7 @@ export async function GET(request) {
     periodAdminExpenses.sort((a, b) => b.date.localeCompare(a.date));
 
     // Calculate totals for the selected period
-    const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.netCash, 0);
+    const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.grossCash, 0);
     const periodAdminExpensesTotal = periodAdminExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     return Response.json({
