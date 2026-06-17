@@ -125,7 +125,7 @@ function formatCompact(d) {
 }
 
 function formatDMY(d) {
-  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`;
+  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} 09:00:00`;
 }
 
 function escapeXml(s) {
