@@ -61,7 +61,9 @@ export async function GET(request) {
         const cashierExpenses = parseFloat(details.total_expenses) || 0;
         const netCash = cashVal;
 
-        allTimeNetCash += netCash;
+        if (dateKey <= dateTo) {
+          allTimeNetCash += netCash;
+        }
 
         // Check if falls within selected period
         if (dateKey >= dateFrom && dateKey <= dateTo) {
@@ -92,7 +94,9 @@ export async function GET(request) {
         const details = rec.details || {};
         const amount = parseFloat(details.amount) || 0;
 
-        allTimeAdminExpenses += amount;
+        if (dateKey <= dateTo) {
+          allTimeAdminExpenses += amount;
+        }
 
         // Check if falls within selected period
         if (dateKey >= dateFrom && dateKey <= dateTo) {

@@ -9851,7 +9851,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
                                 const calculatedBalance = iikoVal - expVal;
                                 const diff = cashierTotals
-                                  ? cashVal - calculatedBalance
+                                  ? (row.field === "cash" ? calculatedBalance - cashVal : cashVal - calculatedBalance)
                                   : 0;
 
                                 return (
