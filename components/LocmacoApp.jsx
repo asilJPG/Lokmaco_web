@@ -9437,7 +9437,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               // 2. Sum up the cashier reports from Supabase for the active range
               let cashierTotals = null;
               let periodReports = [];
-              if (history) {
+              if (cashData && Array.isArray(cashData.cashierReports)) {
+                periodReports = cashData.cashierReports;
+              } else if (history) {
                 const cashReports = history.filter(
                   (h) => h.action_type === "cash"
                 );
@@ -9447,6 +9449,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     new Date(report.created_at).toISOString().split("T")[0];
                   return reportDate >= activeFrom && reportDate <= activeTo;
                 });
+              }
 
                 if (periodReports.length > 0) {
                   cashierTotals = {
@@ -9504,7 +9507,6 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     );
                   });
                 }
-              }
 
               return (
                 <div
