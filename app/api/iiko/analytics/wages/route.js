@@ -73,6 +73,18 @@ export async function GET(request) {
       }
     }
 
+    // Find the latest date overall that has wages recorded
+    let latestWageDate = null;
+    for (const rec of records) {
+      const wages = rec.details?.employee_wages || [];
+      if (wages.length > 0) {
+        const createdAt = rec.created_at || "";
+        const dateKey = rec.details?.selected_date || createdAt.split("T")[0] || "";
+        latestWageDate = dateKey;
+        break; // Since records are sorted descending by created_at, this is the latest overall
+      }
+    }
+
     // Convert to array and sort descending by date
     const resultList = Object.values(dailyWages);
     resultList.sort((a, b) => b.date.localeCompare(a.date));
@@ -86,6 +98,7 @@ export async function GET(request) {
       data: {
         periodTotalPaid,
         avgDailyPaid,
+        latestWageDate,
         days: resultList,
       },
     });

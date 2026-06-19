@@ -11397,6 +11397,18 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     Средняя сумма выплат на дни со сменами
                   </div>
                 </div>
+
+                <div style={cardStyle("linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)", "1px solid #d8b4fe")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6b21a8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    📅 Последние данные внесены за
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#581c87", marginTop: 8 }}>
+                    {wagesData.latestWageDate || "Нет данных"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6b21a8", marginTop: 4 }}>
+                    Дата последней записи с заработной платой
+                  </div>
+                </div>
               </div>
 
               {/* Two Column Layout */}
@@ -11522,6 +11534,11 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   ) : (
                     <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
                       Нет отчетов по заработной плате за этот период.
+                      {wagesData.latestWageDate && (
+                        <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-main)", fontWeight: 600 }}>
+                          📅 Последний внесенный отчет: <span style={{ color: "#ef4444" }}>{wagesData.latestWageDate}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
