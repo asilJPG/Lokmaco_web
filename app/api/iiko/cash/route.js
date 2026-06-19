@@ -18,7 +18,7 @@ export async function POST(request) {
       name: userName
     };
 
-    const { payments, expenses, surplus, shortage, comment, date } = await request.json();
+    const { payments, expenses, surplus, shortage, comment, date, employeeWages } = await request.json();
 
     const [baseRole] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "cashier"];
@@ -71,6 +71,7 @@ export async function POST(request) {
         yandex: yandexVal,
       },
       expenses: exp,
+      employee_wages: employeeWages || [],
       total_sales: totalSales,
       total_expenses: totalExpenses,
       surplus: surp,

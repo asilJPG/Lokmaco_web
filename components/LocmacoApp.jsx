@@ -115,6 +115,9 @@ const API = {
   getEmployees() {
     return this.get("/employees");
   },
+  getActiveEmployees(date) {
+    return this.get(`/employees/active?date=${date}`);
+  },
   createEmployee(data) {
     return this.post("/employees", data);
   },
@@ -6964,7 +6967,37 @@ function CashView({
     comment: "",
   });
   const [expenses, setExpenses] = useState([]);
+  const [activeEmployees, setActiveEmployees] = useState([]);
+  const [empWages, setEmpWages] = useState({});
+  const [employeesLoading, setEmployeesLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (form.date) {
+      const fetchActive = async () => {
+        setEmployeesLoading(true);
+        try {
+          const res = await API.getActiveEmployees(form.date);
+          if (res?.success) {
+            setActiveEmployees(res.employees || []);
+            const initialWages = {};
+            (res.employees || []).forEach((emp) => {
+              initialWages[emp.id] = emp.defaultWage || "";
+            });
+            setEmpWages(initialWages);
+          } else {
+            setActiveEmployees([]);
+            setEmpWages({});
+          }
+        } catch (e) {
+          console.error("fetchActive error:", e);
+        } finally {
+          setEmployeesLoading(false);
+        }
+      };
+      fetchActive();
+    }
+  }, [form.date]);
 
   const handleFieldChange = (field, val) => {
     setForm((p) => ({ ...p, [field]: val }));
@@ -6986,8 +7019,11 @@ function CashView({
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
+    const hasWages = Object.values(empWages).some((w) => w !== "");
     const hasValues =
-      Object.keys(form).some((key) => key !== "date" && form[key] !== "") || expenses.length > 0;
+      Object.keys(form).some((key) => key !== "date" && form[key] !== "") ||
+      expenses.length > 0 ||
+      hasWages;
     if (!hasValues) {
       showToast("Заполните хотя бы одно поле", "error");
       return;
@@ -7008,6 +7044,11 @@ function CashView({
       expenses: expenses.map((exp) => ({
         name: exp.name || "Расход",
         amount: parseFloat(exp.amount) || 0,
+      })),
+      employeeWages: activeEmployees.map((emp) => ({
+        employeeId: emp.id,
+        name: emp.name,
+        wage: parseFloat(empWages[emp.id]) || 0,
       })),
       surplus: form.surplus,
       shortage: form.shortage,
@@ -7036,6 +7077,8 @@ function CashView({
         comment: "",
       });
       setExpenses([]);
+      setActiveEmployees([]);
+      setEmpWages({});
       loadHistory();
     } else {
       showToast("Ошибка сохранения", "error");
@@ -7352,6 +7395,73 @@ function CashView({
                 style={{ ...inp, borderColor: "#fca5a5" }}
               />
             </div>
+          </div>
+
+          {/* ACTIVE EMPLOYEES WAGES */}
+          <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 16 }}>
+            <h3
+              style={{
+                margin: "0 0 12px 0",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "var(--text-muted)",
+              }}
+            >
+              👥 Сотрудники на смене и их ЗП
+            </h3>
+            {employeesLoading ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Загрузка списка сотрудников...
+              </div>
+            ) : activeEmployees.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {activeEmployees.map((emp) => (
+                  <div
+                    key={emp.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      background: "var(--bg-hover)",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid var(--border-color)",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)" }}>
+                      {emp.name}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="number"
+                        value={empWages[emp.id] ?? ""}
+                        onChange={(e) =>
+                          setEmpWages((prev) => ({
+                            ...prev,
+                            [emp.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="0"
+                        style={{ ...inp, margin: 0, flex: 1 }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                        сум
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                Нет сотрудников, открывших смену в эту дату
+              </div>
+            )}
           </div>
 
           <div>
@@ -8096,6 +8206,43 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                             <span>Сумма расходов:</span>
                             <span>{fmtPrice(details.total_expenses || 0)}</span>
                           </div>
+                        </div>
+                      )}
+                      {details.employee_wages?.length > 0 && (
+                        <div
+                          style={{
+                            borderTop: "1px dashed #e2e8f0",
+                            paddingTop: 6,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: "var(--text-muted)",
+                              fontWeight: 700,
+                              fontSize: 11,
+                            }}
+                          >
+                            👥 Выданная ЗП сотрудникам:
+                          </span>
+                          {details.employee_wages.map((emp, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 11,
+                                paddingLeft: 8,
+                              }}
+                            >
+                              <span>• {emp.name || "Сотрудник"}:</span>
+                              <span style={{ fontWeight: 600 }}>
+                                {fmtPrice(emp.wage || 0)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                       {(details.surplus > 0 || details.shortage > 0) && (
