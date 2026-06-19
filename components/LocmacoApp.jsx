@@ -8539,6 +8539,17 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     return { from: format(d1), to: format(tzNow) };
   });
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [wagesPeriod, setWagesPeriod] = useState("this_month");
+  const [wagesData, setWagesData] = useState(null);
+  const [wagesDates, setWagesDates] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const format = (d) => d.toISOString().split("T")[0];
+    const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
+    return { from: format(d1), to: format(tzNow) };
+  });
+  const [wagesPage, setWagesPage] = useState(1);
+  const [selectedWageDay, setSelectedWageDay] = useState(null);
   const [expenseForm, setExpenseForm] = useState(() => {
     const now = new Date();
     const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
@@ -8558,6 +8569,10 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       case "yesterday": {
         const y = new Date(tzNow.getTime() - 24 * 60 * 60 * 1000);
         return { from: format(y), to: format(y) };
+      }
+      case "last_10_days": {
+        const d1 = new Date(tzNow.getTime() - 9 * 24 * 60 * 60 * 1000);
+        return { from: format(d1), to: format(tzNow) };
       }
       case "this_month": {
         const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
@@ -8697,6 +8712,37 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     }
   };
 
+  // Wages Loader
+  const loadWages = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(
+        `/api/iiko/analytics/wages?from=${from}&to=${to}`
+      );
+      const res = await r.json();
+      if (res && res.success) {
+        setWagesData(res.data);
+        setWagesPage(1);
+        setSelectedWageDay(null);
+      } else {
+        showToast(res?.error || "Ошибка загрузки ЗП сотрудников", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при загрузке ЗП", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Cash Expenses Loader
   const loadCashExpenses = async (periodType, customFrom = "", customTo = "") => {
     let from = customFrom;
@@ -8807,6 +8853,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       loadWaiters(waitersPeriod, waitersDates.from, waitersDates.to);
     } else if (subTab === "cash_expenses") {
       loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+    } else if (subTab === "wages") {
+      loadWages(wagesPeriod, wagesDates.from, wagesDates.to);
     }
   }, [subTab]);
 
@@ -8863,9 +8911,15 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
             text: "#3730a3",
           },
+          {
+            id: "wages",
+            label: "👥 Заработная плата сотрудников",
+            grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+            text: "#92400e",
+          },
         ].filter((sub) => {
           if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
-          if (sub.id === "cash_expenses" && loggedInUser?.baseRole !== "admin") return false;
+          if ((sub.id === "cash_expenses" || sub.id === "wages") && loggedInUser?.baseRole !== "admin") return false;
           return true;
         }).map((sub) => (
           <button
@@ -11003,18 +11057,24 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               <thead>
                                 <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
                                   <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
-                                  <th style={{ padding: "8px 4px", textAlign: "left" }}>Кассир</th>
-                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Сдано в сейф</th>
-                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы кассы</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Выручка (нал.)</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Расход</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Сдано</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {currentCashReports.map((report) => (
                                   <tr key={report.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
                                     <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>{report.date}</td>
-                                    <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{report.cashierName}</td>
-                                    <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>{fmtPrice(report.grossCash)}</td>
-                                    <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>{fmtPrice(report.cashierExpenses)}</td>
+                                    <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                                      {fmtPrice(report.grossCash + report.cashierExpenses)}
+                                    </td>
+                                    <td style={{ padding: "10px 4px", textAlign: "right", color: "#ef4444" }}>
+                                      {fmtPrice(report.cashierExpenses)}
+                                    </td>
+                                    <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-success)" }}>
+                                      {fmtPrice(report.grossCash)}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -11195,6 +11255,330 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           ) : (
             <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 40, textAlign: "center" }}>
               Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 👥 WAGES VIEW */}
+      {!loading && subTab === "wages" && (
+        <div>
+          {/* Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "today", label: "Сегодня" },
+              { id: "yesterday", label: "Вчера" },
+              { id: "last_10_days", label: "10 дней" },
+              { id: "this_month", label: "Этот месяц" },
+              { id: "last_month", label: "Прошлый месяц" },
+              { id: "custom", label: "Период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setWagesPeriod(p.id);
+                  if (p.id !== "custom") loadWages(p.id);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: wagesPeriod === p.id ? "none" : "1px solid var(--border-color)",
+                  background: wagesPeriod === p.id ? "#ef4444" : "var(--bg-card)",
+                  color: wagesPeriod === p.id ? "#fff" : "var(--text-muted)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {wagesPeriod === "custom" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: 6,
+                  alignItems: "center",
+                  marginLeft: 10,
+                }}
+              >
+                <input
+                  type="date"
+                  value={wagesDates.from}
+                  onChange={(e) =>
+                    setWagesDates({ ...wagesDates, from: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 12,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>до</span>
+                <input
+                  type="date"
+                  value={wagesDates.to}
+                  onChange={(e) =>
+                    setWagesDates({ ...wagesDates, to: e.target.value })
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 12,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+                <button
+                  onClick={() =>
+                    loadWages("custom", wagesDates.from, wagesDates.to)
+                  }
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "#ef4444",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ОК
+                </button>
+              </div>
+            )}
+          </div>
+
+          {wagesData ? (
+            <div>
+              {/* Summary Cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 16,
+                  marginBottom: 24,
+                }}
+              >
+                <div style={cardStyle("linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)", "1px solid #6ee7b7")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    👥 Всего выплачено ЗП за период
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#064e3b", marginTop: 8 }}>
+                    {fmtPrice(wagesData.periodTotalPaid)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#065f46", marginTop: 4 }}>
+                    Сумма всех дневных выплат сотрудникам
+                  </div>
+                </div>
+
+                <div style={cardStyle("linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)", "1px solid #7dd3fc")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#0369a1", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    📅 Средняя выплата в рабочий день
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#0c4a6e", marginTop: 8 }}>
+                    {fmtPrice(wagesData.avgDailyPaid)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#0369a1", marginTop: 4 }}>
+                    Средняя сумма выплат на дни со сменами
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Column Layout */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+                  gap: 20,
+                  alignItems: "start",
+                }}
+              >
+                {/* Left: Daily Summaries */}
+                <div
+                  style={{
+                    background: "var(--bg-card)",
+                    borderRadius: 16,
+                    border: "1px solid var(--border-color)",
+                    padding: 20,
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-main)" }}>
+                    📅 Выплаты по дням
+                  </h3>
+                  {wagesData.days.length > 0 ? (
+                    <div style={{ overflowX: "auto" }}>
+                      {(() => {
+                        const ITEMS_PER_PAGE = 10;
+                        const totalPages = Math.ceil(wagesData.days.length / ITEMS_PER_PAGE);
+                        const indexOfLast = wagesPage * ITEMS_PER_PAGE;
+                        const indexOfFirst = indexOfLast - ITEMS_PER_PAGE;
+                        const currentDays = wagesData.days.slice(indexOfFirst, indexOfLast);
+
+                        return (
+                          <>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
+                                  <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Сотрудников</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Всего выплачено</th>
+                                  <th style={{ padding: "8px 4px", width: 30 }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {currentDays.map((day) => {
+                                  const isSelected = selectedWageDay?.date === day.date;
+                                  return (
+                                    <tr 
+                                      key={day.date} 
+                                      onClick={() => setSelectedWageDay(day)}
+                                      style={{ 
+                                        borderBottom: "1px solid var(--border-color)",
+                                        cursor: "pointer",
+                                        background: isSelected ? "var(--bg-hover)" : "none",
+                                      }}
+                                    >
+                                      <td style={{ padding: "12px 4px", fontWeight: 600, color: "var(--text-main)" }}>
+                                        {day.date}
+                                      </td>
+                                      <td style={{ padding: "12px 4px", textAlign: "right", color: "var(--text-main)" }}>
+                                        {day.totalEmployees}
+                                      </td>
+                                      <td style={{ padding: "12px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                                        {fmtPrice(day.totalPaid)}
+                                      </td>
+                                      <td style={{ padding: "12px 4px", textAlign: "right", color: "var(--text-muted)" }}>
+                                        ▶
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+
+                            {totalPages > 1 && (
+                              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 16 }}>
+                                <button
+                                  type="button"
+                                  disabled={wagesPage === 1}
+                                  onClick={() => setWagesPage((p) => p - 1)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: wagesPage === 1 ? "not-allowed" : "pointer",
+                                    opacity: wagesPage === 1 ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  ◀ Назад
+                                </button>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                                  Стр. {wagesPage} из {totalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={wagesPage === totalPages}
+                                  onClick={() => setWagesPage((p) => p + 1)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid var(--border-color)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--text-main)",
+                                    cursor: wagesPage === totalPages ? "not-allowed" : "pointer",
+                                    opacity: wagesPage === totalPages ? 0.5 : 1,
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Вперед ▶
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                      Нет отчетов по заработной плате за этот период.
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Detailed list for selected day */}
+                <div
+                  style={{
+                    background: "var(--bg-card)",
+                    borderRadius: 16,
+                    border: "1px solid var(--border-color)",
+                    padding: 20,
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-main)" }}>
+                    👥 Детализация за день: {selectedWageDay ? selectedWageDay.date : "Выберите день слева"}
+                  </h3>
+                  {selectedWageDay ? (
+                    <div>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
+                            <th style={{ padding: "8px 4px" }}>Сотрудник</th>
+                            <th style={{ padding: "8px 4px", textAlign: "right" }}>Выплачено (UZS)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedWageDay.employees.map((emp, idx) => (
+                            <tr key={idx} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                              <td style={{ padding: "10px 4px", fontWeight: 600, color: "var(--text-main)" }}>
+                                {emp.name}
+                              </td>
+                              <td style={{ padding: "10px 4px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                                {fmtPrice(emp.wage)}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr style={{ fontWeight: 800 }}>
+                            <td style={{ padding: "12px 4px", color: "var(--text-main)" }}>Итого за день:</td>
+                            <td style={{ padding: "12px 4px", textAlign: "right", color: "var(--text-success)" }}>
+                              {fmtPrice(selectedWageDay.totalPaid)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                      Выберите конкретный день в левой таблице, чтобы посмотреть детализацию выданных зарплат.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 40, textAlign: "center" }}>
+              Загрузка отчетов о заработной плате...
             </div>
           )}
         </div>
