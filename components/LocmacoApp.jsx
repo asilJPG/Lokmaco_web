@@ -6982,7 +6982,7 @@ function CashView({
             setActiveEmployees(res.employees || []);
             const initialWages = {};
             (res.employees || []).forEach((emp) => {
-              initialWages[emp.id] = emp.defaultWage || "";
+              initialWages[emp.id] = "0";
             });
             setEmpWages(initialWages);
           } else {
