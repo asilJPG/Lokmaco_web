@@ -5977,15 +5977,15 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
 
   const loadLoginHistory = async () => {
     setHistoryLoading(true);
-    const res = await API.getHistory();
-    if (res && res.success && Array.isArray(res.history)) {
-      // Filter events starting with "LOGIN_"
-      const loginLogs = res.history.filter(
-        (act) => act.action_type === "LOGIN_PIN" || act.action_type === "LOGIN_PASSKEY"
-      );
-      setLoginHistory(loginLogs);
+    const res = await API.getEmployees();
+    if (res && res.success && Array.isArray(res.employees)) {
+      const activeEmployees = res.employees
+        .filter((emp) => emp.last_login_at)
+        .sort((a, b) => new Date(b.last_login_at) - new Date(a.last_login_at));
+      setLoginHistory(activeEmployees);
+      setEmployees(res.employees);
     } else {
-      showToast(res?.error || "Не удалось загрузить историю входов", "error");
+      showToast(res?.error || "Не удалось загрузить историю посещений", "error");
     }
     setHistoryLoading(false);
   };
@@ -6127,12 +6127,12 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
     return nameMatch || codeMatch || roleMatch || storeMatch;
   });
 
-  const filteredHistory = loginHistory.filter((log) => {
+  const filteredHistory = loginHistory.filter((emp) => {
     const q = searchQuery.toLowerCase();
-    const nameMatch = log.user_name?.toLowerCase().includes(q);
-    const methodMatch = (log.action_type === "LOGIN_PASSKEY" ? "faceid touchid биометрия" : "pin пинкод пароль password").includes(q);
-    const detailMatch = log.details?.toLowerCase().includes(q);
-    return nameMatch || methodMatch || detailMatch;
+    const nameMatch = emp.name?.toLowerCase().includes(q);
+    const roleMatch = getRoleLabel(emp.role).toLowerCase().includes(q);
+    const methodMatch = (emp.last_login_method === "passkey" ? "faceid touchid биометрия passkey" : "pin пинкод пароль password").includes(q);
+    return nameMatch || roleMatch || methodMatch;
   });
 
   return (
@@ -6411,15 +6411,15 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "var(--bg-hover)", borderBottom: "1px solid var(--border-color)" }}>
-                      <th style={{ ...th, padding: "14px 16px" }}>Дата / Время</th>
-                      <th style={th}>Сотрудник</th>
-                      <th style={th}>Событие</th>
-                      <th style={{ ...th, textAlign: "right", paddingRight: 16 }}>Действие</th>
+                      <th style={{ ...th, padding: "14px 16px" }}>Сотрудник</th>
+                      <th style={th}>Должность</th>
+                      <th style={th}>Способ входа</th>
+                      <th style={{ ...th, textAlign: "right", paddingRight: 16 }}>Последний вход</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredHistory.map((log) => {
-                      const date = new Date(log.created_at);
+                    {filteredHistory.map((emp) => {
+                      const date = new Date(emp.last_login_at);
                       const formattedDate = date.toLocaleDateString("ru-RU", {
                         day: "2-digit",
                         month: "2-digit",
@@ -6429,25 +6429,36 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                         second: "2-digit",
                       });
 
-                      const actType = log.action_type;
-                      const isLogin = actType.startsWith("LOGIN_");
+                      const color = getRoleColor(emp.role);
 
                       return (
                         <tr
-                          key={log.id}
+                          key={emp.id}
                           style={{
                             borderBottom: "1px solid var(--border-color)",
                             transition: "background 0.2s",
                           }}
                         >
-                          <td style={{ padding: "14px 16px", color: "var(--text-muted)" }}>
-                            {formattedDate}
+                          <td style={{ padding: "14px 16px", fontWeight: 600, color: "var(--text-main)" }}>
+                            {emp.name}
                           </td>
-                          <td style={{ padding: "14px 16px", fontWeight: 600 }}>
-                            {log.user_name}
+                          <td style={td}>
+                            <span
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: color.bg,
+                                color: color.text,
+                                display: "inline-block",
+                              }}
+                            >
+                              {getRoleLabel(emp.role)}
+                            </span>
                           </td>
-                          <td style={{ padding: "14px 16px" }}>
-                            {actType === "LOGIN_PASSKEY" ? (
+                          <td style={td}>
+                            {emp.last_login_method === "passkey" ? (
                               <span
                                 style={{
                                   padding: "4px 8px",
@@ -6476,7 +6487,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                                 </svg>
                                 Face ID / Touch ID
                               </span>
-                            ) : (actType === "LOGIN_PIN" || actType === "LOGIN_PASSWORD") ? (
+                            ) : (
                               <span
                                 style={{
                                   padding: "4px 8px",
@@ -6493,72 +6504,10 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                               >
                                 🔑 Пароль
                               </span>
-                            ) : actType === "LOGOUT_SCREEN" ? (
-                              <span
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  background: "var(--bg-pill)",
-                                  color: "var(--text-pill)",
-                                  border: "1px solid var(--border-color)",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                }}
-                              >
-                                📱 Блокировка экрана
-                              </span>
-                            ) : actType === "LOGOUT_IDLE" ? (
-                              <span
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  background: "var(--bg-pill)",
-                                  color: "var(--text-pill)",
-                                  border: "1px solid var(--border-color)",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                }}
-                              >
-                                💤 Неактивность (5 мин)
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  background: "var(--bg-pill)",
-                                  color: "var(--text-pill)",
-                                  border: "1px solid var(--border-color)",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                }}
-                              >
-                                🚪 Ручной выход
-                              </span>
                             )}
                           </td>
-                          <td style={{ padding: "14px 16px", textAlign: "right", paddingRight: 16 }}>
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 6,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                background: isLogin ? "var(--bg-status-success)" : "var(--bg-status-neutral)",
-                                color: isLogin ? "var(--text-status-success)" : "var(--text-status-neutral)",
-                              }}
-                            >
-                              {isLogin ? "Вход" : "Выход"}
-                            </span>
+                          <td style={{ padding: "14px 16px", textAlign: "right", paddingRight: 16, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                            {formattedDate}
                           </td>
                         </tr>
                       );

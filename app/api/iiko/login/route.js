@@ -1,4 +1,4 @@
-import { getUserByCode, getUserPasskeys, logAction } from "@/lib/supabase.js";
+import { getUserByCode, getUserPasskeys, updateUserLastLogin } from "@/lib/supabase.js";
 import { signSession } from "@/lib/auth.js";
 import { cookies } from "next/headers";
 import { rateLimit } from "@/lib/rate-limit.js";
@@ -55,9 +55,9 @@ export async function POST(request) {
         maxAge: 7 * 24 * 3600, // 7 days
       });
 
-      // Log login event in Supabase
+      // Update user last login in Supabase
       try {
-        await logAction(user.tg_id, user.name, "LOGIN_PASSWORD", "-", "Вход по паролю");
+        await updateUserLastLogin(user.id, "password");
       } catch (logErr) {
         console.error("[Login Log Error]", logErr.message);
       }
