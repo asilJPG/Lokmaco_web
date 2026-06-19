@@ -8859,9 +8859,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           },
           {
             id: "cash_expenses",
-            label: "💰 Наличные и Расходы",
-            grad: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
-            text: "#991b1b",
+            label: "💰 Сейф",
+            grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+            text: "#3730a3",
           },
         ].filter((sub) => {
           if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
@@ -10929,39 +10929,39 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   marginBottom: 24,
                 }}
               >
-                <div style={cardStyle("linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)", "1px solid #fca5a5")}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    💰 Накоплено в сейфе (Итоговый баланс)
-                  </div>
-                  <div style={{ fontSize: 24, fontWeight: 900, color: "#7f1d1d", marginTop: 8 }}>
-                    {fmtPrice(cashExpensesData.allTimeBalance)}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#991b1b", marginTop: 4 }}>
-                    Все сданные наличные минус все админ. расходы
-                  </div>
-                </div>
-
                 <div style={cardStyle("linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)", "1px solid #6ee7b7")}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    💵 Чистая касса за период
+                    💰 Остаток в сейфе (Итоговый баланс)
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 900, color: "#064e3b", marginTop: 8 }}>
-                    {fmtPrice(cashExpensesData.periodNetCashTotal)}
+                    {fmtPrice(cashExpensesData.allTimeBalance)}
                   </div>
                   <div style={{ fontSize: 11, color: "#065f46", marginTop: 4 }}>
-                    Сумма сданных наличных за указанные даты
+                    Все сданные наличные за всё время минус все расходы из сейфа
                   </div>
                 </div>
 
-                <div style={cardStyle("linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)", "1px solid #fdba74")}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9a3412", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    💸 Админ. расходы за период
+                <div style={cardStyle("linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)", "1px solid #7dd3fc")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#0369a1", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    💵 Сдано наличными за период
                   </div>
-                  <div style={{ fontSize: 24, fontWeight: 900, color: "#7c2d12", marginTop: 8 }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#0c4a6e", marginTop: 8 }}>
+                    {fmtPrice(cashExpensesData.periodNetCashTotal)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#0369a1", marginTop: 4 }}>
+                    Сумма наличных средств, поступивших от кассиров за выбранные даты
+                  </div>
+                </div>
+
+                <div style={cardStyle("linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)", "1px solid #fca5a5")}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    💸 Расходы из сейфа за период
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#7f1d1d", marginTop: 8 }}>
                     {fmtPrice(cashExpensesData.periodAdminExpensesTotal)}
                   </div>
-                  <div style={{ fontSize: 11, color: "#9a3412", marginTop: 4 }}>
-                    Списания из сейфа за указанные даты
+                  <div style={{ fontSize: 11, color: "#991b1b", marginTop: 4 }}>
+                    Административные и хозяйственные списания из сейфа за выбранные даты
                   </div>
                 </div>
               </div>
@@ -11004,8 +11004,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                 <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
                                   <th style={{ padding: "8px 4px", textAlign: "left" }}>Дата</th>
                                   <th style={{ padding: "8px 4px", textAlign: "left" }}>Кассир</th>
-                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Наличные</th>
-                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Сдано в сейф</th>
+                                  <th style={{ padding: "8px 4px", textAlign: "right" }}>Расходы кассы</th>
                                 </tr>
                               </thead>
                               <tbody>
