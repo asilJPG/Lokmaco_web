@@ -1222,7 +1222,7 @@ export default function LocmacoApp() {
       case "production":
         return ["prep_chef", "bar"].includes(role);
       case "employees":
-        return role === "admin";
+        return ["admin", "manager", "director"].includes(role);
       case "cash":
         return role === "cashier";
       case "analytics":
@@ -6151,7 +6151,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
           {mode === "edit" ? "Редактирование сотрудника" : "Сотрудники"}
         </h2>
-        {mode === "idle" && subTab === "list" && (
+        {mode === "idle" && subTab === "list" && loggedInUser?.baseRole === "admin" && (
           <Btn
             onClick={() => {
               setMode("new");
@@ -6266,7 +6266,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                       <th style={th}>Склад</th>
                       <th style={{ ...th, textAlign: "center", width: 100 }}>Пароль</th>
                       <th style={{ ...th, textAlign: "center", width: 120 }}>Telegram ID</th>
-                      <th style={{ ...th, width: 90 }}></th>
+                      {loggedInUser?.baseRole === "admin" && <th style={{ ...th, width: 90 }}></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -6301,57 +6301,59 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
                           <td style={{ ...td, textAlign: "center", fontFamily: "monospace", color: "var(--text-muted)", fontSize: 12 }}>
                             {emp.tg_id || "—"}
                           </td>
-                          <td style={td}>
-                            <div style={{ display: "flex", gap: 4 }}>
-                              <button
-                                onClick={() => {
-                                  const [baseRole, storeId] = emp.role.split(":");
-                                  setForm({
-                                    name: emp.name,
-                                    role: baseRole || "bar",
-                                    storeId: storeId || "",
-                                    access_code: emp.access_code,
-                                    tg_id: emp.tg_id || "",
-                                  });
-                                  setEditingId(emp.id);
-                                  setMode("edit");
-                                }}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: "#6366f1",
-                                  display: "flex",
-                                  padding: 8,
-                                  borderRadius: 8,
-                                  transition: "background 0.15s ease",
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
-                                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                              >
-                                {I.edit}
-                              </button>
-                              {emp.tg_id !== 2141257356 && emp.tg_id !== 390586482 ? (
+                          {loggedInUser?.baseRole === "admin" && (
+                            <td style={td}>
+                              <div style={{ display: "flex", gap: 4 }}>
                                 <button
-                                  onClick={() => handleDelete(emp.id, emp.name)}
+                                  onClick={() => {
+                                    const [baseRole, storeId] = emp.role.split(":");
+                                    setForm({
+                                      name: emp.name,
+                                      role: baseRole || "bar",
+                                      storeId: storeId || "",
+                                      access_code: emp.access_code,
+                                      tg_id: emp.tg_id || "",
+                                    });
+                                    setEditingId(emp.id);
+                                    setMode("edit");
+                                  }}
                                   style={{
                                     background: "none",
                                     border: "none",
                                     cursor: "pointer",
-                                    color: "#ef4444",
+                                    color: "#6366f1",
                                     display: "flex",
                                     padding: 8,
                                     borderRadius: 8,
                                     transition: "background 0.15s ease",
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = "#fee2e2"}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
                                   onMouseLeave={(e) => e.currentTarget.style.background = "none"}
                                 >
-                                  {I.trash}
+                                  {I.edit}
                                 </button>
-                              ) : null}
-                            </div>
-                          </td>
+                                {emp.tg_id !== 2141257356 && emp.tg_id !== 390586482 ? (
+                                  <button
+                                    onClick={() => handleDelete(emp.id, emp.name)}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: "#ef4444",
+                                      display: "flex",
+                                      padding: 8,
+                                      borderRadius: 8,
+                                      transition: "background 0.15s ease",
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = "#fee2e2"}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                                  >
+                                    {I.trash}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -8556,6 +8558,15 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     return { name: "", amount: "", date: tzNow.toISOString().split("T")[0] };
   });
 
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [attendanceDate, setAttendanceDate] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return tzNow.toISOString().split("T")[0];
+  });
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceRoleFilter, setAttendanceRoleFilter] = useState("all");
+
   // Helper date calculators
   const getDatesForPeriod = (periodType) => {
     const now = new Date();
@@ -8743,6 +8754,55 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     }
   };
 
+  const handleExportWagesToExcel = () => {
+    if (!wagesData || !wagesData.days || wagesData.days.length === 0) {
+      showToast("Нет данных для экспорта", "error");
+      return;
+    }
+
+    const csvContent = [];
+    csvContent.push(["Дата", "Имя сотрудника", "Сумма (UZS)"].join(";"));
+
+    wagesData.days.forEach((day) => {
+      day.employees.forEach((emp) => {
+        csvContent.push([day.date, emp.name, emp.wage].join(";"));
+      });
+    });
+
+    const csvString = "\uFEFF" + csvContent.join("\n");
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const fromDate = wagesDates.from || "start";
+    const toDate = wagesDates.to || "end";
+    link.setAttribute("download", `wages_report_${fromDate}_to_${toDate}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Attendance Loader
+  const loadAttendance = async (dateStr) => {
+    if (!dateStr) return;
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/attendance?date=${dateStr}`);
+      const res = await r.json();
+      if (res && res.success) {
+        setAttendanceData(res.employees || []);
+      } else {
+        showToast(res?.error || "Ошибка загрузки посещаемости", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при загрузке посещаемости", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Cash Expenses Loader
   const loadCashExpenses = async (periodType, customFrom = "", customTo = "") => {
     let from = customFrom;
@@ -8855,6 +8915,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
     } else if (subTab === "wages") {
       loadWages(wagesPeriod, wagesDates.from, wagesDates.to);
+    } else if (subTab === "attendance") {
+      loadAttendance(attendanceDate);
     }
   }, [subTab]);
 
@@ -8916,6 +8978,12 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             label: "👥 Заработная плата сотрудников",
             grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
             text: "#92400e",
+          },
+          {
+            id: "attendance",
+            label: "📅 Смены сотрудников",
+            grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
+            text: "#6b21a8",
           },
         ].filter((sub) => {
           if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
@@ -11361,6 +11429,35 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 </button>
               </div>
             )}
+
+            {wagesData && wagesData.days && wagesData.days.length > 0 && (
+              <button
+                onClick={handleExportWagesToExcel}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #10b981",
+                  background: "transparent",
+                  color: "#10b981",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  marginLeft: "auto",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "all 0.15s ease",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = "rgba(16, 185, 129, 0.05)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                📥 Экспорт в Excel
+              </button>
+            )}
           </div>
 
           {wagesData ? (
@@ -11596,6 +11693,318 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           ) : (
             <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 40, textAlign: "center" }}>
               Загрузка отчетов о заработной плате...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 📅 ATTENDANCE VIEW */}
+      {!loading && subTab === "attendance" && (
+        <div>
+          {/* Controls: Date selection, Role filter, Search */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 16,
+              alignItems: "center",
+              marginBottom: 20,
+              background: "var(--bg-card)",
+              borderRadius: 16,
+              border: "1px solid var(--border-color)",
+              padding: 16,
+              boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Выбрать дату
+              </label>
+              <input
+                type="date"
+                value={attendanceDate}
+                onChange={(e) => {
+                  setAttendanceDate(e.target.value);
+                  loadAttendance(e.target.value);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 200 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Поиск сотрудника
+              </label>
+              <input
+                type="text"
+                placeholder="Введите имя для поиска..."
+                value={attendanceSearch}
+                onChange={(e) => setAttendanceSearch(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Фильтр ролей
+              </label>
+              <select
+                value={attendanceRoleFilter}
+                onChange={(e) => setAttendanceRoleFilter(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  outline: "none",
+                }}
+              >
+                <option value="all">Все роли</option>
+                <option value="ADM">Администраторы (ADM)</option>
+                <option value="BAR">Бармены (BAR)</option>
+                <option value="KITCH">Кухня (KITCH)</option>
+                <option value="WAIT">Официанты (WAIT)</option>
+                <option value="CLEAN">Мойка/Уборка (CLEAN)</option>
+                <option value="STAFF">Прочий персонал (STAFF)</option>
+              </select>
+            </div>
+          </div>
+
+          {attendanceData ? (() => {
+            // Apply search & role filters
+            const filtered = attendanceData.filter(emp => {
+              const matchesSearch = emp.name.toLowerCase().includes(attendanceSearch.toLowerCase());
+              let matchesRole = true;
+              if (attendanceRoleFilter !== "all") {
+                if (attendanceRoleFilter === "KITCH") {
+                  matchesRole = emp.role.includes("COOK") || emp.role.includes("KITCH") || emp.role.includes("KCH") || emp.role.includes("ШЕФ");
+                } else if (attendanceRoleFilter === "CLEAN") {
+                  matchesRole = emp.role.includes("CLEAN") || emp.role.includes("WASH") || emp.role.includes("ПОСУД");
+                } else if (attendanceRoleFilter === "WAIT") {
+                  matchesRole = emp.role.includes("WAIT") || emp.role.includes("ОФИЦ");
+                } else {
+                  matchesRole = emp.role.includes(attendanceRoleFilter);
+                }
+              }
+              return matchesSearch && matchesRole;
+            });
+
+            const present = filtered.filter(e => e.isActive);
+            const absent = filtered.filter(e => !e.isActive);
+
+            // Time formatter helper
+            const formatTime = (isoString) => {
+              if (!isoString) return "";
+              try {
+                const dateObj = new Date(isoString);
+                return dateObj.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+              } catch (e) {
+                return isoString;
+              }
+            };
+
+            // Shift duration calculator helper
+            const getDuration = (fromStr, toStr) => {
+              if (!fromStr) return "";
+              const fromTime = new Date(fromStr).getTime();
+              const toTime = toStr ? new Date(toStr).getTime() : Date.now();
+              const diffMs = toTime - fromTime;
+              if (diffMs < 0) return "0 ч";
+              const hours = Math.floor(diffMs / (1000 * 60 * 60));
+              const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+              return `${hours} ч ${mins} мин`;
+            };
+
+            return (
+              <div>
+                {/* Summary Cards */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 16,
+                    marginBottom: 24,
+                  }}
+                >
+                  <div style={cardStyle("linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)", "1px solid #d8b4fe")}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6b21a8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      👥 Всего в штате
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: "#581c87", marginTop: 8 }}>
+                      {filtered.length}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#6b21a8", marginTop: 4 }}>
+                      С учетом фильтра ролей и поиска
+                    </div>
+                  </div>
+
+                  <div style={cardStyle("linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)", "1px solid #6ee7b7")}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      🟢 На смене сегодня
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: "#064e3b", marginTop: 8 }}>
+                      {present.length}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#065f46", marginTop: 4 }}>
+                      Сотрудники, открывшие смену в iiko
+                    </div>
+                  </div>
+
+                  <div style={cardStyle("linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%)", "1px solid #94a3b8")}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      ⚪ Отсутствуют
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", marginTop: 8 }}>
+                      {absent.length}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#334155", marginTop: 4 }}>
+                      Нет отметки о выходе на смену
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+                    gap: 20,
+                    alignItems: "start",
+                  }}
+                >
+                  {/* Left: Active Shifts */}
+                  <div
+                    style={{
+                      background: "var(--bg-card)",
+                      borderRadius: 16,
+                      border: "1px solid var(--border-color)",
+                      padding: 20,
+                      boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                    }}
+                  >
+                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-success)", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>🟢 Вышли на смену ({present.length})</span>
+                    </h3>
+                    {present.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {present.map((emp) => (
+                          <div
+                            key={emp.id}
+                            style={{
+                              background: "rgba(16, 185, 129, 0.04)",
+                              border: "1px solid rgba(16, 185, 129, 0.2)",
+                              borderRadius: 12,
+                              padding: 14,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                              <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)" }}>{emp.name}</span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  padding: "2px 8px",
+                                  borderRadius: 6,
+                                  background: "rgba(16, 185, 129, 0.15)",
+                                  color: "#059669",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {emp.role}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              {emp.shifts.map((shift, idx) => (
+                                <div key={idx} style={{ marginTop: idx > 0 ? 4 : 0 }}>
+                                  🕒 Вышел на смену в: <span style={{ fontWeight: 700, color: "var(--text-main)" }}>{formatTime(shift.dateFrom)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                        Никто не вышел на смену.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Absent / Not in shift */}
+                  <div
+                    style={{
+                      background: "var(--bg-card)",
+                      borderRadius: 16,
+                      border: "1px solid var(--border-color)",
+                      padding: 20,
+                      boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                    }}
+                  >
+                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: "var(--text-muted)" }}>
+                      ⚪ Отсутствуют сегодня ({absent.length})
+                    </h3>
+                    {absent.length > 0 ? (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                          gap: 10,
+                          maxHeight: 500,
+                          overflowY: "auto",
+                          paddingRight: 4,
+                        }}
+                      >
+                        {absent.map((emp) => (
+                          <div
+                            key={emp.id}
+                            style={{
+                              background: "var(--bg-hover)",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: 10,
+                              padding: 10,
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, fontSize: 12, color: "var(--text-main)" }}>{emp.name}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                              {emp.role}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                        Все сотрудники вышли на смену!
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })() : (
+            <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 40, textAlign: "center" }}>
+              Загрузка смен сотрудников...
             </div>
           )}
         </div>
