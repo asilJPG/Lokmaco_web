@@ -453,7 +453,7 @@ const I = {
   ),
 };
 
-function PieChart({ data, total, revenue }) {
+function PieChart({ data, total, revenue, onSelectCategory }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
 
   if (!data || data.length === 0 || !total) return null;
@@ -622,6 +622,7 @@ function PieChart({ data, total, revenue }) {
                 key={idx}
                 onMouseEnter={() => setHoveredIndex(idx)}
                 onMouseLeave={() => setHoveredIndex(null)}
+                onClick={() => onSelectCategory && onSelectCategory(seg.name)}
                 style={{
                   cursor: "pointer",
                   transform: `translate(${shiftX}px, ${shiftY}px)`,
@@ -769,6 +770,7 @@ function PieChart({ data, total, revenue }) {
               key={idx}
               onMouseEnter={() => setHoveredIndex(idx)}
               onMouseLeave={() => setHoveredIndex(null)}
+              onClick={() => onSelectCategory && onSelectCategory(seg.name)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -8508,6 +8510,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   const [waitersDates, setWaitersDates] = useState({ from: "", to: "" });
 
   const [plData, setPlData] = useState(null);
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState(null);
   const [cashData, setCashData] = useState(null);
   const [topData, setTopData] = useState(null);
   const [waitersData, setWaitersData] = useState(null);
@@ -9335,7 +9338,146 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     data={plData.expensesDetail}
                     total={plData.expensesSum}
                     revenue={plData.revenue}
+                    onSelectCategory={setSelectedExpenseCategory}
                   />
+
+                  {/* Modal for Expense Category Transactions */}
+                  {selectedExpenseCategory && plData && (
+                    <div
+                      style={{
+                        position: "fixed",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: "rgba(15, 23, 42, 0.4)",
+                        backdropFilter: "blur(4px)",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        zIndex: 9999,
+                        animation: "fadeIn .2s ease",
+                      }}
+                      onClick={() => setSelectedExpenseCategory(null)}
+                    >
+                      <div
+                        style={{
+                          background: "var(--bg-card)",
+                          borderRadius: 16,
+                          border: "1px solid var(--border-color)",
+                          padding: 24,
+                          width: "90%",
+                          maxWidth: 700,
+                          maxHeight: "80vh",
+                          boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                          display: "flex",
+                          flexDirection: "column",
+                          animation: "scaleIn .2s cubic-bezier(0.16, 1, 0.3, 1)",
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Header */}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            borderBottom: "1px solid var(--border-color)",
+                            paddingBottom: 16,
+                            marginBottom: 16,
+                          }}
+                        >
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>
+                              📂 {selectedExpenseCategory}
+                            </h3>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>
+                              Всего расходов по категории: <span style={{ color: "#ef4444", fontWeight: 700 }}>{fmtPrice(plData.expensesDetail.find(e => e.name === selectedExpenseCategory)?.amount || 0)}</span>
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setSelectedExpenseCategory(null)}
+                            style={{
+                              background: "var(--bg-pill)",
+                              border: "none",
+                              borderRadius: "50%",
+                              width: 32,
+                              height: 32,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              color: "var(--text-main)",
+                            }}
+                          >
+                            {I.x}
+                          </button>
+                        </div>
+
+                        {/* List/Table */}
+                        <div style={{ overflowY: "auto", flex: 1, paddingRight: 4 }}>
+                          {(() => {
+                            const categoryTx = (plData.expensesTransactions || []).filter(
+                              (tx) => tx.category === selectedExpenseCategory
+                            );
+
+                            if (categoryTx.length === 0) {
+                              return (
+                                <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                                  Нет транзакций в этой категории за выбранный период.
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                <thead>
+                                  <tr style={{ borderBottom: "2px solid var(--border-color)", textAlign: "left", background: "var(--bg-hover)" }}>
+                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Дата</th>
+                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Документ</th>
+                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Контрагент</th>
+                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Комментарий</th>
+                                    <th style={{ padding: "10px 12px", textAlign: "right", color: "var(--text-muted)", fontWeight: 700 }}>Сумма</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {categoryTx.map((tx, idx) => {
+                                    let formattedDate = "";
+                                    try {
+                                      if (tx.date) {
+                                        const d = new Date(tx.date);
+                                        formattedDate = d.toLocaleDateString("ru-RU", {
+                                          day: "2-digit",
+                                          month: "2-digit",
+                                          year: "numeric",
+                                        });
+                                      }
+                                    } catch (e) {
+                                      formattedDate = tx.date;
+                                    }
+
+                                    return (
+                                      <tr key={idx} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                        <td style={{ padding: "12px", color: "var(--text-main)", fontWeight: 500 }}>{formattedDate}</td>
+                                        <td style={{ padding: "12px", color: "var(--text-muted)", fontFamily: "monospace" }}>{tx.document || "—"}</td>
+                                        <td style={{ padding: "12px", color: "var(--text-main)" }}>{tx.counteragent || "—"}</td>
+                                        <td style={{ padding: "12px", color: "var(--text-muted)", fontStyle: tx.comment ? "normal" : "italic", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.comment}>
+                                          {tx.comment || "без комментария"}
+                                        </td>
+                                        <td style={{ padding: "12px", textAlign: "right", color: "#ef4444", fontWeight: 700 }}>
+                                          {fmtPrice(tx.amount)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* 
                   <div

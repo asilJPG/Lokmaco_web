@@ -80,7 +80,7 @@ export async function GET(request) {
       const transBody = {
         reportType: "TRANSACTIONS",
         buildSummary: "true",
-        groupByRowFields: ["Account.Name", "Account.Type"],
+        groupByRowFields: ["Account.Name", "Account.Type", "DateTime.Typed", "Document", "Comment", "Counteragent.Name"],
         groupByColFields: [],
         aggregateFields: ["Sum.ResignedSum"],
         filters: {
@@ -105,7 +105,8 @@ export async function GET(request) {
       });
 
       let expensesSum = 0.0;
-      const expensesDetail = [];
+      const expensesMap = {};
+      const expensesTransactions = [];
 
       if (transRes.ok) {
         const transData = await transRes.json();
@@ -119,15 +120,42 @@ export async function GET(request) {
               if (val > 0) {
                 expensesSum += val;
                 const name = row["Account.Name"] || "Прочие расходы";
-                expensesDetail.push({ name, amount: val });
+                
+                // Aggregate by category
+                if (!expensesMap[name]) {
+                  expensesMap[name] = 0.0;
+                }
+                expensesMap[name] += val;
+
+                // Add to detailed transactions list
+                expensesTransactions.push({
+                  category: name,
+                  date: row["DateTime.Typed"],
+                  document: row["Document"],
+                  comment: row["Comment"],
+                  counteragent: row["Counteragent.Name"],
+                  amount: val,
+                });
               }
             }
           }
         }
       }
 
+      const expensesDetail = Object.entries(expensesMap).map(([name, amount]) => ({
+        name,
+        amount,
+      }));
+
       // Sort expenses by amount descending
       expensesDetail.sort((a, b) => b.amount - a.amount);
+
+      // Sort detailed transactions by date descending
+      expensesTransactions.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date) : new Date(0);
+        const dateB = b.date ? new Date(b.date) : new Date(0);
+        return dateB - dateA;
+      });
 
       const netProfit = revenue - cogs - expensesSum;
       const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0.0;
@@ -139,6 +167,7 @@ export async function GET(request) {
         netProfit,
         margin,
         expensesDetail,
+        expensesTransactions,
       };
     });
 
