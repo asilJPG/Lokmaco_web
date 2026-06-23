@@ -80,7 +80,7 @@ export async function GET(request) {
       const transBody = {
         reportType: "TRANSACTIONS",
         buildSummary: "true",
-        groupByRowFields: ["Account.Name", "Account.Type"],
+        groupByRowFields: ["Account.Name", "Account.Type", "Document"],
         groupByColFields: [],
         aggregateFields: ["Sum.ResignedSum"],
         filters: {
@@ -105,7 +105,7 @@ export async function GET(request) {
       });
 
       let expensesSum = 0.0;
-      const expensesDetail = [];
+      const expensesMap = {};
 
       if (transRes.ok) {
         const transData = await transRes.json();
@@ -117,14 +117,29 @@ export async function GET(request) {
               cogs += val;
             } else if (actType === "EXPENSES" || actType === "OTHER_EXPENSES") {
               if (val > 0) {
-                expensesSum += val;
                 const name = row["Account.Name"] || "Прочие расходы";
-                expensesDetail.push({ name, amount: val });
+                const doc = row["Document"] || "";
+
+                // Exclude salary transactions that do not have a document number (clock-in hourly entries)
+                if (name === "Зарплата" && !doc) {
+                  continue;
+                }
+
+                expensesSum += val;
+                if (!expensesMap[name]) {
+                  expensesMap[name] = 0.0;
+                }
+                expensesMap[name] += val;
               }
             }
           }
         }
       }
+
+      const expensesDetail = Object.entries(expensesMap).map(([name, amount]) => ({
+        name,
+        amount,
+      }));
 
       // Sort expenses by amount descending
       expensesDetail.sort((a, b) => b.amount - a.amount);

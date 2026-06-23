@@ -77,10 +77,17 @@ export async function GET(request) {
         const val = parseFloat(row["Sum.ResignedSum"] || 0);
         if (val <= 0) continue;
 
+        const docNum = row["Document"] || "";
+        const catName = row["Account.Name"] || "";
+
+        // Exclude salary transactions that do not have a document number (clock-in hourly entries)
+        if (catName === "Зарплата" && !docNum) {
+          continue;
+        }
+
         const dateRaw = row["DateTime.Typed"] || "";
         const date = dateRaw.split("T")[0] || "";
-        const docNum = row["Document"] || "";
-        const key = docNum ? `${date}_${docNum}` : `${date}_nodoc_${row["Account.Name"]}`;
+        const key = docNum ? `${date}_${docNum}` : `${date}_nodoc_${catName}`;
 
         if (!groups[key]) {
           groups[key] = {
@@ -95,7 +102,6 @@ export async function GET(request) {
         grp.totalAmount += val;
 
         let itemDesc = "";
-        const catName = row["Account.Name"];
         if (catName === "Зарплата") {
           if (row["Contr-Product.Name"]) {
             itemDesc = row["Contr-Product.Name"];
