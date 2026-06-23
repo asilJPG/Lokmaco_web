@@ -181,7 +181,16 @@ export async function GET(request) {
       cashierReports: cashierReports || [],
     };
 
-    return Response.json({ success: true, data });
+    return Response.json(
+      { success: true, data },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (e) {
     console.error("[/api/iiko/analytics/cash] error:", e.message);
     return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });

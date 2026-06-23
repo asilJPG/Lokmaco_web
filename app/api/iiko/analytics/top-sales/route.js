@@ -124,7 +124,16 @@ export async function GET(request) {
       console.warn("Failed to compute diffDays/threshold:", e);
     }
 
-    return Response.json({ success: true, threshold, diffDays, data });
+    return Response.json(
+      { success: true, threshold, diffDays, data },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (e) {
     console.error("[/api/iiko/analytics/top-sales] error:", e.message);
     return Response.json({ success: false, error: "Внутренняя ошибка сервера" }, { status: 500 });

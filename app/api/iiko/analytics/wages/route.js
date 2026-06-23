@@ -93,15 +93,24 @@ export async function GET(request) {
     const periodTotalPaid = resultList.reduce((sum, day) => sum + day.totalPaid, 0);
     const avgDailyPaid = resultList.length > 0 ? Math.round(periodTotalPaid / resultList.length) : 0;
 
-    return Response.json({
-      success: true,
-      data: {
-        periodTotalPaid,
-        avgDailyPaid,
-        latestWageDate,
-        days: resultList,
+    return Response.json(
+      {
+        success: true,
+        data: {
+          periodTotalPaid,
+          avgDailyPaid,
+          latestWageDate,
+          days: resultList,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (e) {
     console.error("[/api/iiko/analytics/wages GET]", e.message);
     return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });

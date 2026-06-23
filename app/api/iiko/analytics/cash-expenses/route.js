@@ -131,16 +131,25 @@ export async function GET(request) {
     const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.netCash, 0);
     const periodAdminExpensesTotal = periodAdminExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-    return Response.json({
-      success: true,
-      data: {
-        allTimeBalance,
-        periodNetCashTotal,
-        periodAdminExpensesTotal,
-        cashReports: periodCashReports,
-        adminExpenses: periodAdminExpenses,
+    return Response.json(
+      {
+        success: true,
+        data: {
+          allTimeBalance,
+          periodNetCashTotal,
+          periodAdminExpensesTotal,
+          cashReports: periodCashReports,
+          adminExpenses: periodAdminExpenses,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (e) {
     console.error("[/api/iiko/analytics/cash-expenses GET]", e.message);
     return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });

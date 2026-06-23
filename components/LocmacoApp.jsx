@@ -461,23 +461,8 @@ function PieChart({ data, total, revenue }) {
   const validData = data.filter((item) => item.amount > 0);
   if (validData.length === 0) return null;
 
-  // Group small slices to avoid visual cluttering around the chart
-  const MAX_MAIN_SLICES = 8;
-  let chartData = [];
-  if (validData.length > MAX_MAIN_SLICES + 1) {
-    const mainSlices = validData.slice(0, MAX_MAIN_SLICES);
-    const otherSlices = validData.slice(MAX_MAIN_SLICES);
-    const otherAmount = otherSlices.reduce((sum, item) => sum + item.amount, 0);
-    chartData = [
-      ...mainSlices,
-      {
-        name: "Другие расходы",
-        amount: otherAmount,
-      },
-    ];
-  } else {
-    chartData = [...validData];
-  }
+  // Output everything as is from iiko
+  const chartData = [...validData];
 
   let accumulatedAngle = 360;
 
@@ -8623,7 +8608,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
     try {
       setLoading(true);
-      const r = await fetch(`/api/iiko/analytics/pl?from=${from}&to=${to}`);
+      const r = await fetch(`/api/iiko/analytics/pl?from=${from}&to=${to}`, { cache: "no-store" });
       const res = await r.json();
       if (res && res.success) {
         setPlData(res.data);
@@ -8650,7 +8635,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
     try {
       setLoading(true);
-      const r = await fetch(`/api/iiko/analytics/cash?from=${from}&to=${to}`);
+      const r = await fetch(`/api/iiko/analytics/cash?from=${from}&to=${to}`, { cache: "no-store" });
       const res = await r.json();
       if (res && res.success) {
         setCashData(res.data);
@@ -8678,7 +8663,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     try {
       setLoading(true);
       const r = await fetch(
-        `/api/iiko/analytics/top-sales?from=${from}&to=${to}`
+        `/api/iiko/analytics/top-sales?from=${from}&to=${to}`,
+        { cache: "no-store" }
       );
       const res = await r.json();
       if (res && res.success) {
@@ -8708,7 +8694,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     try {
       setLoading(true);
       const r = await fetch(
-        `/api/iiko/analytics/waiters?from=${from}&to=${to}`
+        `/api/iiko/analytics/waiters?from=${from}&to=${to}`,
+        { cache: "no-store" }
       );
       const res = await r.json();
       if (res && res.success) {
@@ -8737,7 +8724,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     try {
       setLoading(true);
       const r = await fetch(
-        `/api/iiko/analytics/wages?from=${from}&to=${to}`
+        `/api/iiko/analytics/wages?from=${from}&to=${to}`,
+        { cache: "no-store" }
       );
       const res = await r.json();
       if (res && res.success) {
@@ -8817,7 +8805,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     try {
       setLoading(true);
       const r = await fetch(
-        `/api/iiko/analytics/cash-expenses?from=${from}&to=${to}`
+        `/api/iiko/analytics/cash-expenses?from=${from}&to=${to}`,
+        { cache: "no-store" }
       );
       const res = await r.json();
       if (res && res.success) {
