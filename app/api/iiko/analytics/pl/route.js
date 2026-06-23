@@ -130,9 +130,18 @@ export async function GET(request) {
                 // Build a smart description based on the expense category
                 let description = "";
                 if (name === "Зарплата") {
-                  description = row["Counteragent.Name"] || "";
-                  if (row["Comment"]) {
-                    description += description ? ` (${row["Comment"]})` : row["Comment"];
+                  if (row["Contr-Product.Name"]) {
+                    // Service invoice (e.g. "Зарплата сотрудникам")
+                    description = row["Contr-Product.Name"];
+                    if (row["Counteragent.Name"]) {
+                      description += ` (${row["Counteragent.Name"]})`;
+                    }
+                  } else {
+                    // Hourly clock-ins (e.g. employee name)
+                    description = row["Counteragent.Name"] || "";
+                    if (row["Comment"]) {
+                      description += description ? ` (${row["Comment"]})` : row["Comment"];
+                    }
                   }
                 } else {
                   description = row["Contr-Product.Name"] || row["Comment"] || row["Counteragent.Name"] || "—";
