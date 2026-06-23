@@ -9461,7 +9461,6 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                               <div
                                 style={{
                                   color: "var(--color-primary)",
-                                  animation: "spin 1s linear infinite",
                                 }}
                               >
                                 {I.loader}
