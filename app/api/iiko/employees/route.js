@@ -11,8 +11,13 @@ function getHeaders() {
   };
 }
 
-export async function GET(_request) {
+export async function GET(request) {
   try {
+    const requesterRole = request.headers.get("x-user-role") || "";
+    if (requesterRole !== "admin") {
+      return Response.json({ success: false, error: "Доступ запрещен" }, { status: 403 });
+    }
+
     const url = `${SUPABASE_URL}/rest/v1/bot_users?select=*&order=id.asc`;
     const res = await http1Fetch(url, {
       method: "GET",

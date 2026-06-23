@@ -1207,7 +1207,7 @@ export default function LocmacoApp() {
       case "production":
         return ["prep_chef", "bar"].includes(role);
       case "employees":
-        return ["admin", "manager", "director"].includes(role);
+        return role === "admin";
       case "cash":
         return role === "cashier";
       case "analytics":
