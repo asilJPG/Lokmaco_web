@@ -8511,10 +8511,50 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
   const [plData, setPlData] = useState(null);
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [categoryDetails, setCategoryDetails] = useState([]);
   const [cashData, setCashData] = useState(null);
   const [topData, setTopData] = useState(null);
   const [waitersData, setWaitersData] = useState(null);
   const [showExpensesDetail, setShowExpensesDetail] = useState(false);
+
+  // Category transactions details loader (on-demand)
+  useEffect(() => {
+    if (!selectedExpenseCategory) {
+      setCategoryDetails([]);
+      return;
+    }
+
+    const fetchCategoryDetails = async () => {
+      setDetailsLoading(true);
+      try {
+        let from = plDates.from;
+        let to = plDates.to;
+        if (plPeriod !== "custom") {
+          const dates = getDatesForPeriod(plPeriod);
+          from = dates.from;
+          to = dates.to;
+        }
+
+        const r = await fetch(
+          `/api/iiko/analytics/pl/details?category=${encodeURIComponent(selectedExpenseCategory)}&from=${from}&to=${to}`,
+          { cache: "no-store" }
+        );
+        const res = await r.json();
+        if (res && res.success) {
+          setCategoryDetails(res.data || []);
+        } else {
+          showToast(res?.error || "Ошибка загрузки деталей расходов", "error");
+        }
+      } catch (err) {
+        showToast("Ошибка сети при загрузке деталей", "error");
+      } finally {
+        setDetailsLoading(false);
+      }
+    };
+
+    fetchCategoryDetails();
+  }, [selectedExpenseCategory, plPeriod, plDates.from, plDates.to]);
 
   // Cash and Admin Expenses states
   const [cashExpensesData, setCashExpensesData] = useState(null);
@@ -9415,63 +9455,65 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                         </div>
 
                         {/* List/Table */}
-                        <div style={{ overflowY: "auto", flex: 1, paddingRight: 4 }}>
-                          {(() => {
-                            const categoryTx = (plData.expensesTransactions || []).filter(
-                              (tx) => tx.category === selectedExpenseCategory
-                            );
-
-                            if (categoryTx.length === 0) {
-                              return (
-                                <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted)", fontStyle: "italic" }}>
-                                  Нет транзакций в этой категории за выбранный период.
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                                <thead>
-                                  <tr style={{ borderBottom: "2px solid var(--border-color)", textAlign: "left", background: "var(--bg-hover)" }}>
-                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Дата</th>
-                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Документ</th>
-                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Доп. информация</th>
-                                    <th style={{ padding: "10px 12px", textAlign: "right", color: "var(--text-muted)", fontWeight: 700 }}>Сумма</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {categoryTx.map((tx, idx) => {
-                                    let formattedDate = "";
-                                    try {
-                                      if (tx.date) {
-                                        const d = new Date(tx.date);
-                                        formattedDate = d.toLocaleDateString("ru-RU", {
-                                          day: "2-digit",
-                                          month: "2-digit",
-                                          year: "numeric",
-                                        });
-                                      }
-                                    } catch (e) {
-                                      formattedDate = tx.date;
+                        <div style={{ overflowY: "auto", flex: 1, paddingRight: 4, minHeight: 150, display: "flex", flexDirection: "column" }}>
+                          {detailsLoading ? (
+                            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "40px 0", color: "var(--text-muted)", margin: "auto" }}>
+                              <div
+                                style={{
+                                  color: "var(--color-primary)",
+                                  animation: "spin 1s linear infinite",
+                                }}
+                              >
+                                {I.loader}
+                              </div>
+                              <span style={{ fontSize: 12, fontWeight: 600 }}>Загрузка деталей...</span>
+                            </div>
+                          ) : categoryDetails.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted)", fontStyle: "italic", margin: "auto" }}>
+                              Нет транзакций в этой категории за выбранный период.
+                            </div>
+                          ) : (
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                              <thead>
+                                <tr style={{ borderBottom: "2px solid var(--border-color)", textAlign: "left", background: "var(--bg-hover)" }}>
+                                  <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Дата</th>
+                                  <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Документ</th>
+                                  <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Доп. информация</th>
+                                  <th style={{ padding: "10px 12px", textAlign: "right", color: "var(--text-muted)", fontWeight: 700 }}>Сумма</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {categoryDetails.map((tx, idx) => {
+                                  let formattedDate = "";
+                                  try {
+                                    if (tx.date) {
+                                      const d = new Date(tx.date);
+                                      formattedDate = d.toLocaleDateString("ru-RU", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                      });
                                     }
+                                  } catch (e) {
+                                    formattedDate = tx.date;
+                                  }
 
-                                    return (
-                                      <tr key={idx} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                                        <td style={{ padding: "12px", color: "var(--text-main)", fontWeight: 500 }}>{formattedDate}</td>
-                                        <td style={{ padding: "12px", color: "var(--text-muted)", fontFamily: "monospace" }}>{tx.document || "—"}</td>
-                                        <td style={{ padding: "12px", color: "var(--text-main)", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.description}>
-                                          {tx.description || "—"}
-                                        </td>
-                                        <td style={{ padding: "12px", textAlign: "right", color: "#ef4444", fontWeight: 700 }}>
-                                          {fmtPrice(tx.amount)}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            );
-                          })()}
+                                  return (
+                                    <tr key={idx} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                      <td style={{ padding: "12px", color: "var(--text-main)", fontWeight: 500 }}>{formattedDate}</td>
+                                      <td style={{ padding: "12px", color: "var(--text-muted)", fontFamily: "monospace" }}>{tx.document || "—"}</td>
+                                      <td style={{ padding: "12px", color: "var(--text-main)", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.description}>
+                                        {tx.description || "—"}
+                                      </td>
+                                      <td style={{ padding: "12px", textAlign: "right", color: "#ef4444", fontWeight: 700 }}>
+                                        {fmtPrice(tx.amount)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
                         </div>
                       </div>
                     </div>

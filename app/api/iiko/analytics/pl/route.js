@@ -80,7 +80,7 @@ export async function GET(request) {
       const transBody = {
         reportType: "TRANSACTIONS",
         buildSummary: "true",
-        groupByRowFields: ["Account.Name", "Account.Type", "DateTime.Typed", "Document", "Comment", "Counteragent.Name", "Contr-Product.Name"],
+        groupByRowFields: ["Account.Name", "Account.Type"],
         groupByColFields: [],
         aggregateFields: ["Sum.ResignedSum"],
         filters: {
@@ -105,8 +105,7 @@ export async function GET(request) {
       });
 
       let expensesSum = 0.0;
-      const expensesMap = {};
-      const expensesTransactions = [];
+      const expensesDetail = [];
 
       if (transRes.ok) {
         const transData = await transRes.json();
@@ -120,62 +119,15 @@ export async function GET(request) {
               if (val > 0) {
                 expensesSum += val;
                 const name = row["Account.Name"] || "Прочие расходы";
-                
-                // Aggregate by category
-                if (!expensesMap[name]) {
-                  expensesMap[name] = 0.0;
-                }
-                expensesMap[name] += val;
-
-                // Build a smart description based on the expense category
-                let description = "";
-                if (name === "Зарплата") {
-                  if (row["Contr-Product.Name"]) {
-                    // Service invoice (e.g. "Зарплата сотрудникам")
-                    description = row["Contr-Product.Name"];
-                    if (row["Counteragent.Name"]) {
-                      description += ` (${row["Counteragent.Name"]})`;
-                    }
-                  } else {
-                    // Hourly clock-ins (e.g. employee name)
-                    description = row["Counteragent.Name"] || "";
-                    if (row["Comment"]) {
-                      description += description ? ` (${row["Comment"]})` : row["Comment"];
-                    }
-                  }
-                } else {
-                  description = row["Contr-Product.Name"] || row["Comment"] || row["Counteragent.Name"] || "—";
-                }
-                if (!description) description = "—";
-
-                // Add to detailed transactions list
-                expensesTransactions.push({
-                  category: name,
-                  date: row["DateTime.Typed"],
-                  document: row["Document"],
-                  description,
-                  amount: val,
-                });
+                expensesDetail.push({ name, amount: val });
               }
             }
           }
         }
       }
 
-      const expensesDetail = Object.entries(expensesMap).map(([name, amount]) => ({
-        name,
-        amount,
-      }));
-
       // Sort expenses by amount descending
       expensesDetail.sort((a, b) => b.amount - a.amount);
-
-      // Sort detailed transactions by date descending
-      expensesTransactions.sort((a, b) => {
-        const dateA = a.date ? new Date(a.date) : new Date(0);
-        const dateB = b.date ? new Date(b.date) : new Date(0);
-        return dateB - dateA;
-      });
 
       const netProfit = revenue - cogs - expensesSum;
       const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0.0;
@@ -187,7 +139,6 @@ export async function GET(request) {
         netProfit,
         margin,
         expensesDetail,
-        expensesTransactions,
       };
     });
 
