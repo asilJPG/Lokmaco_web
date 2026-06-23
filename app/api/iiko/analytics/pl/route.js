@@ -80,7 +80,7 @@ export async function GET(request) {
       const transBody = {
         reportType: "TRANSACTIONS",
         buildSummary: "true",
-        groupByRowFields: ["Account.Name", "Account.Type", "DateTime.Typed", "Document", "Comment", "Counteragent.Name"],
+        groupByRowFields: ["Account.Name", "Account.Type", "DateTime.Typed", "Document", "Comment", "Counteragent.Name", "Contr-Product.Name"],
         groupByColFields: [],
         aggregateFields: ["Sum.ResignedSum"],
         filters: {
@@ -127,13 +127,24 @@ export async function GET(request) {
                 }
                 expensesMap[name] += val;
 
+                // Build a smart description based on the expense category
+                let description = "";
+                if (name === "Зарплата") {
+                  description = row["Counteragent.Name"] || "";
+                  if (row["Comment"]) {
+                    description += description ? ` (${row["Comment"]})` : row["Comment"];
+                  }
+                } else {
+                  description = row["Contr-Product.Name"] || row["Comment"] || row["Counteragent.Name"] || "—";
+                }
+                if (!description) description = "—";
+
                 // Add to detailed transactions list
                 expensesTransactions.push({
                   category: name,
                   date: row["DateTime.Typed"],
                   document: row["Document"],
-                  comment: row["Comment"],
-                  counteragent: row["Counteragent.Name"],
+                  description,
                   amount: val,
                 });
               }

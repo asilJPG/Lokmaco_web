@@ -9435,8 +9435,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                   <tr style={{ borderBottom: "2px solid var(--border-color)", textAlign: "left", background: "var(--bg-hover)" }}>
                                     <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Дата</th>
                                     <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Документ</th>
-                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Контрагент</th>
-                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Комментарий</th>
+                                    <th style={{ padding: "10px 12px", color: "var(--text-muted)", fontWeight: 700 }}>Доп. информация</th>
                                     <th style={{ padding: "10px 12px", textAlign: "right", color: "var(--text-muted)", fontWeight: 700 }}>Сумма</th>
                                   </tr>
                                 </thead>
@@ -9460,9 +9459,8 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       <tr key={idx} style={{ borderBottom: "1px solid var(--border-color)" }}>
                                         <td style={{ padding: "12px", color: "var(--text-main)", fontWeight: 500 }}>{formattedDate}</td>
                                         <td style={{ padding: "12px", color: "var(--text-muted)", fontFamily: "monospace" }}>{tx.document || "—"}</td>
-                                        <td style={{ padding: "12px", color: "var(--text-main)" }}>{tx.counteragent || "—"}</td>
-                                        <td style={{ padding: "12px", color: "var(--text-muted)", fontStyle: tx.comment ? "normal" : "italic", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.comment}>
-                                          {tx.comment || "без комментария"}
+                                        <td style={{ padding: "12px", color: "var(--text-main)", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.description}>
+                                          {tx.description || "—"}
                                         </td>
                                         <td style={{ padding: "12px", textAlign: "right", color: "#ef4444", fontWeight: 700 }}>
                                           {fmtPrice(tx.amount)}
