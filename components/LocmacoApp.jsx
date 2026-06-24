@@ -622,9 +622,8 @@ function PieChart({ data, total, revenue, onSelectCategory }) {
                 key={idx}
                 onMouseEnter={() => setHoveredIndex(idx)}
                 onMouseLeave={() => setHoveredIndex(null)}
-                onClick={() => onSelectCategory && onSelectCategory(seg.name)}
                 style={{
-                  cursor: "pointer",
+                  cursor: "default",
                   transform: `translate(${shiftX}px, ${shiftY}px)`,
                   transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                 }}
