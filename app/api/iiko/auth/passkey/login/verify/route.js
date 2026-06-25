@@ -1,5 +1,5 @@
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import { getPasskeyById, updatePasskeyCounter, getUserById, updateUserLastLogin } from "@/lib/supabase";
+import { getPasskeyById, updatePasskeyCounter, getUserById, updateUserLastLogin, logAction } from "@/lib/supabase";
 import { cookies } from "next/headers";
 import { signSession } from "@/lib/auth";
 
@@ -85,9 +85,10 @@ export async function POST(request) {
       // Clear cookie
       cookieStore.delete("login_challenge");
 
-      // Update last login in Supabase
+      // Update last login and write to audit log in Supabase
       try {
         await updateUserLastLogin(dbUser.id, "passkey");
+        await logAction(dbUser.tg_id, dbUser.name, "LOGIN_PASSKEY", "-", "Вход по Face ID / Touch ID");
       } catch (logErr) {
         console.error("[Passkey Login Log Error]", logErr.message);
       }
