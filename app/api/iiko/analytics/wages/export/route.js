@@ -29,13 +29,13 @@ const DB_TO_EXCEL_MAP = {
   "Абдукодилов Шахзод": "Абдукобулов Ш"
 };
 
-function canonicalizeName(name) {
-  if (!name) return "";
-  const n = name.trim().replace(/\s+/g, " ");
-  if (DB_TO_EXCEL_MAP[n]) {
-    return DB_TO_EXCEL_MAP[n];
-  }
-  return n;
+// String normalization for robust matching
+function normalizeForMatch(str) {
+  if (!str) return "";
+  return str.trim()
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/\s+/g, " ");
 }
 
 // Canonical Employee List Template
@@ -103,6 +103,69 @@ const TEMPLATE_EMPLOYEES = [
   { name: "Умиджон ", role: "", dept: "Администрация" }
 ];
 
+// Robust matching logic
+function findTemplateEmployee(dbName, wageAmt) {
+  const normalizedDb = normalizeForMatch(dbName);
+  if (!normalizedDb) return null;
+
+  // 1. Resolve alias first if defined
+  let resolvedName = dbName.trim().replace(/\s+/g, " ");
+  if (DB_TO_EXCEL_MAP[resolvedName]) {
+    resolvedName = DB_TO_EXCEL_MAP[resolvedName];
+  }
+  const normResolved = normalizeForMatch(resolvedName);
+
+  // Try exact match first
+  let matches = TEMPLATE_EMPLOYEES.filter(item => {
+    const normTemplate = normalizeForMatch(item.name);
+    return normTemplate === normResolved;
+  });
+
+  if (matches.length > 0) {
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    // Handle duplicates (like Karimova M)
+    const specialMatch = matches.find(item => item.specialCheck && item.specialCheck(wageAmt));
+    if (specialMatch) return specialMatch;
+    return matches[0];
+  }
+
+  // 2. Fuzzy part match (Last Name + Initial)
+  const dbParts = normResolved.split(" ");
+  if (dbParts.length >= 1) {
+    const dbLastName = dbParts[0];
+    const dbInitial = dbParts[1] ? dbParts[1][0] : null;
+
+    const fuzzyMatches = TEMPLATE_EMPLOYEES.filter(item => {
+      const tParts = normalizeForMatch(item.name).split(" ");
+      const tLastName = tParts[0];
+      const tInitial = tParts[1] ? tParts[1][0] : null;
+
+      // Last name must match exactly
+      if (tLastName !== dbLastName) return false;
+
+      // If database contains an initial, verify that first letters match
+      if (dbInitial && tInitial) {
+        return tInitial === dbInitial;
+      }
+      return true;
+    });
+
+    if (fuzzyMatches.length > 0) {
+      if (fuzzyMatches.length === 1) {
+        return fuzzyMatches[0];
+      }
+      // Handle duplicates (like Karimova M)
+      const specialMatch = fuzzyMatches.find(item => item.specialCheck && item.specialCheck(wageAmt));
+      if (specialMatch) return specialMatch;
+      return fuzzyMatches[0];
+    }
+  }
+
+  return null;
+}
+
 function getColLetter(col) {
   let temp, letter = "";
   while (col > 0) {
@@ -129,7 +192,7 @@ export async function GET(request) {
       return Response.json({ error: "Укажите даты from и to" }, { status: 400 });
     }
 
-    // 1. Fetch records from Supabase
+    // Fetch records from Supabase
     const url = `${SUPABASE_URL}/rest/v1/bot_actions?action_type=eq.cash&order=created_at.desc&limit=1500`;
     const res = await http1Fetch(url, {
       method: "GET",
@@ -143,7 +206,7 @@ export async function GET(request) {
 
     const records = await res.json();
     
-    // Generate the full dates list in ascending order
+    // Generate dates list
     const datesList = [];
     let curr = new Date(dateFrom);
     const end = new Date(dateTo);
@@ -156,7 +219,7 @@ export async function GET(request) {
     const groupedWages = {};
     const outOfTemplateEmployees = {};
 
-    // Process wage records
+    // Process wages
     for (const rec of records) {
       const createdAt = rec.created_at || "";
       const dateKey = rec.details?.selected_date || createdAt.split("T")[0] || "";
@@ -165,20 +228,9 @@ export async function GET(request) {
         const wages = rec.details?.employee_wages || [];
         for (const w of wages) {
           const rawName = w.name || "";
-          const canonicalName = canonicalizeName(rawName);
           const wageAmt = parseFloat(w.wage) || 0;
 
-          let matchedItem = null;
-          if (canonicalName === "Каримова М") {
-            // Distinguish fruit-prep vs wash mixtures
-            const isKitchen = wageAmt <= 150000;
-            matchedItem = TEMPLATE_EMPLOYEES.find(item => 
-              item.name === "Каримова М" && 
-              (isKitchen ? item.dept === "Кухня" : item.dept === "Мойка")
-            );
-          } else {
-            matchedItem = TEMPLATE_EMPLOYEES.find(item => item.name === canonicalName);
-          }
+          const matchedItem = findTemplateEmployee(rawName, wageAmt);
 
           if (matchedItem) {
             const key = `${matchedItem.name}_${matchedItem.dept}`;
@@ -193,6 +245,7 @@ export async function GET(request) {
             groupedWages[key].wages[dateKey] = wageAmt;
           } else {
             // Out of Template employee
+            const canonicalName = rawName.trim().replace(/\s+/g, " ");
             if (!outOfTemplateEmployees[canonicalName]) {
               outOfTemplateEmployees[canonicalName] = {
                 name: canonicalName,
@@ -207,18 +260,16 @@ export async function GET(request) {
       }
     }
 
-    // 2. Build rows structure
+    // Build rows
     const rowsToExport = [];
     const depts = ["Бар", "Кухня", "Менеджер и официанты", "Мойка", "Администрация"];
     
     for (const deptName of depts) {
       const deptItems = TEMPLATE_EMPLOYEES.filter(item => item.dept === deptName);
       
-      // Note: Administration section has no category header row in the original sheet
       if (deptName !== "Администрация") {
         rowsToExport.push({ isHeader: true, name: deptName });
       } else {
-        // Administration block is separated by an empty row
         rowsToExport.push({ isSpacer: true });
       }
       
@@ -235,7 +286,7 @@ export async function GET(request) {
       });
     }
 
-    // Append out-of-template employees if any
+    // Append out-of-template
     const outOfTemplateList = Object.values(outOfTemplateEmployees);
     if (outOfTemplateList.length > 0) {
       rowsToExport.push({ isHeader: true, name: "Вне шаблона" });
@@ -250,10 +301,8 @@ export async function GET(request) {
       });
     }
 
-    // 3. Create Excel Workbook
+    // Create Excel
     const workbook = new ExcelJS.Workbook();
-    
-    // Format sheet name as date range DD.MM-DD.MM
     const formatDateShort = (dStr) => {
       const parts = dStr.split("-");
       if (parts.length === 3) {
@@ -265,36 +314,30 @@ export async function GET(request) {
     const worksheet = workbook.addWorksheet(sheetName);
     worksheet.views = [{ showGridLines: true }];
 
-    // Title at Row 3 Column C
     const titleRange = `${formatDateShort(dateFrom)}.${dateFrom.split("-")[0].slice(2)}-${formatDateShort(dateTo)}.${dateTo.split("-")[0].slice(2)}`;
     worksheet.getCell("C3").value = `The Lokmaco Fergana -ЗП таблица ${titleRange}`;
     worksheet.getCell("C3").font = { name: "Calibri", size: 16, bold: true };
 
-    // Build Headers row (Row 5)
     const headerRowIdx = 5;
-    
-    // Column index maps matching the TG file exactly
     const colNoIdx = 3; // C
     const colFioIdx = 4; // D
     const colRoleIdx = 5; // E
     const colWagesStartIdx = 6; // F
     
     const totalDays = datesList.length;
-    const colAccruedIdx = colWagesStartIdx + totalDays;     // P (for 10 days)
-    const colAdvanceIdx = colAccruedIdx + 1;                // Q
-    const colNetIdx = colAdvanceIdx + 1;                    // R
-    const colPaidIdx = colNetIdx + 1;                       // S
-    const colSpacerIdx = colPaidIdx + 1;                    // T
-    const colSignatureIdx = colSpacerIdx + 1;                // U
+    const colAccruedIdx = colWagesStartIdx + totalDays;
+    const colAdvanceIdx = colAccruedIdx + 1;
+    const colNetIdx = colAdvanceIdx + 1;
+    const colPaidIdx = colNetIdx + 1;
+    const colSpacerIdx = colPaidIdx + 1;
+    const colSignatureIdx = colSpacerIdx + 1;
 
-    // Set headers
-    worksheet.getCell(headerRowIdx, colNoIdx).value = ""; // Empty in sheet
+    worksheet.getCell(headerRowIdx, colNoIdx).value = "";
     worksheet.getCell(headerRowIdx, colFioIdx).value = "Ф.И.О.";
     worksheet.getCell(headerRowIdx, colRoleIdx).value = "Должность";
     
     datesList.forEach((dateStr, idx) => {
       const cell = worksheet.getCell(headerRowIdx, colWagesStartIdx + idx);
-      // Write actual Date object and set dd.mm number format
       cell.value = new Date(dateStr);
       cell.numFmt = "dd.mm";
     });
@@ -305,7 +348,6 @@ export async function GET(request) {
     worksheet.getCell(headerRowIdx, colPaidIdx).value = "Оплачено";
     worksheet.getCell(headerRowIdx, colSignatureIdx).value = "Подпись";
 
-    // Style headers
     const thinBorder = {
       top: { style: "thin", color: { argb: "BFBFBF" } },
       left: { style: "thin", color: { argb: "BFBFBF" } },
@@ -321,62 +363,53 @@ export async function GET(request) {
       cell.border = thinBorder;
     }
 
-    // Set row height for headers
     worksheet.getRow(headerRowIdx).height = 25;
 
-    // Fill Data rows
     let currentDeptRowNo = 0;
     let currentRowIdx = 6;
 
     rowsToExport.forEach(row => {
       if (row.isSpacer) {
-        // Empty spacer row before Administration
         worksheet.getRow(currentRowIdx).height = 20;
-        // Apply no styling/borders
         currentRowIdx++;
       } else if (row.isHeader) {
-        // Merge category row starting at Column C
         worksheet.mergeCells(currentRowIdx, colNoIdx, currentRowIdx, colSignatureIdx);
         const cell = worksheet.getCell(currentRowIdx, colNoIdx);
         cell.value = row.name;
         cell.font = { name: "Calibri", size: 11, bold: true };
         cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
         
-        // Borders for merged category row
         for (let c = colNoIdx; c <= colSignatureIdx; c++) {
           worksheet.getCell(currentRowIdx, c).border = thinBorder;
         }
         worksheet.getRow(currentRowIdx).height = 22;
-        currentDeptRowNo = 0; // Reset numbering for new department
+        currentDeptRowNo = 0;
         currentRowIdx++;
       } else {
         currentDeptRowNo++;
         
-        // No
         const cellNo = worksheet.getCell(currentRowIdx, colNoIdx);
         cellNo.value = currentDeptRowNo;
-        cellNo.numFmt = "0.0"; // Display as float index (1.0, 2.0...)
+        cellNo.numFmt = "0.0";
         cellNo.alignment = { vertical: "middle", horizontal: "center" };
         
-        // FIO
         const cellFio = worksheet.getCell(currentRowIdx, colFioIdx);
         cellFio.value = row.name;
         cellFio.alignment = { vertical: "middle", horizontal: "left" };
         
-        // FIO department color coding (applied only to Column D)
         let colorHex = null;
         if (row.dept === "Бар") {
-          colorHex = "FFFFF2CC"; // Soft yellow
+          colorHex = "FFFFF2CC";
         } else if (row.dept === "Кухня") {
-          colorHex = "FFF8CBAD"; // Soft orange/peach
+          colorHex = "FFF8CBAD";
         } else if (row.dept === "Менеджер и официанты") {
           if (row.role === "Менеджер") {
-            colorHex = "FFFFFF00"; // Yellow
+            colorHex = "FFFFFF00";
           } else {
-            colorHex = "FFE2EFDA"; // Soft green
+            colorHex = "FFE2EFDA";
           }
         } else if (row.dept === "Мойка") {
-          colorHex = "FFBDD7EE"; // Soft blue
+          colorHex = "FFBDD7EE";
         }
 
         if (colorHex) {
@@ -387,23 +420,20 @@ export async function GET(request) {
           };
         }
         
-        // Role
         const cellRole = worksheet.getCell(currentRowIdx, colRoleIdx);
         cellRole.value = row.role;
         cellRole.alignment = { vertical: "middle", horizontal: "left" };
 
-        // Daily Wages
         datesList.forEach((dateStr, idx) => {
           const cellWage = worksheet.getCell(currentRowIdx, colWagesStartIdx + idx);
           const wageVal = row.wages[dateStr];
           
           cellWage.value = (wageVal && wageVal > 0) ? wageVal : 0;
-          cellWage.numFmt = "#,##0.00"; // Display as float
+          cellWage.numFmt = "#,##0.00";
           cellWage.alignment = { vertical: "middle", horizontal: "right" };
           cellWage.border = thinBorder;
         });
 
-        // O = SUM(E:N)
         const startLetter = getColLetter(colWagesStartIdx);
         const endLetter = getColLetter(colWagesStartIdx + totalDays - 1);
         const cellAccrued = worksheet.getCell(currentRowIdx, colAccruedIdx);
@@ -413,13 +443,11 @@ export async function GET(request) {
         cellAccrued.numFmt = "#,##0.00";
         cellAccrued.alignment = { vertical: "middle", horizontal: "right" };
 
-        // Advance (default 0)
         const cellAdvance = worksheet.getCell(currentRowIdx, colAdvanceIdx);
         cellAdvance.value = 0;
         cellAdvance.numFmt = "#,##0.00";
         cellAdvance.alignment = { vertical: "middle", horizontal: "right" };
 
-        // Net = Accrued - Advance
         const accruedLetter = getColLetter(colAccruedIdx);
         const advanceLetter = getColLetter(colAdvanceIdx);
         const cellNet = worksheet.getCell(currentRowIdx, colNetIdx);
@@ -429,12 +457,10 @@ export async function GET(request) {
         cellNet.numFmt = "#,##0.00";
         cellNet.alignment = { vertical: "middle", horizontal: "right" };
 
-        // Paid
         const cellPaid = worksheet.getCell(currentRowIdx, colPaidIdx);
         cellPaid.alignment = { vertical: "middle", horizontal: "right" };
         cellPaid.numFmt = "#,##0.00";
 
-        // Apply borders and fonts to basic row cells
         for (let c = colNoIdx; c <= colSignatureIdx; c++) {
           if (c === colSpacerIdx) continue;
           const cell = worksheet.getCell(currentRowIdx, c);
@@ -447,16 +473,13 @@ export async function GET(request) {
       }
     });
 
-    // 4. Summary Row (bottom totals)
     const sumRowIdx = currentRowIdx;
     
-    // Columns C, D, E are left empty in the summary row (no label)
     for (let c = colNoIdx; c <= colRoleIdx; c++) {
       worksheet.getCell(sumRowIdx, c).border = thinBorder;
     }
 
-    // Daily column sums
-    const firstDataRowIdx = 7; // Data rows start at Row 7 (after Row 5 headers & Row 6 Bar)
+    const firstDataRowIdx = 7;
     const lastDataRowIdx = sumRowIdx - 1;
 
     datesList.forEach((_, idx) => {
@@ -472,7 +495,6 @@ export async function GET(request) {
       cellSum.border = thinBorder;
     });
 
-    // Accrued, Advance, Net, Paid sums
     const sumCols = [colAccruedIdx, colAdvanceIdx, colNetIdx, colPaidIdx];
     sumCols.forEach(c => {
       const colLetter = getColLetter(c);
@@ -486,7 +508,6 @@ export async function GET(request) {
       cellSum.border = thinBorder;
     });
 
-    // Spacer & Signature sum cells style
     worksheet.getCell(sumRowIdx, colSpacerIdx).value = "";
     const cellSigSum = worksheet.getCell(sumRowIdx, colSignatureIdx);
     cellSigSum.value = "";
@@ -494,9 +515,8 @@ export async function GET(request) {
 
     worksheet.getRow(sumRowIdx).height = 22;
 
-    // 5. Adjust Column Widths
-    worksheet.getColumn(1).width = 2; // Column A spacer
-    worksheet.getColumn(2).width = 2; // Column B spacer
+    worksheet.getColumn(1).width = 2;
+    worksheet.getColumn(2).width = 2;
     worksheet.getColumn(colNoIdx).width = 4;
     worksheet.getColumn(colFioIdx).width = 25;
     worksheet.getColumn(colRoleIdx).width = 15;
@@ -512,7 +532,6 @@ export async function GET(request) {
     worksheet.getColumn(colSpacerIdx).width = 2;
     worksheet.getColumn(colSignatureIdx).width = 12;
 
-    // 6. Output Buffer response
     const buffer = await workbook.xlsx.writeBuffer();
     return new Response(buffer, {
       headers: {
