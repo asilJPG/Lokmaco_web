@@ -35,7 +35,13 @@ export async function GET(request) {
           const name = emp.name?.[0];
           const deleted = emp.deleted?.[0] === "true";
           if (id && name && !deleted) {
-            empMap[id] = name;
+            const firstName = emp.firstName?.[0] || "";
+            const lastName = emp.lastName?.[0] || "";
+            let fullName = name; // Fallback to system name
+            if (lastName || firstName) {
+              fullName = `${lastName} ${firstName}`.trim();
+            }
+            empMap[id] = fullName;
           }
         }
       }
