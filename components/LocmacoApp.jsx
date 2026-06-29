@@ -8784,34 +8784,42 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     }
   };
 
-  const handleExportWagesToExcel = () => {
-    if (!wagesData || !wagesData.days || wagesData.days.length === 0) {
-      showToast("Нет данных для экспорта", "error");
+  const handleExportWagesToExcel = async () => {
+    const fromDate = wagesDates.from;
+    const toDate = wagesDates.to;
+    if (!fromDate || !toDate) {
+      showToast("Укажите период дат", "error");
       return;
     }
 
-    const csvContent = [];
-    csvContent.push(["Дата", "Имя сотрудника", "Сумма (UZS)"].join(";"));
-
-    wagesData.days.forEach((day) => {
-      day.employees.forEach((emp) => {
-        csvContent.push([day.date, emp.name, emp.wage].join(";"));
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/iiko/analytics/wages/export?from=${fromDate}&to=${toDate}`, {
+        cache: "no-store",
       });
-    });
 
-    const csvString = "\uFEFF" + csvContent.join("\n");
-    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    
-    const fromDate = wagesDates.from || "start";
-    const toDate = wagesDates.to || "end";
-    link.setAttribute("download", `wages_report_${fromDate}_to_${toDate}.csv`);
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || "Ошибка экспорта Excel", "error");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `wages_report_${fromDate}_to_${toDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("Excel файл успешно выгружен");
+    } catch (err) {
+      console.error(err);
+      showToast("Ошибка сети при экспорте Excel", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Attendance Loader
