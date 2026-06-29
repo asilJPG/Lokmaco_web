@@ -8,14 +8,15 @@ export async function POST(request) {
     const verifiedUserId = request.headers.get("x-user-id");
     const verifiedUserName = request.headers.get("x-user-name") ? decodeURIComponent(request.headers.get("x-user-name")) : null;
 
-    const { user } = await request.json().catch(() => ({}));
-    
-    // Determine the target user ID securely
-    let targetUserId = verifiedUserId ? parseInt(verifiedUserId, 10) : (user?.id ? parseInt(user.id, 10) : null);
-    let targetUserName = verifiedUserName || user?.name || `User ${targetUserId}`;
+    if (!verifiedUserId) {
+      return Response.json({ error: "Unauthorized: Missing verified session" }, { status: 401 });
+    }
 
-    if (!targetUserId || isNaN(targetUserId)) {
-      return Response.json({ error: "Missing or invalid user session info" }, { status: 400 });
+    const targetUserId = parseInt(verifiedUserId, 10);
+    const targetUserName = verifiedUserName || `User ${targetUserId}`;
+
+    if (isNaN(targetUserId)) {
+      return Response.json({ error: "Invalid user session info" }, { status: 400 });
     }
 
     const rpName = "Lokmaco Admin";
