@@ -3423,6 +3423,7 @@ function IncomingView({
           quantity: qty,
           unit: it.unit,
           price,
+          total,
         };
       })
       .filter((it) => it.quantity > 0);

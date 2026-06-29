@@ -49,7 +49,7 @@ export async function POST(request) {
       .map((it, idx) => {
         const qty = it.quantity || 0;
         const price = it.price || 0;
-        const sum = qty * price;
+        const sum = it.total !== undefined ? parseFloat(it.total) : qty * price;
         return `<item><num>${idx + 1}</num><product>${escapeXml(String(it.product_id || ""))}</product><amount>${escapeXml(String(qty))}</amount><price>${escapeXml(String(price))}</price><sum>${escapeXml(String(sum))}</sum><store>${escapeXml(String(store_id))}</store></item>`;
       })
       .join("");
