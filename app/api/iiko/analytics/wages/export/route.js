@@ -42,13 +42,13 @@ function canonicalizeName(name) {
 const TEMPLATE_EMPLOYEES = [
   // Бар
   { name: "Бойматов Шохрух", role: "ст.Бар", dept: "Бар" },
-  { name: "Мухтаров Д", role: "бармен", dept: "Бар" },
-  { name: "Набиев К", role: "бармен", dept: "Бар" },
-  { name: "Каримов М", role: "бармен", dept: "Бар" },
-  { name: "Мухтаров М", role: "бармен", dept: "Бар" },
+  { name: "Мухтаров Д", role: "Бар", dept: "Бар" },
+  { name: "Набиев К", role: "Бар", dept: "Бар" },
+  { name: "Каримов М", role: "Бар", dept: "Бар" },
+  { name: "Мухтаров М", role: "Бар", dept: "Бар" },
 
   // Кухня
-  { name: "Бабаев Достон", role: "Шеф", dept: "Кухня" },
+  { name: "Бабаев Достон", role: "кухня", dept: "Кухня" },
   { name: "Мойдинов Диёрбек", role: "кухня", dept: "Кухня" },
   { name: "Холматов Ш", role: "кухня", dept: "Кухня" },
   { name: "Кобулов П", role: "кухня", dept: "Кухня" },
@@ -84,6 +84,7 @@ const TEMPLATE_EMPLOYEES = [
   { name: "Олтибеков А", role: "офф", dept: "Менеджер и официанты" },
   { name: "Кидирбоев С", role: "офф", dept: "Менеджер и официанты" },
   { name: "Стажер ", role: "офф", dept: "Менеджер и официанты" },
+  { name: "Абдумуталипов Х", role: "офф", dept: "Менеджер и официанты" },
 
   // Мойка
   { name: "Кадирова Киммат", role: "мойка", dept: "Мойка" },
@@ -95,9 +96,10 @@ const TEMPLATE_EMPLOYEES = [
   { name: "Каримова М", role: "смесь", dept: "Мойка", specialCheck: (wage) => wage > 150000 },
 
   // Администрация
-  { name: "Аминжонов А", role: "бухгалтер", dept: "Администрация" },
+  { name: "Аминжонов А", role: "бухгалтер ", dept: "Администрация" },
   { name: "Акбаралиев М", role: "Снабженец", dept: "Администрация" },
   { name: "Азамхонов Аббосхон", role: "кассир", dept: "Администрация" },
+  { name: "Толиб ака", role: "", dept: "Администрация" },
   { name: "Умиджон ", role: "", dept: "Администрация" }
 ];
 
@@ -211,7 +213,14 @@ export async function GET(request) {
     
     for (const deptName of depts) {
       const deptItems = TEMPLATE_EMPLOYEES.filter(item => item.dept === deptName);
-      rowsToExport.push({ isHeader: true, name: deptName });
+      
+      // Note: Administration section has no category header row in the original sheet
+      if (deptName !== "Администрация") {
+        rowsToExport.push({ isHeader: true, name: deptName });
+      } else {
+        // Administration block is separated by an empty row
+        rowsToExport.push({ isSpacer: true });
+      }
       
       deptItems.forEach(item => {
         const key = `${item.name}_${item.dept}`;
@@ -243,49 +252,51 @@ export async function GET(request) {
 
     // 3. Create Excel Workbook
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("ЗП Таблица");
-    worksheet.views = [{ showGridLines: true }];
-
-    // Formatting date helper for title
+    
+    // Format sheet name as date range DD.MM-DD.MM
     const formatDateShort = (dStr) => {
       const parts = dStr.split("-");
       if (parts.length === 3) {
-        return `${parts[2]}.${parts[1]}.${parts[0].slice(2)}`;
+        return `${parts[2]}.${parts[1]}`;
       }
       return dStr;
     };
-    const titleRange = `${formatDateShort(dateFrom)}-${formatDateShort(dateTo)}`;
+    const sheetName = `${formatDateShort(dateFrom)}-${formatDateShort(dateTo)}`;
+    const worksheet = workbook.addWorksheet(sheetName);
+    worksheet.views = [{ showGridLines: true }];
 
-    // Set title
-    worksheet.getCell("B2").value = `The Lokmaco Fergana -ЗП таблица ${titleRange}`;
-    worksheet.getCell("B2").font = { name: "Segoe UI", size: 16, bold: true };
+    // Title at Row 3 Column C
+    const titleRange = `${formatDateShort(dateFrom)}.${dateFrom.split("-")[0].slice(2)}-${formatDateShort(dateTo)}.${dateTo.split("-")[0].slice(2)}`;
+    worksheet.getCell("C3").value = `The Lokmaco Fergana -ЗП таблица ${titleRange}`;
+    worksheet.getCell("C3").font = { name: "Calibri", size: 16, bold: true };
 
-    // Build Headers row (Row 4)
-    const headerRowIdx = 4;
+    // Build Headers row (Row 5)
+    const headerRowIdx = 5;
     
-    // Column index maps
-    const colNoIdx = 2; // B
-    const colFioIdx = 3; // C
-    const colRoleIdx = 4; // D
-    const colWagesStartIdx = 5; // E
+    // Column index maps matching the TG file exactly
+    const colNoIdx = 3; // C
+    const colFioIdx = 4; // D
+    const colRoleIdx = 5; // E
+    const colWagesStartIdx = 6; // F
     
     const totalDays = datesList.length;
-    const colAccruedIdx = colWagesStartIdx + totalDays;
-    const colAdvanceIdx = colAccruedIdx + 1;
-    const colNetIdx = colAdvanceIdx + 1;
-    const colPaidIdx = colNetIdx + 1;
-    const colSpacerIdx = colPaidIdx + 1;
-    const colSignatureIdx = colSpacerIdx + 1;
+    const colAccruedIdx = colWagesStartIdx + totalDays;     // P (for 10 days)
+    const colAdvanceIdx = colAccruedIdx + 1;                // Q
+    const colNetIdx = colAdvanceIdx + 1;                    // R
+    const colPaidIdx = colNetIdx + 1;                       // S
+    const colSpacerIdx = colPaidIdx + 1;                    // T
+    const colSignatureIdx = colSpacerIdx + 1;                // U
 
     // Set headers
-    worksheet.getCell(headerRowIdx, colNoIdx).value = "№";
+    worksheet.getCell(headerRowIdx, colNoIdx).value = ""; // Empty in sheet
     worksheet.getCell(headerRowIdx, colFioIdx).value = "Ф.И.О.";
     worksheet.getCell(headerRowIdx, colRoleIdx).value = "Должность";
     
     datesList.forEach((dateStr, idx) => {
-      const parts = dateStr.split("-");
-      const shortDate = `${parts[2]}.${parts[1]}`; // DD.MM
-      worksheet.getCell(headerRowIdx, colWagesStartIdx + idx).value = shortDate;
+      const cell = worksheet.getCell(headerRowIdx, colWagesStartIdx + idx);
+      // Write actual Date object and set dd.mm number format
+      cell.value = new Date(dateStr);
+      cell.numFmt = "dd.mm";
     });
 
     worksheet.getCell(headerRowIdx, colAccruedIdx).value = "итого начислено";
@@ -302,17 +313,10 @@ export async function GET(request) {
       right: { style: "thin", color: { argb: "BFBFBF" } }
     };
 
-    const headerFill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "F2F2F2" }
-    };
-
     for (let c = colNoIdx; c <= colSignatureIdx; c++) {
       if (c === colSpacerIdx) continue;
       const cell = worksheet.getCell(headerRowIdx, c);
-      cell.font = { name: "Segoe UI", size: 10, bold: true };
-      cell.fill = headerFill;
+      cell.font = { name: "Calibri", size: 11, bold: true };
       cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
       cell.border = thinBorder;
     }
@@ -322,48 +326,66 @@ export async function GET(request) {
 
     // Fill Data rows
     let currentDeptRowNo = 0;
-    let currentRowIdx = 5;
-
-    const deptFill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "D9E1F2" } // Soft blue-gray
-    };
-
-    const inactiveFill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FCE4D6" } // Soft orange/peach
-    };
+    let currentRowIdx = 6;
 
     rowsToExport.forEach(row => {
-      if (row.isHeader) {
-        // Merge category row
+      if (row.isSpacer) {
+        // Empty spacer row before Administration
+        worksheet.getRow(currentRowIdx).height = 20;
+        // Apply no styling/borders
+        currentRowIdx++;
+      } else if (row.isHeader) {
+        // Merge category row starting at Column C
         worksheet.mergeCells(currentRowIdx, colNoIdx, currentRowIdx, colSignatureIdx);
         const cell = worksheet.getCell(currentRowIdx, colNoIdx);
         cell.value = row.name;
-        cell.font = { name: "Segoe UI", size: 11, bold: true };
-        cell.fill = deptFill;
+        cell.font = { name: "Calibri", size: 11, bold: true };
         cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
         
-        // Borders for merged header cell range
+        // Borders for merged category row
         for (let c = colNoIdx; c <= colSignatureIdx; c++) {
           worksheet.getCell(currentRowIdx, c).border = thinBorder;
         }
         worksheet.getRow(currentRowIdx).height = 22;
         currentDeptRowNo = 0; // Reset numbering for new department
+        currentRowIdx++;
       } else {
         currentDeptRowNo++;
         
         // No
         const cellNo = worksheet.getCell(currentRowIdx, colNoIdx);
         cellNo.value = currentDeptRowNo;
+        cellNo.numFmt = "0.0"; // Display as float index (1.0, 2.0...)
         cellNo.alignment = { vertical: "middle", horizontal: "center" };
         
         // FIO
         const cellFio = worksheet.getCell(currentRowIdx, colFioIdx);
         cellFio.value = row.name;
         cellFio.alignment = { vertical: "middle", horizontal: "left" };
+        
+        // FIO department color coding (applied only to Column D)
+        let colorHex = null;
+        if (row.dept === "Бар") {
+          colorHex = "FFFFF2CC"; // Soft yellow
+        } else if (row.dept === "Кухня") {
+          colorHex = "FFF8CBAD"; // Soft orange/peach
+        } else if (row.dept === "Менеджер и официанты") {
+          if (row.role === "Менеджер") {
+            colorHex = "FFFFFF00"; // Yellow
+          } else {
+            colorHex = "FFE2EFDA"; // Soft green
+          }
+        } else if (row.dept === "Мойка") {
+          colorHex = "FFBDD7EE"; // Soft blue
+        }
+
+        if (colorHex) {
+          cellFio.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: colorHex }
+          };
+        }
         
         // Role
         const cellRole = worksheet.getCell(currentRowIdx, colRoleIdx);
@@ -375,17 +397,9 @@ export async function GET(request) {
           const cellWage = worksheet.getCell(currentRowIdx, colWagesStartIdx + idx);
           const wageVal = row.wages[dateStr];
           
-          if (wageVal && wageVal > 0) {
-            cellWage.value = wageVal;
-            cellWage.numFmt = "#,##0";
-            cellWage.alignment = { vertical: "middle", horizontal: "right" };
-          } else {
-            // Inactive day - orange peach color
-            cellWage.fill = inactiveFill;
-            cellWage.value = 0;
-            cellWage.numFmt = "0";
-            cellWage.alignment = { vertical: "middle", horizontal: "center" };
-          }
+          cellWage.value = (wageVal && wageVal > 0) ? wageVal : 0;
+          cellWage.numFmt = "#,##0.00"; // Display as float
+          cellWage.alignment = { vertical: "middle", horizontal: "right" };
           cellWage.border = thinBorder;
         });
 
@@ -396,14 +410,13 @@ export async function GET(request) {
         cellAccrued.value = {
           formula: `SUM(${startLetter}${currentRowIdx}:${endLetter}${currentRowIdx})`
         };
-        cellAccrued.numFmt = "#,##0";
+        cellAccrued.numFmt = "#,##0.00";
         cellAccrued.alignment = { vertical: "middle", horizontal: "right" };
-        cellAccrued.font = { name: "Segoe UI", size: 10, bold: true };
 
-        // Advance (default 0 or blank)
+        // Advance (default 0)
         const cellAdvance = worksheet.getCell(currentRowIdx, colAdvanceIdx);
         cellAdvance.value = 0;
-        cellAdvance.numFmt = "#,##0";
+        cellAdvance.numFmt = "#,##0.00";
         cellAdvance.alignment = { vertical: "middle", horizontal: "right" };
 
         // Net = Accrued - Advance
@@ -413,52 +426,37 @@ export async function GET(request) {
         cellNet.value = {
           formula: `${accruedLetter}${currentRowIdx}-${advanceLetter}${currentRowIdx}`
         };
-        cellNet.numFmt = "#,##0";
+        cellNet.numFmt = "#,##0.00";
         cellNet.alignment = { vertical: "middle", horizontal: "right" };
-        cellNet.font = { name: "Segoe UI", size: 10, bold: true };
 
-        // Paid (default empty or net)
+        // Paid
         const cellPaid = worksheet.getCell(currentRowIdx, colPaidIdx);
         cellPaid.alignment = { vertical: "middle", horizontal: "right" };
+        cellPaid.numFmt = "#,##0.00";
 
         // Apply borders and fonts to basic row cells
-        const dataCols = [colNoIdx, colFioIdx, colRoleIdx, colAccruedIdx, colAdvanceIdx, colNetIdx, colPaidIdx, colSignatureIdx];
-        dataCols.forEach(c => {
-          if (c === colSpacerIdx) return;
+        for (let c = colNoIdx; c <= colSignatureIdx; c++) {
+          if (c === colSpacerIdx) continue;
           const cell = worksheet.getCell(currentRowIdx, c);
           cell.border = thinBorder;
-          if (c !== colAccruedIdx && c !== colNetIdx) {
-            cell.font = { name: "Segoe UI", size: 10 };
-          }
-        });
+          cell.font = { name: "Calibri", size: 11 };
+        }
 
         worksheet.getRow(currentRowIdx).height = 20;
+        currentRowIdx++;
       }
-      currentRowIdx++;
     });
 
     // 4. Summary Row (bottom totals)
     const sumRowIdx = currentRowIdx;
-    worksheet.mergeCells(sumRowIdx, colNoIdx, sumRowIdx, colRoleIdx);
-    const cellSumLabel = worksheet.getCell(sumRowIdx, colNoIdx);
-    cellSumLabel.value = "Итого";
-    cellSumLabel.font = { name: "Segoe UI", size: 11, bold: true };
-    cellSumLabel.alignment = { vertical: "middle", horizontal: "right" };
-
-    const sumFill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "F2F2F2" }
-    };
-
-    // Style label cells
+    
+    // Columns C, D, E are left empty in the summary row (no label)
     for (let c = colNoIdx; c <= colRoleIdx; c++) {
-      worksheet.getCell(sumRowIdx, c).fill = sumFill;
       worksheet.getCell(sumRowIdx, c).border = thinBorder;
     }
 
     // Daily column sums
-    const firstDataRowIdx = 5;
+    const firstDataRowIdx = 7; // Data rows start at Row 7 (after Row 5 headers & Row 6 Bar)
     const lastDataRowIdx = sumRowIdx - 1;
 
     datesList.forEach((_, idx) => {
@@ -468,10 +466,9 @@ export async function GET(request) {
       cellSum.value = {
         formula: `SUM(${colLetter}${firstDataRowIdx}:${colLetter}${lastDataRowIdx})`
       };
-      cellSum.font = { name: "Segoe UI", size: 10, bold: true };
-      cellSum.fill = sumFill;
+      cellSum.font = { name: "Calibri", size: 11, bold: true };
       cellSum.alignment = { vertical: "middle", horizontal: "right" };
-      cellSum.numFmt = "#,##0";
+      cellSum.numFmt = "#,##0.00";
       cellSum.border = thinBorder;
     });
 
@@ -483,10 +480,9 @@ export async function GET(request) {
       cellSum.value = {
         formula: `SUM(${colLetter}${firstDataRowIdx}:${colLetter}${lastDataRowIdx})`
       };
-      cellSum.font = { name: "Segoe UI", size: 10, bold: true };
-      cellSum.fill = sumFill;
+      cellSum.font = { name: "Calibri", size: 11, bold: true };
       cellSum.alignment = { vertical: "middle", horizontal: "right" };
-      cellSum.numFmt = "#,##0";
+      cellSum.numFmt = "#,##0.00";
       cellSum.border = thinBorder;
     });
 
@@ -494,13 +490,13 @@ export async function GET(request) {
     worksheet.getCell(sumRowIdx, colSpacerIdx).value = "";
     const cellSigSum = worksheet.getCell(sumRowIdx, colSignatureIdx);
     cellSigSum.value = "";
-    cellSigSum.fill = sumFill;
     cellSigSum.border = thinBorder;
 
     worksheet.getRow(sumRowIdx).height = 22;
 
     // 5. Adjust Column Widths
     worksheet.getColumn(1).width = 2; // Column A spacer
+    worksheet.getColumn(2).width = 2; // Column B spacer
     worksheet.getColumn(colNoIdx).width = 4;
     worksheet.getColumn(colFioIdx).width = 25;
     worksheet.getColumn(colRoleIdx).width = 15;
