@@ -40,7 +40,7 @@ export async function POST(request) {
     const now = new Date();
     // Tashkent time (+5 hours)
     const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
-    const dn = `INV-${formatCompact(tashkent)}`;
+    const dn = "Автоматический";
     const dateStr = formatDMY(tashkent);
 
     // Using corrected <productId> and <amountContainer> tags with XML escaping
@@ -48,10 +48,13 @@ export async function POST(request) {
       .map((it) => `<item><productId>${escapeXml(String(it.product_id || ""))}</productId><amountContainer>${escapeXml(String(it.quantity || 0))}</amountContainer></item>`)
       .join("");
 
-    const commentXml = comment ? `<comment>${escapeXml(comment)}</comment>` : "";
+    const commentWithSiteInfo = comment 
+      ? `${comment} (Сгенерировано через сайт)`
+      : "Сгенерировано через сайт";
+    const commentXml = `<comment>${escapeXml(commentWithSiteInfo)}</comment>`;
 
     // Corrected tag name: <storeId> instead of <defaultStore>!
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><documentNumber>${dn}</documentNumber><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><storeId>${escapeXml(String(store_id))}</storeId>${commentXml}<items>${itemsXml}</items></document>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><storeId>${escapeXml(String(store_id))}</storeId>${commentXml}<items>${itemsXml}</items></document>`;
 
     const success = await withIikoSession(async (token) => {
       return await iikoPostXml("documents/import/incomingInventory", xml, token);

@@ -37,11 +37,11 @@ export async function POST(request) {
       return Response.json({ error: "Missing supplier_id, store_id or items" }, { status: 400 });
     }
 
-    // Generate document number (same format as bot.py)
+    // Generate local log tracking ID
     const now = new Date();
     // UTC+5 for Tashkent
     const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
-    const dn = `TG-${formatCompact(tashkent)}`;
+    const dn = "Автоматический";
     const dateStr = formatDMY(tashkent);
 
     // Build XML with security escaping
@@ -54,9 +54,12 @@ export async function POST(request) {
       })
       .join("");
 
-    const commentXml = comment ? `<comment>${escapeXml(comment)}</comment>` : "";
+    const commentWithSiteInfo = comment 
+      ? `${comment} (Сгенерировано через сайт)`
+      : "Сгенерировано через сайт";
+    const commentXml = `<comment>${escapeXml(commentWithSiteInfo)}</comment>`;
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><documentNumber>${dn}</documentNumber><dateIncoming>${dateStr}</dateIncoming><defaultStore>${escapeXml(String(store_id))}</defaultStore><supplier>${escapeXml(String(supplier_id))}</supplier>${commentXml}<items>${itemsXml}</items></document>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><dateIncoming>${dateStr}</dateIncoming><defaultStore>${escapeXml(String(store_id))}</defaultStore><supplier>${escapeXml(String(supplier_id))}</supplier>${commentXml}<items>${itemsXml}</items></document>`;
 
     const success = await withIikoSession(async (token) => {
       return await iikoPostXml("documents/import/incomingInvoice", xml, token);
