@@ -9027,7 +9027,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           },
         ].filter((sub) => {
           if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
-          if ((sub.id === "cash_expenses" || sub.id === "wages") && loggedInUser?.baseRole !== "admin") return false;
+          if ((sub.id === "cash_expenses" || sub.id === "wages") && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
           return true;
         }).map((sub) => (
           <button

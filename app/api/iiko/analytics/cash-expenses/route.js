@@ -17,8 +17,8 @@ export async function GET(request) {
   try {
     const requesterRole = request.headers.get("x-user-role") || "";
     const [baseRole] = requesterRole.split(":");
-    if (baseRole !== "admin") {
-      return Response.json({ error: "Доступ разрешен только для администраторов" }, { status: 403 });
+    if (baseRole !== "admin" && baseRole !== "director") {
+      return Response.json({ error: "Доступ разрешен только для администраторов и руководителей" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
