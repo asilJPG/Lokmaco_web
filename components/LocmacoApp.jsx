@@ -10716,11 +10716,23 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             </div>
           )}
 
-          {/* Data display */}
           {categoriesData && categoriesData.length > 0 ? (
             (() => {
-              // Group and aggregate data
-              const topGroups = {};
+              // Group and aggregate data into Kitchen and Bar
+              const mainGroups = {
+                "Кухня": {
+                  name: "Кухня",
+                  emoji: "🍳",
+                  total: 0,
+                  subs: {},
+                },
+                "Бар": {
+                  name: "Бар",
+                  emoji: "🍹",
+                  total: 0,
+                  subs: {},
+                },
+              };
               let grandTotal = 0;
               
               categoriesData.forEach((row) => {
@@ -10728,23 +10740,26 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                 const sub = row["DishGroup"] || "Без подгруппы";
                 const amount = Math.abs(parseFloat(row["DishDiscountSumInt"] || 0));
                 
-                if (!topGroups[top]) {
-                  topGroups[top] = {
-                    name: top,
-                    total: 0,
-                    subs: {},
-                  };
-                }
-                topGroups[top].total += amount;
                 grandTotal += amount;
                 
-                if (!topGroups[top].subs[sub]) {
-                  topGroups[top].subs[sub] = 0;
+                if (top === "Бар") {
+                  mainGroups["Бар"].total += amount;
+                  if (!mainGroups["Бар"].subs[sub]) {
+                    mainGroups["Бар"].subs[sub] = 0;
+                  }
+                  mainGroups["Бар"].subs[sub] += amount;
+                } else {
+                  mainGroups["Кухня"].total += amount;
+                  if (!mainGroups["Кухня"].subs[top]) {
+                    mainGroups["Кухня"].subs[top] = 0;
+                  }
+                  mainGroups["Кухня"].subs[top] += amount;
                 }
-                topGroups[top].subs[sub] += amount;
               });
 
-              const sortedGroups = Object.values(topGroups).sort((a, b) => b.total - a.total);
+              const sortedGroups = Object.values(mainGroups)
+                .filter((g) => g.total > 0)
+                .sort((a, b) => b.total - a.total);
 
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -10765,7 +10780,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                       {fmtPrice(grandTotal)}
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                      Разделено на {sortedGroups.length} основных групп меню
+                      Разделено на {sortedGroups.length} основные группы меню
                     </div>
                   </div>
 
@@ -10805,14 +10820,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                               <span style={{ fontSize: 20 }}>
-                                {group.name === "Бар" ? "🍹" :
-                                 group.name === "Локма" ? "🥞" :
-                                 group.name === "Мороженое" ? "🍦" :
-                                 group.name === "Бельгийские вафли" ? "🧇" :
-                                 group.name === "Гонконгские вафли" ? "🧇" :
-                                 group.name === "Фондю" ? "🍫" :
-                                 group.name === "Другие сладости" ? "🍰" :
-                                 group.name === "Допы" ? "🧁" : "🍽"}
+                                {group.name === "Бар" ? "🍹" : "🍳"}
                               </span>
                               <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)" }}>
                                 {group.name}
@@ -10882,6 +10890,25 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                             >
                               {sortedSubs.map(([subName, subAmount]) => {
                                 const subPct = group.total > 0 ? (subAmount / group.total) * 100 : 0;
+                                const subEmoji = (() => {
+                                  const n = subName.toLowerCase();
+                                  if (n.includes("мохито")) return "🍹";
+                                  if (n.includes("айсти") || n.includes("айс ти")) return "🍹";
+                                  if (n.includes("кофе") || n.includes("американо") || n.includes("капучино")) return "☕";
+                                  if (n.includes("чай")) return "🫖";
+                                  if (n.includes("бабл")) return "🧋";
+                                  if (n.includes("коктейл")) return "🍸";
+                                  if (n.includes("шейк")) return "🥛";
+                                  if (n.includes("смузи")) return "🥤";
+                                  if (n.includes("фреш")) return "🥤";
+                                  if (n.includes("локма")) return "🥞";
+                                  if (n.includes("вафли")) return "🧇";
+                                  if (n.includes("фондю")) return "🍫";
+                                  if (n.includes("сладости") || n.includes("десерт")) return "🍰";
+                                  if (n.includes("мороженое")) return "🍦";
+                                  if (n.includes("доп")) return "🧁";
+                                  return "🍽";
+                                })();
                                 return (
                                   <div
                                     key={subName}
@@ -10893,8 +10920,9 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                       padding: "4px 0",
                                     }}
                                   >
-                                    <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
-                                      {subName}
+                                    <span style={{ color: "var(--text-muted)", fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}>
+                                      <span style={{ fontSize: 16 }}>{subEmoji}</span>
+                                      <span>{subName}</span>
                                     </span>
                                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                       <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
