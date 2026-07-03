@@ -1218,7 +1218,7 @@ export default function LocmacoApp() {
       case "analytics":
         return ["director", "manager"].includes(role);
       case "balances":
-        return true;
+        return role !== "manager";
       default:
         return false;
     }
@@ -9049,7 +9049,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             }
           ].filter((g) => {
             const visibleTabs = g.tabs.filter((tabId) => {
-              if (isManager && ["pl", "cash", "categories"].includes(tabId)) return false;
+              if (isManager && ["pl", "cash", "categories", "attendance"].includes(tabId)) return false;
               if (["cash_expenses", "wages"].includes(tabId) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
               return true;
             });
@@ -9060,7 +9060,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               onClick={() => {
                 setAnalyticsGroup(g.id);
                 const visibleTabs = g.tabs.filter((tabId) => {
-                  if (isManager && ["pl", "cash", "categories"].includes(tabId)) return false;
+                  if (isManager && ["pl", "cash", "categories", "attendance"].includes(tabId)) return false;
                   if (["cash_expenses", "wages"].includes(tabId) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
                   return true;
                 });
@@ -9153,7 +9153,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             },
           ].filter((sub) => {
             if (sub.groupId !== analyticsGroup) return false;
-            if (isManager && ["pl", "cash", "categories"].includes(sub.id)) return false;
+            if (isManager && ["pl", "cash", "categories", "attendance"].includes(sub.id)) return false;
             if (["cash_expenses", "wages"].includes(sub.id) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
             return true;
           }).map((sub) => (
