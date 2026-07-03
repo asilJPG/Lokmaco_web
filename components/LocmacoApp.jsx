@@ -8485,9 +8485,126 @@ const storeBtn = {
   width: "100%",
 };
 
-// ═══════════════════════════════════════════════════════════════
-//  ANALYTICS VIEW — P&L + Касса + Топ продаж
-// ═══════════════════════════════════════════════════════════════
+const PeriodDropdown = ({ period, setPeriod, onPeriodChange, customLabel = "Свой период", showSingleDay = false }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const periods = [
+    { id: "today", label: "Сегодня", emoji: "📅" },
+    { id: "yesterday", label: "Вчера", emoji: "🕒" },
+    ...(showSingleDay ? [{ id: "single", label: "Выбрать день", emoji: "🔍" }] : []),
+    { id: "this_week", label: "Текущая неделя", emoji: "📅" },
+    { id: "last_week", label: "Прошлая неделя", emoji: "⏮️" },
+    { id: "this_month", label: "Этот месяц", emoji: "📊" },
+    { id: "last_month", label: "Прошлый месяц", emoji: "📉" },
+    { id: "last_10_days", label: "Последние 10 дней", emoji: "📆" },
+    { id: "custom", label: customLabel, emoji: "⚙️" },
+  ];
+
+  const selectedPeriod = periods.find(p => p.id === period) || periods.find(p => p.id === "this_month") || periods[0];
+
+  return (
+    <div ref={dropdownRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 14px",
+          borderRadius: 12,
+          border: "1px solid var(--border-color)",
+          background: "var(--bg-card)",
+          color: "var(--text-main)",
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: "pointer",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <span>{selectedPeriod.emoji} {selectedPeriod.label}</span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease",
+            marginLeft: 4,
+          }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 999,
+            minWidth: 220,
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-color)",
+            borderRadius: 12,
+            boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+            padding: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            animation: "fadeIn 0.15s ease",
+          }}
+        >
+          {periods.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                setPeriod(p.id);
+                if (onPeriodChange) onPeriodChange(p.id);
+                setIsOpen(false);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "none",
+                background: period === p.id ? "var(--bg-active)" : "transparent",
+                color: period === p.id ? "var(--text-main)" : "var(--text-muted)",
+                fontSize: 13,
+                fontWeight: period === p.id ? 700 : 500,
+                textAlign: "left",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>{p.emoji}</span>
+              <span>{p.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function AnalyticsView({ showToast, history, historyLoading, loadHistory, loggedInUser }) {
   const isManager = loggedInUser?.baseRole === "manager";
@@ -8623,6 +8740,19 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       case "yesterday": {
         const y = new Date(tzNow.getTime() - 24 * 60 * 60 * 1000);
         return { from: format(y), to: format(y) };
+      }
+      case "this_week": {
+        const day = tzNow.getDay();
+        const diff = tzNow.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diff, 12, 0, 0);
+        return { from: format(monday), to: format(tzNow) };
+      }
+      case "last_week": {
+        const day = tzNow.getDay();
+        const diffToMonday = tzNow.getDate() - day + (day === 0 ? -6 : 1);
+        const lastMonday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diffToMonday - 7, 12, 0, 0);
+        const lastSunday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diffToMonday - 1, 12, 0, 0);
+        return { from: format(lastMonday), to: format(lastSunday) };
       }
       case "last_10_days": {
         const d1 = new Date(tzNow.getTime() - 9 * 24 * 60 * 60 * 1000);
@@ -9222,31 +9352,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "this_month", label: "Этот месяц" },
-              { id: "last_month", label: "Прошлый месяц" },
-              { id: "custom", label: "Свой период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setPlPeriod(p.id);
-                  if (p.id !== "custom") loadPL(p.id);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: plPeriod === p.id ? "none" : "1px solid #e2e8f0",
-                  background: plPeriod === p.id ? "#4f46e5" : "#fff",
-                  color: plPeriod === p.id ? "#fff" : "#64748b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={plPeriod}
+              setPeriod={setPlPeriod}
+              onPeriodChange={(pId) => {
+                if (pId !== "custom") loadPL(pId);
+              }}
+            />
 
             {plPeriod === "custom" && (
               <div
@@ -9810,38 +9922,19 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               </select>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
-              {[
-                { id: "today", label: "Сегодня" },
-                { id: "yesterday", label: "Вчера" },
-                { id: "single", label: "Выбрать день" },
-                { id: "custom", label: "Период" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setCashPeriod(p.id);
-                    if (p.id !== "custom" && p.id !== "single") {
-                      loadCash(p.id);
-                    } else if (p.id === "single") {
-                      loadCash("single", cashSingleDate, cashSingleDate);
-                    }
-                  }}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    border: cashPeriod === p.id ? "none" : "1px solid #e2e8f0",
-                    background: cashPeriod === p.id ? "#10b981" : "#fff",
-                    color: cashPeriod === p.id ? "#fff" : "#64748b",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <PeriodDropdown
+              period={cashPeriod}
+              setPeriod={setCashPeriod}
+              showSingleDay={true}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId !== "custom" && pId !== "single") {
+                  loadCash(pId);
+                } else if (pId === "single") {
+                  loadCash("single", cashSingleDate, cashSingleDate);
+                }
+              }}
+            />
 
             {cashPeriod === "single" && (
               <div
@@ -10676,35 +10769,19 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "today", label: "Сегодня" },
-              { id: "yesterday", label: "Вчера" },
-              { id: "single", label: "Выбрать день" },
-              { id: "custom", label: "Период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setCategoriesPeriod(p.id);
-                  if (p.id === "single") {
-                    loadCategories("single", categoriesSingleDate, categoriesSingleDate);
-                  } else if (p.id !== "custom") {
-                    loadCategories(p.id);
-                  }
-                }}
-                className={`btn ${categoriesPeriod === p.id ? "btn-primary" : "btn-outline"}`}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  borderRadius: 10,
-                  border: "1px solid var(--border-color)",
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={categoriesPeriod}
+              setPeriod={setCategoriesPeriod}
+              showSingleDay={true}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId === "single") {
+                  loadCategories("single", categoriesSingleDate, categoriesSingleDate);
+                } else if (pId !== "custom") {
+                  loadCategories(pId);
+                }
+              }}
+            />
           </div>
 
           {/* Date Pickers */}
@@ -11055,31 +11132,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "today", label: "Сегодня" },
-              { id: "yesterday", label: "Вчера" },
-              { id: "custom", label: "Период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setTopPeriod(p.id);
-                  if (p.id !== "custom") loadTop(p.id);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: topPeriod === p.id ? "none" : "1px solid #e2e8f0",
-                  background: topPeriod === p.id ? "#f59e0b" : "#fff",
-                  color: topPeriod === p.id ? "#fff" : "#64748b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={topPeriod}
+              setPeriod={setTopPeriod}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId !== "custom") loadTop(pId);
+              }}
+            />
 
             {topPeriod === "custom" && (
               <div
@@ -11413,32 +11473,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "today", label: "Сегодня" },
-              { id: "yesterday", label: "Вчера" },
-              { id: "this_month", label: "Этот месяц" },
-              { id: "custom", label: "Период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setWaitersPeriod(p.id);
-                  if (p.id !== "custom") loadWaiters(p.id);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: waitersPeriod === p.id ? "none" : "1px solid #e2e8f0",
-                  background: waitersPeriod === p.id ? "#0284c7" : "#fff",
-                  color: waitersPeriod === p.id ? "#fff" : "#64748b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={waitersPeriod}
+              setPeriod={setWaitersPeriod}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId !== "custom") loadWaiters(pId);
+              }}
+            />
 
             {waitersPeriod === "custom" && (
               <div
@@ -11694,34 +11736,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "today", label: "Сегодня" },
-              { id: "yesterday", label: "Вчера" },
-              { id: "this_month", label: "Этот месяц" },
-              { id: "last_month", label: "Прошлый месяц" },
-              { id: "all_time", label: "За все время" },
-              { id: "custom", label: "Период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setExpensePeriod(p.id);
-                  if (p.id !== "custom") loadCashExpenses(p.id);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: expensePeriod === p.id ? "none" : "1px solid var(--border-color)",
-                  background: expensePeriod === p.id ? "#ef4444" : "var(--bg-card)",
-                  color: expensePeriod === p.id ? "#fff" : "var(--text-muted)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={expensePeriod}
+              setPeriod={setExpensePeriod}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId !== "custom") loadCashExpenses(pId);
+              }}
+            />
 
             {expensePeriod === "custom" && (
               <div
@@ -12106,34 +12128,14 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               marginBottom: 20,
             }}
           >
-            {[
-              { id: "today", label: "Сегодня" },
-              { id: "yesterday", label: "Вчера" },
-              { id: "last_10_days", label: "10 дней" },
-              { id: "this_month", label: "Этот месяц" },
-              { id: "last_month", label: "Прошлый месяц" },
-              { id: "custom", label: "Период" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setWagesPeriod(p.id);
-                  if (p.id !== "custom") loadWages(p.id);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: wagesPeriod === p.id ? "none" : "1px solid var(--border-color)",
-                  background: wagesPeriod === p.id ? "#ef4444" : "var(--bg-card)",
-                  color: wagesPeriod === p.id ? "#fff" : "var(--text-muted)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <PeriodDropdown
+              period={wagesPeriod}
+              setPeriod={setWagesPeriod}
+              customLabel="Период"
+              onPeriodChange={(pId) => {
+                if (pId !== "custom") loadWages(pId);
+              }}
+            />
 
             {wagesPeriod === "custom" && (
               <div
