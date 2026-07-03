@@ -8493,6 +8493,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   const isManager = loggedInUser?.baseRole === "manager";
   const [subTab, setSubTab] = useState(isManager ? "top" : "pl");
   const [loading, setLoading] = useState(false);
+  const [analyticsGroup, setAnalyticsGroup] = useState(isManager ? "sales" : "finance");
 
   // Date ranges
   const [plPeriod, setPlPeriod] = useState("this_month");
@@ -9018,93 +9019,167 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
-      {/* Tab Selectors */}
-      <div
-        className="horizontal-scroll-container"
-        style={{
-          display: "flex",
-          gap: 10,
-          marginBottom: 24,
-          borderBottom: "1px solid var(--border-color)",
-          paddingBottom: 10,
-        }}
-      >
-        {[
-          {
-            id: "pl",
-            label: "📊 Отчет о Прибыли и Убытках",
-            grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
-            text: "#4338ca",
-          },
-          {
-            id: "cash",
-            label: "💵 Касса",
-            grad: "linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)",
-            text: "#065f46",
-          },
-          {
-            id: "top",
-            label: "🍽 Топ продаж",
-            grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-            text: "#92400e",
-          },
-          {
-            id: "waiters",
-            label: "🤵 Топ официантов",
-            grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
-            text: "#0369a1",
-          },
-          {
-            id: "categories",
-            label: "📈 Выручка по категориям",
-            grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
-            text: "#7c3aed",
-          },
-          {
-            id: "cash_expenses",
-            label: "💰 Сейф",
-            grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
-            text: "#3730a3",
-          },
-          {
-            id: "wages",
-            label: "👥 Заработная плата сотрудников",
-            grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-            text: "#92400e",
-          },
-          {
-            id: "attendance",
-            label: "📅 Смены сотрудников",
-            grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
-            text: "#6b21a8",
-          },
-        ].filter((sub) => {
-          if (isManager && (sub.id === "pl" || sub.id === "cash" || sub.id === "categories")) return false;
-          if ((sub.id === "cash_expenses" || sub.id === "wages") && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
-          return true;
-        }).map((sub) => (
-          <button
-            key={sub.id}
-            onClick={() => setSubTab(sub.id)}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
-              background: subTab === sub.id ? sub.grad : "var(--bg-card)",
-              color: subTab === sub.id ? sub.text : "var(--text-muted)",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-              boxShadow:
-                subTab === sub.id
-                  ? "0 4px 12px rgba(99, 102, 241, 0.15)"
-                  : "none",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {sub.label}
-          </button>
-        ))}
+      {/* Grouped Tab Selectors */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+        {/* Top level group selectors */}
+        <div
+          className="horizontal-scroll-container"
+          style={{
+            display: "flex",
+            gap: 8,
+            borderBottom: "1px solid var(--border-color)",
+            paddingBottom: 10,
+          }}
+        >
+          {[
+            {
+              id: "finance",
+              label: "💰 Финансы",
+              tabs: ["pl", "cash", "categories", "cash_expenses"]
+            },
+            {
+              id: "sales",
+              label: "📈 Продажи",
+              tabs: ["top", "waiters"]
+            },
+            {
+              id: "staff",
+              label: "👥 Кадры",
+              tabs: ["wages", "attendance"]
+            }
+          ].filter((g) => {
+            const visibleTabs = g.tabs.filter((tabId) => {
+              if (isManager && ["pl", "cash", "categories"].includes(tabId)) return false;
+              if (["cash_expenses", "wages"].includes(tabId) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
+              return true;
+            });
+            return visibleTabs.length > 0;
+          }).map((g) => (
+            <button
+              key={g.id}
+              onClick={() => {
+                setAnalyticsGroup(g.id);
+                const visibleTabs = g.tabs.filter((tabId) => {
+                  if (isManager && ["pl", "cash", "categories"].includes(tabId)) return false;
+                  if (["cash_expenses", "wages"].includes(tabId) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
+                  return true;
+                });
+                if (visibleTabs.length > 0) {
+                  setSubTab(visibleTabs[0]);
+                }
+              }}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 20,
+                border: "none",
+                background: analyticsGroup === g.id ? "var(--text-main)" : "var(--bg-active)",
+                color: analyticsGroup === g.id ? "var(--bg-card)" : "var(--text-muted)",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Second level tab selectors */}
+        <div
+          className="horizontal-scroll-container"
+          style={{
+            display: "flex",
+            gap: 10,
+            paddingBottom: 2,
+          }}
+        >
+          {[
+            {
+              id: "pl",
+              label: "📊 Отчет о Прибыли и Убытках",
+              grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+              text: "#4338ca",
+              groupId: "finance",
+            },
+            {
+              id: "cash",
+              label: "💵 Касса",
+              grad: "linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)",
+              text: "#065f46",
+              groupId: "finance",
+            },
+            {
+              id: "categories",
+              label: "📈 Выручка по категориям",
+              grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
+              text: "#7c3aed",
+              groupId: "finance",
+            },
+            {
+              id: "cash_expenses",
+              label: "💰 Сейф",
+              grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+              text: "#3730a3",
+              groupId: "finance",
+            },
+            {
+              id: "top",
+              label: "🍽 Топ продаж",
+              grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+              text: "#92400e",
+              groupId: "sales",
+            },
+            {
+              id: "waiters",
+              label: "🤵 Топ официантов",
+              grad: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+              text: "#0369a1",
+              groupId: "sales",
+            },
+            {
+              id: "wages",
+              label: "👥 Заработная плата сотрудников",
+              grad: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+              text: "#92400e",
+              groupId: "staff",
+            },
+            {
+              id: "attendance",
+              label: "📅 Смены сотрудников",
+              grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
+              text: "#6b21a8",
+              groupId: "staff",
+            },
+          ].filter((sub) => {
+            if (sub.groupId !== analyticsGroup) return false;
+            if (isManager && ["pl", "cash", "categories"].includes(sub.id)) return false;
+            if (["cash_expenses", "wages"].includes(sub.id) && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
+            return true;
+          }).map((sub) => (
+            <button
+              key={sub.id}
+              onClick={() => setSubTab(sub.id)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 12,
+                border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                color: subTab === sub.id ? sub.text : "var(--text-muted)",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+                boxShadow:
+                  subTab === sub.id
+                    ? "0 4px 12px rgba(99, 102, 241, 0.15)"
+                    : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {sub.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && (
