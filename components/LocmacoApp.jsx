@@ -9959,6 +9959,86 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                       </div>
                     </div>
 
+                    {cashData.kitchenRevenue !== undefined && (
+                      <div
+                        style={cardStyle(
+                          "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                          "none"
+                        )}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "rgba(255,255,255,0.75)",
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          🍳 Выручка Кухни
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 24,
+                            fontWeight: 800,
+                            color: "#fff",
+                            marginTop: 8,
+                          }}
+                        >
+                          {fmtPrice(cashData.kitchenRevenue)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "rgba(255,255,255,0.8)",
+                            marginTop: 4,
+                          }}
+                        >
+                          {cashData.revenue > 0 ? `${Math.round((cashData.kitchenRevenue / cashData.revenue) * 100)}% от общей кассы` : "0% от общей кассы"}
+                        </div>
+                      </div>
+                    )}
+
+                    {cashData.barRevenue !== undefined && (
+                      <div
+                        style={cardStyle(
+                          "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                          "none"
+                        )}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "rgba(255,255,255,0.75)",
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          🍸 Выручка Бара
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 24,
+                            fontWeight: 800,
+                            color: "#fff",
+                            marginTop: 8,
+                          }}
+                        >
+                          {fmtPrice(cashData.barRevenue)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "rgba(255,255,255,0.8)",
+                            marginTop: 4,
+                          }}
+                        >
+                          {cashData.revenue > 0 ? `${Math.round((cashData.barRevenue / cashData.revenue) * 100)}% от общей кассы` : "0% от общей кассы"}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={cardStyle("#fff", "1px solid #e2e8f0")}>
                       <div
                         style={{

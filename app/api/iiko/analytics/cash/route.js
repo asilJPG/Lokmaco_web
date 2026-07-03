@@ -140,12 +140,64 @@ export async function GET(request) {
 
         const avgCheck = orderCount > 0 ? revenue / orderCount : 0.0;
 
+        // 3. Fetch sales by CookingPlace to split Kitchen and Bar
+        const cookingBody = {
+          reportType: "SALES",
+          buildSummary: "true",
+          groupByRowFields: ["CookingPlace"],
+          groupByColFields: [],
+          aggregateFields: ["DishDiscountSumInt"],
+          filters: {
+            "OpenDate.Typed": {
+              filterType: "DateRange",
+              periodType: "CUSTOM",
+              from: dateFrom,
+              to: dateToNext,
+              includeLow: "true",
+              includeHigh: includeHigh,
+            },
+            DeletedWithWriteoff: {
+              filterType: "ExcludeValues",
+              values: ["DELETED_WITHOUT_WRITEOFF"],
+            },
+          },
+        };
+
+        const cookingRes = await http1Fetch(`${IIKO_SERVER}/resto/api/v2/reports/olap`, {
+          method: "POST",
+          headers: {
+            Cookie: `key=${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(cookingBody),
+        });
+
+        let kitchenRevenue = 0;
+        let barRevenue = 0;
+
+        if (cookingRes.ok) {
+          const cookingData = await cookingRes.json();
+          if (cookingData && cookingData.data) {
+            for (const row of cookingData.data) {
+              const amount = Math.abs(parseFloat(row["DishDiscountSumInt"] || 0));
+              const place = (row["CookingPlace"] || "").toLowerCase();
+              if (place.includes("бар") || place.includes("bar")) {
+                barRevenue += amount;
+              } else {
+                kitchenRevenue += amount;
+              }
+            }
+          }
+        }
+
         return {
           revenue,
           orderCount,
           guestCount,
           avgCheck,
           paymentsSplit,
+          kitchenRevenue,
+          barRevenue,
         };
       }),
       (async () => {
