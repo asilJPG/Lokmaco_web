@@ -9056,7 +9056,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
           },
           {
             id: "categories",
-            label: "📈 По категориям",
+            label: "📈 Выручка по категориям",
             grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
             text: "#7c3aed",
           },
