@@ -8522,6 +8522,16 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   const [waitersData, setWaitersData] = useState(null);
   const [showExpensesDetail, setShowExpensesDetail] = useState(false);
 
+  const [categoriesPeriod, setCategoriesPeriod] = useState("today");
+  const [categoriesDates, setCategoriesDates] = useState({ from: "", to: "" });
+  const [categoriesSingleDate, setCategoriesSingleDate] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return tzNow.toISOString().split("T")[0];
+  });
+  const [categoriesData, setCategoriesData] = useState([]);
+  const [expandedGroups, setExpandedGroups] = useState({});
+
   // Category transactions details loader (on-demand)
   useEffect(() => {
     if (!selectedExpenseCategory) {
@@ -8691,6 +8701,33 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       }
     } catch (_e) {
       showToast("Ошибка сети при загрузке кассы", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Categories Loader
+  const loadCategories = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom;
+    let to = customTo;
+    if (periodType !== "custom" && periodType !== "single") {
+      const dates = getDatesForPeriod(periodType);
+      from = dates.from;
+      to = dates.to;
+    }
+    if (!from || !to) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/categories?from=${from}&to=${to}`, { cache: "no-store" });
+      const res = await r.json();
+      if (res && res.success) {
+        setCategoriesData(res.categories || []);
+      } else {
+        showToast(res?.error || "Ошибка загрузки выручки по категориям", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при загрузке категорий", "error");
     } finally {
       setLoading(false);
     }
@@ -8961,6 +8998,12 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       loadWages(wagesPeriod, wagesDates.from, wagesDates.to);
     } else if (subTab === "attendance") {
       loadAttendance(attendanceDate);
+    } else if (subTab === "categories") {
+      if (categoriesPeriod === "single") {
+        loadCategories("single", categoriesSingleDate, categoriesSingleDate);
+      } else {
+        loadCategories(categoriesPeriod, categoriesDates.from, categoriesDates.to);
+      }
     }
   }, [subTab]);
 
@@ -9012,6 +9055,12 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             text: "#0369a1",
           },
           {
+            id: "categories",
+            label: "📈 По категориям",
+            grad: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)",
+            text: "#7c3aed",
+          },
+          {
             id: "cash_expenses",
             label: "💰 Сейф",
             grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
@@ -9030,7 +9079,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             text: "#6b21a8",
           },
         ].filter((sub) => {
-          if (isManager && (sub.id === "pl" || sub.id === "cash")) return false;
+          if (isManager && (sub.id === "pl" || sub.id === "cash" || sub.id === "categories")) return false;
           if ((sub.id === "cash_expenses" || sub.id === "wages") && !["admin", "director"].includes(loggedInUser?.baseRole)) return false;
           return true;
         }).map((sub) => (
@@ -10534,6 +10583,357 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               }}
             >
               Выберите период для построения отчета.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 📈 CATEGORIES REVENUE VIEW */}
+      {!loading && subTab === "categories" && (
+        <div style={{ animation: "fadeIn .25s ease" }}>
+          {/* Period Selectors */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { id: "today", label: "Сегодня" },
+              { id: "yesterday", label: "Вчера" },
+              { id: "single", label: "Выбрать день" },
+              { id: "custom", label: "Период" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setCategoriesPeriod(p.id);
+                  if (p.id === "single") {
+                    loadCategories("single", categoriesSingleDate, categoriesSingleDate);
+                  } else if (p.id !== "custom") {
+                    loadCategories(p.id);
+                  }
+                }}
+                className={`btn ${categoriesPeriod === p.id ? "btn-primary" : "btn-outline"}`}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  borderRadius: 10,
+                  border: "1px solid var(--border-color)",
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Pickers */}
+          {categoriesPeriod === "single" && (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
+              <input
+                type="date"
+                value={categoriesSingleDate}
+                onChange={(e) => {
+                  setCategoriesSingleDate(e.target.value);
+                  loadCategories("single", e.target.value, e.target.value);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-input)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                }}
+              />
+            </div>
+          )}
+
+          {categoriesPeriod === "custom" && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                alignItems: "center",
+                marginBottom: 20,
+                background: "var(--bg-card)",
+                padding: 16,
+                borderRadius: 12,
+                border: "1px solid var(--border-color)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>С:</span>
+                <input
+                  type="date"
+                  value={categoriesDates.from}
+                  onChange={(e) => setCategoriesDates({ ...categoriesDates, from: e.target.value })}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-input)",
+                    color: "var(--text-main)",
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>По:</span>
+                <input
+                  type="date"
+                  value={categoriesDates.to}
+                  onChange={(e) => setCategoriesDates({ ...categoriesDates, to: e.target.value })}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-input)",
+                    color: "var(--text-main)",
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => loadCategories("custom", categoriesDates.from, categoriesDates.to)}
+                className="btn btn-primary"
+                style={{
+                  padding: "7px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                Построить
+              </button>
+            </div>
+          )}
+
+          {/* Data display */}
+          {categoriesData && categoriesData.length > 0 ? (
+            (() => {
+              // Group and aggregate data
+              const topGroups = {};
+              let grandTotal = 0;
+              
+              categoriesData.forEach((row) => {
+                const top = row["DishGroup.TopParent"] || "Без категории";
+                const sub = row["DishGroup"] || "Без подгруппы";
+                const amount = Math.abs(parseFloat(row["DishDiscountSumInt"] || 0));
+                
+                if (!topGroups[top]) {
+                  topGroups[top] = {
+                    name: top,
+                    total: 0,
+                    subs: {},
+                  };
+                }
+                topGroups[top].total += amount;
+                grandTotal += amount;
+                
+                if (!topGroups[top].subs[sub]) {
+                  topGroups[top].subs[sub] = 0;
+                }
+                topGroups[top].subs[sub] += amount;
+              });
+
+              const sortedGroups = Object.values(topGroups).sort((a, b) => b.total - a.total);
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {/* Summary Card */}
+                  <div
+                    style={{
+                      background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+                      borderRadius: 16,
+                      padding: "20px 24px",
+                      color: "#ffffff",
+                      boxShadow: "0 10px 25px rgba(124, 58, 237, 0.15)",
+                    }}
+                  >
+                    <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8, fontWeight: 600 }}>
+                      Общая выручка по категориям
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 800, marginTop: 4 }}>
+                      {fmtPrice(grandTotal)}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+                      Разделено на {sortedGroups.length} основных групп меню
+                    </div>
+                  </div>
+
+                  {/* Categories Breakdown */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {sortedGroups.map((group) => {
+                      const pct = grandTotal > 0 ? (group.total / grandTotal) * 100 : 0;
+                      const isExpanded = !!expandedGroups[group.name];
+                      const sortedSubs = Object.entries(group.subs).sort((a, b) => b[1] - a[1]);
+                      
+                      return (
+                        <div
+                          key={group.name}
+                          style={{
+                            background: "var(--bg-card)",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: 16,
+                            padding: "16px 20px",
+                            boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          <div
+                            onClick={() => {
+                              setExpandedGroups({
+                                ...expandedGroups,
+                                [group.name]: !isExpanded,
+                              });
+                            }}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              cursor: "pointer",
+                              userSelect: "none",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span style={{ fontSize: 20 }}>
+                                {group.name === "Бар" ? "🍹" :
+                                 group.name === "Локма" ? "🥞" :
+                                 group.name === "Мороженое" ? "🍦" :
+                                 group.name === "Бельгийские вафли" ? "🧇" :
+                                 group.name === "Гонконгские вафли" ? "🧇" :
+                                 group.name === "Фондю" ? "🍫" :
+                                 group.name === "Другие сладости" ? "🍰" :
+                                 group.name === "Допы" ? "🧁" : "🍽"}
+                              </span>
+                              <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)" }}>
+                                {group.name}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span style={{ fontWeight: 800, fontSize: 15, color: "#10b981" }}>
+                                {fmtPrice(group.total)}
+                              </span>
+                              <span
+                                style={{
+                                  background: "var(--bg-active)",
+                                  color: "var(--text-main)",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: "4px 8px",
+                                  borderRadius: 8,
+                                }}
+                              >
+                                {pct.toFixed(1)}%
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  color: "var(--text-muted)",
+                                  transform: isExpanded ? "rotate(180deg)" : "rotate(0)",
+                                  transition: "transform 0.2s ease",
+                                }}
+                              >
+                                ▼
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div
+                            style={{
+                              width: "100%",
+                              height: 6,
+                              background: "rgba(0,0,0,0.05)",
+                              borderRadius: 3,
+                              marginTop: 12,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${pct}%`,
+                                height: "100%",
+                                background: "linear-gradient(90deg, #7c3aed 0%, #4f46e5 100%)",
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+
+                          {/* Subcategories list */}
+                          {isExpanded && (
+                            <div
+                              style={{
+                                marginTop: 16,
+                                borderTop: "1px solid var(--border-color)",
+                                paddingTop: 12,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 10,
+                              }}
+                            >
+                              {sortedSubs.map(([subName, subAmount]) => {
+                                const subPct = group.total > 0 ? (subAmount / group.total) * 100 : 0;
+                                return (
+                                  <div
+                                    key={subName}
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      fontSize: 13,
+                                      padding: "4px 0",
+                                    }}
+                                  >
+                                    <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
+                                      {subName}
+                                    </span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                      <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                                        {fmtPrice(subAmount)}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 10,
+                                          color: "var(--text-muted)",
+                                          width: 38,
+                                          textAlign: "right",
+                                        }}
+                                      >
+                                        ({subPct.toFixed(0)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: "var(--text-muted)",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Нет данных о выручке по категориям за выбранный период.
             </div>
           )}
         </div>
