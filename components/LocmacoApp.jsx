@@ -3390,19 +3390,16 @@ function IncomingView({
   const [submitting, setSubmitting] = useState(false);
 
   const addItem = (p) => {
-    setItems((prev) => {
-      if (prev.find((i) => i.product_id === p.id)) return prev;
-      return [
-        ...prev,
-        {
-          product_id: p.id,
-          product_name: p.name,
-          quantity: "",
-          unit: p.mainUnit || "шт",
-          totalPrice: "",
-        },
-      ];
-    });
+    setItems((prev) => [
+      ...prev,
+      {
+        product_id: p.id,
+        product_name: p.name,
+        quantity: "",
+        unit: p.mainUnit || "шт",
+        totalPrice: "",
+      },
+    ]);
   };
 
   const updateItem = (idx, field, value) => {
