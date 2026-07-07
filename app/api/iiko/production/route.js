@@ -21,15 +21,20 @@ export async function POST(request) {
     };
 
     body = await request.json();
-    const { items, comment } = body;
+    const { items, comment, storeId } = body;
 
-    const [baseRole] = (user.role || "").split(":");
+    const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "prep_chef", "bar"];
     if (!allowedRoles.includes(baseRole)) {
       return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
     }
 
-    const result = await createProduction(items, comment);
+    const targetStoreId = userStoreId || storeId;
+    if (!targetStoreId) {
+      return Response.json({ error: "Не указан склад для проведения акта" }, { status: 400 });
+    }
+
+    const result = await createProduction(items, comment, targetStoreId);
 
     const details = {
       items: items.map(it => ({

@@ -5496,6 +5496,15 @@ function ProductionView({
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+
+  useEffect(() => {
+    if (loggedInUser?.storeId) {
+      setSelectedStoreId(loggedInUser.storeId);
+    } else {
+      setSelectedStoreId("");
+    }
+  }, [loggedInUser]);
 
   useEffect(() => {
     if (mode === "new") {
@@ -5570,6 +5579,10 @@ function ProductionView({
       showToast("Выберите готовые изделия для приготовления", "error");
       return;
     }
+    if (!loggedInUser.storeId && !selectedStoreId) {
+      showToast("Выберите склад для проведения акта", "error");
+      return;
+    }
     const prepared = items
       .map((it) => ({
         product_id: it.product_id,
@@ -5589,6 +5602,7 @@ function ProductionView({
     const result = await API.createProduction({
       items: prepared,
       comment,
+      storeId: selectedStoreId,
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
@@ -5737,36 +5751,75 @@ function ProductionView({
             padding: 24,
           }}
         >
-          <div
-            style={{
-              ...crumb,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <span>
-              🍳 Место приготовления: <b>Кухня Заготовки</b>
-            </span>
-            {items.length > 0 && (
-              <button
-                onClick={clearDraft}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#ef4444",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
+          {loggedInUser.storeId ? (
+            <div
+              style={{
+                ...crumb,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <span>
+                🍳 Место приготовления: <b>{stores.find(s => s.id === loggedInUser.storeId)?.name || "Кухня Заготовки"}</b>
+              </span>
+              {items.length > 0 && (
+                <button
+                  onClick={clearDraft}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#ef4444",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {I.trash} Очистить черновик
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label style={lbl}>Склад / Место приготовления</label>
+                {items.length > 0 && (
+                  <button
+                    onClick={clearDraft}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ef4444",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {I.trash} Очистить черновик
+                  </button>
+                )}
+              </div>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                style={inp}
               >
-                {I.trash} Очистить черновик
-              </button>
-            )}
-          </div>
+                <option value="">Выберите склад...</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    🏢 {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {draftRestored && (
             <div
