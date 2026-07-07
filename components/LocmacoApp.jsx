@@ -116,6 +116,9 @@ const API = {
   createProduction(data) {
     return this.post("/production", data);
   },
+  createWriteoff(data) {
+    return this.post("/writeoff", data);
+  },
   getEmployees() {
     return this.get("/employees");
   },
@@ -1182,6 +1185,7 @@ export default function LocmacoApp() {
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
     { id: "production", label: "Приготовление", icon: I.cooking },
+    { id: "writeoff", label: "Списание", icon: I.trash },
     { id: "balances", label: "Остатки", icon: I.box },
     { id: "cash", label: "Касса", icon: I.cash },
     { id: "analytics", label: loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика", icon: I.analytics },
@@ -1211,6 +1215,8 @@ export default function LocmacoApp() {
         return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
       case "production":
         return ["prep_chef", "bar"].includes(role);
+      case "writeoff":
+        return role === "bar";
       case "employees":
         return role === "admin";
       case "cash":
@@ -2403,6 +2409,19 @@ export default function LocmacoApp() {
             loggedInUser={loggedInUser}
             loadHistory={loadHistory}
             history={history.filter((h) => h.action_type === "production")}
+            historyLoading={historyLoading}
+          />
+        )}
+        {tab === "writeoff" && (
+          <WriteoffView
+            products={products}
+            stores={stores}
+            showToast={showToast}
+            loading={productsLoading}
+            onRetry={loadData}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "writeoff")}
             historyLoading={historyLoading}
           />
         )}
@@ -5974,6 +5993,541 @@ function ProductionView({
                 >
                   {submitting ? I.loader : I.send}{" "}
                   {submitting ? "Отправка..." : "Приготовить в iiko"}
+                </Btn>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WRITEOFF — акты списания (для бара и админа)
+// ═══════════════════════════════════════════════════════════════
+
+function WriteoffView({
+  products,
+  stores = [],
+  showToast,
+  loading,
+  onRetry,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
+  const [mode, setMode] = useState("idle");
+  const [subTab, setSubTab] = useState("db_history");
+  const [items, setItems] = useState([]);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+
+  useEffect(() => {
+    if (loggedInUser?.storeId) {
+      setSelectedStoreId(loggedInUser.storeId);
+    } else {
+      setSelectedStoreId("");
+    }
+  }, [loggedInUser]);
+
+  useEffect(() => {
+    if (mode === "new") {
+      const saved = localStorage.getItem("locmaco_writeoff_draft");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+            setDraftRestored(true);
+            setTimeout(() => setDraftRestored(false), 3000);
+          } else {
+            setItems([]);
+          }
+        } catch (_e) {
+          setItems([]);
+        }
+      } else {
+        setItems([]);
+      }
+    } else {
+      setItems([]);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "new") {
+      if (items.length > 0) {
+        try {
+          localStorage.setItem("locmaco_writeoff_draft", JSON.stringify(items));
+        } catch (e) {
+          console.error("Failed to save writeoff draft to localStorage:", e);
+        }
+      } else {
+        localStorage.removeItem("locmaco_writeoff_draft");
+      }
+    }
+  }, [items, mode]);
+
+  const addItem = (p) => {
+    setItems((prev) => {
+      // Allow multiple instances of the same product
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          product_name: p.name,
+          code: p.code || "",
+          quantity: "",
+          unit: p.mainUnit || "шт",
+        },
+      ];
+    });
+  };
+
+  const updateItem = (idx, field, value) => {
+    setItems((p) =>
+      p.map((x, i) => (i === idx ? { ...x, [field]: value } : x))
+    );
+  };
+
+  const clearDraft = () => {
+    if (window.confirm("Очистить текущий черновик?")) {
+      setItems([]);
+      localStorage.removeItem("locmaco_writeoff_draft");
+      showToast("Черновик очищен");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (items.length === 0) {
+      showToast("Выберите товары для списания", "error");
+      return;
+    }
+    if (!loggedInUser.storeId && !selectedStoreId) {
+      showToast("Выберите склад для проведения списания", "error");
+      return;
+    }
+    const prepared = items
+      .map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        code: it.code,
+        quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit,
+      }))
+      .filter((it) => it.quantity > 0);
+
+    if (prepared.length === 0) {
+      showToast("Укажите количество для списания", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await API.createWriteoff({
+      items: prepared,
+      comment,
+      storeId: selectedStoreId,
+      user: {
+        tg_id: loggedInUser.tg_id,
+        name: loggedInUser.name,
+        role: loggedInUser.role,
+      },
+    });
+    setSubmitting(false);
+
+    if (result?.success) {
+      showToast("Акт списания успешно проведен!");
+      localStorage.removeItem("locmaco_writeoff_draft");
+      loadHistory();
+      setMode("idle");
+      setItems([]);
+      setComment("");
+    } else {
+      showToast(result?.error || "Ошибка создания акта", "error");
+    }
+  };
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Списание товаров
+        </h2>
+        {mode === "idle" ? (
+          <Btn
+            onClick={() => {
+              setMode("new");
+              setComment("");
+            }}
+            style={{
+              background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+              boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
+            }}
+          >
+            {I.plus} Новое списание
+          </Btn>
+        ) : (
+          <Btn
+            outline
+            onClick={() => {
+              setMode("idle");
+              setItems([]);
+              setComment("");
+            }}
+          >
+            {I.x} Отмена
+          </Btn>
+        )}
+      </div>
+
+      {mode === "idle" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
+            {[
+              {
+                id: "db_history",
+                label: "📋 История сайта",
+                grad: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
+                text: "#b91c1c",
+              },
+              {
+                id: "iiko_history",
+                label: "🌐 История iiko",
+                grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                text: "#4338ca",
+              },
+            ].map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSubTab(sub.id)}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  border: subTab === sub.id ? "none" : "1px solid var(--border-color)",
+                  background: subTab === sub.id ? sub.grad : "var(--bg-card)",
+                  color: subTab === sub.id ? sub.text : "var(--text-muted)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow:
+                    subTab === sub.id
+                      ? "0 4px 10px rgba(99, 102, 241, 0.08)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {subTab === "iiko_history" ? (
+            <div>
+              <IikoHistoryList
+                type="OUTGOING_DOCUMENT"
+                showToast={showToast}
+                stores={stores}
+                products={products}
+              />
+            </div>
+          ) : (
+            <div>
+              <HistoryList
+                history={history.filter((act) => act.action_type === "writeoff")}
+                loading={historyLoading}
+                onRefresh={loadHistory}
+                emptyText="История списаний пуста"
+                onRestore={(act) => {
+                  if (act.details) {
+                    setComment(act.details.comment || "");
+                    setItems(
+                      (act.details.items || []).map((it) => ({
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        code: it.code || "",
+                        quantity: it.quantity,
+                        unit: it.unit || "шт",
+                      }))
+                    );
+                    setMode("new");
+                    showToast("Черновик успешно восстановлен!");
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "new" && (
+        <div
+          style={{
+            background: "var(--bg-card)",
+            borderRadius: 14,
+            border: "1px solid var(--border-color)",
+            padding: 24,
+          }}
+        >
+          {loggedInUser.storeId ? (
+            <div
+              style={{
+                ...crumb,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <span>
+                🏢 Склад списания: <b>{stores.find(s => s.id === loggedInUser.storeId)?.name || "Бар"}</b>
+              </span>
+              {items.length > 0 && (
+                <button
+                  onClick={clearDraft}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#ef4444",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {I.trash} Очистить черновик
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label style={lbl}>Склад списания</label>
+                {items.length > 0 && (
+                  <button
+                    onClick={clearDraft}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ef4444",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {I.trash} Очистить черновик
+                  </button>
+                )}
+              </div>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                style={inp}
+              >
+                <option value="">Выберите склад...</option>
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    🏢 {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div
+            style={{
+              ...crumb,
+              display: "flex",
+              alignItems: "center",
+              marginBottom: 16,
+              background: "var(--bg-app)",
+              borderColor: "var(--border-color)",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+          >
+            📉 Счет списания: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Пищевые потери и списания</b>
+          </div>
+
+          {draftRestored && (
+            <div
+              style={{
+                background: "#fff7ed",
+                border: "1px solid #ffedd5",
+                color: "#c2410c",
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 500,
+                marginBottom: 12,
+                animation: "fadeIn 0.2s ease",
+              }}
+            >
+              🔄 Восстановлен черновик автосохранения
+            </div>
+          )}
+
+          {loading ? (
+            <LoadingBlock text="Загрузка товаров..." />
+          ) : products.length === 0 ? (
+            <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
+          ) : (
+            <>
+              <ProductSearch products={products} onSelect={addItem} />
+              {items.length > 0 && (
+                <div
+                  style={{
+                    border: "1px solid var(--border-color)",
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    marginTop: 12,
+                  }}
+                >
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: 12,
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8fafb" }}>
+                        <th style={th}>Товар</th>
+                        <th style={{ ...th, textAlign: "center", width: 130 }}>
+                          Количество
+                        </th>
+                        <th style={{ ...th, width: 36 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, idx) => (
+                        <tr
+                          key={idx}
+                          style={{ borderTop: "1px solid #f0f2f5" }}
+                        >
+                          <td style={td}>
+                            <div style={{ fontWeight: 500 }}>
+                              {it.product_name}
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                              {it.unit}
+                            </div>
+                          </td>
+                          <td style={{ ...td, textAlign: "center" }}>
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                justifyContent: "center",
+                              }}
+                            >
+                              <input
+                                type="number"
+                                value={it.quantity}
+                                onChange={(e) =>
+                                  updateItem(
+                                    idx,
+                                    "quantity",
+                                    it.unit === "шт"
+                                      ? e.target.value
+                                          .split(".")[0]
+                                          .split(",")[0]
+                                      : e.target.value
+                                  )
+                                }
+                                placeholder="0"
+                                style={numInput}
+                              />
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--text-muted)",
+                                  minWidth: 24,
+                                  textAlign: "left",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {it.unit || "шт"}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={td}>
+                            <button
+                              onClick={() =>
+                                setItems((p) => p.filter((_, i) => i !== idx))
+                              }
+                              style={{
+                                border: "none",
+                                background: "none",
+                                color: "#ef4444",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 6,
+                              }}
+                            >
+                              {I.x}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ marginTop: 20 }}>
+                <label style={lbl}>Комментарий</label>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Добавьте примечание..."
+                  style={{
+                    ...inp,
+                    height: 60,
+                    resize: "none",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 24,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 12,
+                }}
+              >
+                <Btn
+                  onClick={handleSubmit}
+                  disabled={submitting || items.length === 0}
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    border: "none",
+                  }}
+                >
+                  {submitting ? I.loader : I.send}{" "}
+                  {submitting ? "Отправка..." : "Провести списание в iiko"}
                 </Btn>
               </div>
             </>
