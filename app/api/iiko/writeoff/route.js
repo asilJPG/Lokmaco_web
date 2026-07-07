@@ -23,7 +23,7 @@ export async function POST(request) {
     };
 
     body = await request.json();
-    const { items, comment, storeId } = body;
+    const { items, comment, storeId, accountId } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "bar"];
@@ -36,7 +36,12 @@ export async function POST(request) {
       return Response.json({ error: "Не указан склад для проведения акта" }, { status: 400 });
     }
 
-    const result = await createWriteoff(targetStoreId, items, comment);
+    let targetAccountId = "6f983109-eb1f-4517-917b-9912d5eeda16"; // Пищевые потери и списания
+    if (baseRole === "admin" && accountId) {
+      targetAccountId = accountId;
+    }
+
+    const result = await createWriteoff(targetStoreId, items, comment, targetAccountId);
 
     const details = {
       items: items.map(it => ({
@@ -48,6 +53,7 @@ export async function POST(request) {
       })),
       comment: comment || "",
       store_id: targetStoreId,
+      account_id: targetAccountId,
     };
 
     if (result.success) {

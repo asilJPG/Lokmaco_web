@@ -119,6 +119,9 @@ const API = {
   createWriteoff(data) {
     return this.post("/writeoff", data);
   },
+  getAccounts() {
+    return this.get("/accounts");
+  },
   getEmployees() {
     return this.get("/employees");
   },
@@ -6026,6 +6029,13 @@ function WriteoffView({
   const [draftRestored, setDraftRestored] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState("");
 
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState("6f983109-eb1f-4517-917b-9912d5eeda16"); // default: "Пищевые потери и списания"
+
+  const [baseRole] = (loggedInUser?.role || "").split(":");
+  const isAdmin = baseRole === "admin";
+
   useEffect(() => {
     if (loggedInUser?.storeId) {
       setSelectedStoreId(loggedInUser.storeId);
@@ -6033,6 +6043,33 @@ function WriteoffView({
       setSelectedStoreId("");
     }
   }, [loggedInUser]);
+
+  useEffect(() => {
+    if (isAdmin && mode === "new" && accounts.length === 0) {
+      const fetchAccounts = async () => {
+        try {
+          setAccountsLoading(true);
+          const res = await API.getAccounts();
+          if (res?.success && Array.isArray(res.data)) {
+            setAccounts(res.data);
+            const defaultAcc = res.data.find(a => a.id === "6f983109-eb1f-4517-917b-9912d5eeda16");
+            if (defaultAcc) {
+              setSelectedAccountId(defaultAcc.id);
+            } else if (res.data.length > 0) {
+              setSelectedAccountId(res.data[0].id);
+            }
+          } else {
+            showToast(res?.error || "Не удалось загрузить счета списания", "error");
+          }
+        } catch (err) {
+          showToast("Ошибка при получении счетов списания", "error");
+        } finally {
+          setAccountsLoading(false);
+        }
+      };
+      fetchAccounts();
+    }
+  }, [isAdmin, mode, accounts.length]);
 
   useEffect(() => {
     if (mode === "new") {
@@ -6131,6 +6168,7 @@ function WriteoffView({
       items: prepared,
       comment,
       storeId: selectedStoreId,
+      accountId: isAdmin ? selectedAccountId : "6f983109-eb1f-4517-917b-9912d5eeda16",
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
@@ -6349,21 +6387,45 @@ function WriteoffView({
             </div>
           )}
 
-          <div
-            style={{
-              ...crumb,
-              display: "flex",
-              alignItems: "center",
-              marginBottom: 16,
-              background: "var(--bg-app)",
-              borderColor: "var(--border-color)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            📉 Счет списания: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Пищевые потери и списания</b>
-          </div>
+          {isAdmin ? (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Счет списания</label>
+              {accountsLoading ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  {I.loader} Загрузка счетов из iiko...
+                </div>
+              ) : (
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  style={inp}
+                >
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      📉 [{acc.code || "—"}] {acc.name} ({acc.type})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                ...crumb,
+                display: "flex",
+                alignItems: "center",
+                marginBottom: 16,
+                background: "var(--bg-app)",
+                borderColor: "var(--border-color)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              📉 Счет списания: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Пищевые потери и списания</b>
+            </div>
+          )}
+
 
           {draftRestored && (
             <div
