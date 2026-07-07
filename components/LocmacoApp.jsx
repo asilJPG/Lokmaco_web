@@ -10189,7 +10189,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                             letterSpacing: 0.5,
                           }}
                         >
-                          🍳 Выручка Кухни
+                          🍳 Выручка Кухня главная
                         </div>
                         <div
                           style={{
@@ -10209,6 +10209,46 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           }}
                         >
                           {cashData.revenue > 0 ? `${Math.round((cashData.kitchenRevenue / cashData.revenue) * 100)}% от общей кассы` : "0% от общей кассы"}
+                        </div>
+                      </div>
+                    )}
+
+                    {cashData.basementKitchenRevenue !== undefined && (
+                      <div
+                        style={cardStyle(
+                          "linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%)",
+                          "none"
+                        )}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "rgba(255,255,255,0.75)",
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          🍕 Выручка Кухня подвал
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 24,
+                            fontWeight: 800,
+                            color: "#fff",
+                            marginTop: 8,
+                          }}
+                        >
+                          {fmtPrice(cashData.basementKitchenRevenue)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "rgba(255,255,255,0.8)",
+                            marginTop: 4,
+                          }}
+                        >
+                          {cashData.revenue > 0 ? `${Math.round((cashData.basementKitchenRevenue / cashData.revenue) * 100)}% от общей кассы` : "0% от общей кассы"}
                         </div>
                       </div>
                     )}

@@ -173,6 +173,7 @@ export async function GET(request) {
         });
 
         let kitchenRevenue = 0;
+        let basementKitchenRevenue = 0;
         let barRevenue = 0;
 
         if (cookingRes.ok) {
@@ -183,6 +184,12 @@ export async function GET(request) {
               const place = (row["CookingPlace"] || "").toLowerCase();
               if (place.includes("бар") || place.includes("bar")) {
                 barRevenue += amount;
+              } else if (
+                place.includes("горячий цех") ||
+                place.includes("холодный цех") ||
+                place.includes("пицца")
+              ) {
+                basementKitchenRevenue += amount;
               } else {
                 kitchenRevenue += amount;
               }
@@ -197,6 +204,7 @@ export async function GET(request) {
           avgCheck,
           paymentsSplit,
           kitchenRevenue,
+          basementKitchenRevenue,
           barRevenue,
         };
       }),
