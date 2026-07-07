@@ -34,7 +34,8 @@ export async function POST(request) {
       return Response.json({ error: "Не указан склад для проведения акта" }, { status: 400 });
     }
 
-    const result = await createProduction(items, comment, targetStoreId);
+    const iikoComment = `${comment || "Приготовление через мобильное приложение"} (Создал: ${user.name})`;
+    const result = await createProduction(items, iikoComment, targetStoreId);
 
     const details = {
       items: items.map(it => ({
@@ -44,7 +45,7 @@ export async function POST(request) {
         unit: it.unit,
         code: it.code,
       })),
-      comment: comment || "",
+      comment: iikoComment,
     };
 
     if (result.success) {

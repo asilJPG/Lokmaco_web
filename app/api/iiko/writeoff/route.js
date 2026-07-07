@@ -41,7 +41,8 @@ export async function POST(request) {
       targetAccountId = accountId;
     }
 
-    const result = await createWriteoff(targetStoreId, items, comment, targetAccountId);
+    const iikoComment = `${comment || "Списание через мобильное приложение"} (Создал: ${user.name})`;
+    const result = await createWriteoff(targetStoreId, items, iikoComment, targetAccountId);
 
     const details = {
       items: items.map(it => ({
@@ -51,7 +52,7 @@ export async function POST(request) {
         unit: it.unit,
         code: it.code,
       })),
-      comment: comment || "",
+      comment: iikoComment,
       store_id: targetStoreId,
       account_id: targetAccountId,
     };
