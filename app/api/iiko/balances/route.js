@@ -13,6 +13,15 @@ const FALLBACK_STORES = [
   { id: "0e7c3f59-e55d-427f-895f-f24e2f106fbc", name: "Кухня подвал" }
 ];
 
+const UNIT_MAP = {
+  "7ba81c3a-8de5-8f9d-fb9f-e39efcbc57cc": "кг",
+  "cd19b5ea-1b32-a6e5-1df7-5d2784a0549a": "шт",
+  "69859c74-db72-b006-cba5-326cf6f4fc6e": "л",
+  "6040d92d-e286-f4f9-a613-ed0e6fd241e1": "порц",
+  "effa6e01-7c7c-4195-8ba7-8a0158b636a0": "м",
+  "109fb602-70ad-473d-ba1f-f037b6e72887": "пачка"
+};
+
 function tag(xml, name) {
   const m = xml.match(new RegExp(`<${name}>([^<]*)</${name}>`));
   return m ? m[1].trim() : "";
@@ -56,7 +65,8 @@ export async function GET(_request) {
         productsList = rawProducts.map(p => ({
           id: p.id,
           name: p.name,
-          num: p.num || ""
+          num: p.num || "",
+          mainUnitName: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт"
         }));
       }
       const productsMap = new Map(productsList.map(p => [p.id, p]));
@@ -82,12 +92,13 @@ export async function GET(_request) {
           };
         }
 
-        const productMeta = productsMap.get(productId) || { id: productId, name: `Товар ${productId.substring(0,8)}`, num: "" };
+        const productMeta = productsMap.get(productId) || { id: productId, name: `Товар ${productId.substring(0,8)}`, num: "", mainUnitName: "шт" };
         grouped[storeId].balanceItems.push({
           product: {
             id: productMeta.id,
             name: productMeta.name,
-            num: productMeta.num
+            num: productMeta.num,
+            mainUnitName: productMeta.mainUnitName
           },
           amount,
           sum
