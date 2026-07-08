@@ -2034,6 +2034,53 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "services") && (
+                <button
+                  onClick={() => setTab("services")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🤝
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Акты приема услуг
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Оформление актов приема услуг (доставка, авторасходы) в iiko
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "transfer") && (
                 <button
                   onClick={() => setTab("transfer")}
@@ -2170,6 +2217,53 @@ export default function LocmacoApp() {
                     </div>
                     <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
                       Акт приготовления готовых заготовок/смесей в iiko
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              {hasAccess(loggedInUser.baseRole, "writeoff") && (
+                <button
+                  onClick={() => setTab("writeoff")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🗑️
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Списание
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Оформление актов списания продуктов и потерь в iiko
                     </div>
                   </div>
                 </button>
