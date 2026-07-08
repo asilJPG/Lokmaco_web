@@ -6783,7 +6783,7 @@ function ServicesView({
   }, [isAdmin, mode]);
 
   const handleSubmit = async () => {
-    if (!selectedStoreId || !selectedAccountId || !sum) {
+    if (!selectedAccountId || !sum) {
       showToast("Заполните все поля", "error");
       return;
     }
@@ -6793,8 +6793,9 @@ function ServicesView({
       return;
     }
 
-    const store = stores.find((s) => s.id === selectedStoreId);
-    const storeName = store ? store.name : "Неизвестный склад";
+    const targetStoreId = selectedStoreId || loggedInUser?.storeId || (stores[0]?.id || "1239d270-1bbe-f64f-b7ea-5f00518ef508");
+    const store = stores.find((s) => s.id === targetStoreId);
+    const storeName = store ? store.name : "Основной склад";
 
     const supplierObj = suppliers.find((s) => s.id === selectedSupplierId);
     const supplierName = supplierObj ? supplierObj.name : "Представительские";
@@ -6804,7 +6805,7 @@ function ServicesView({
 
     setSubmitting(true);
     const result = await API.createService({
-      store_id: selectedStoreId,
+      store_id: targetStoreId,
       store_name: storeName,
       supplier_id: selectedSupplierId,
       supplier_name: supplierName,
@@ -6900,40 +6901,6 @@ function ServicesView({
             boxShadow: "var(--shadow-sm)",
           }}
         >
-          {/* Sklad Selection */}
-          {isAdmin ? (
-            <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>Склад</label>
-              <select
-                value={selectedStoreId}
-                onChange={(e) => setSelectedStoreId(e.target.value)}
-                style={inp}
-              >
-                <option value="">-- Выберите склад --</option>
-                {stores.map((st) => (
-                  <option key={st.id} value={st.id}>
-                    🏢 {st.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div
-              style={{
-                ...crumb,
-                display: "flex",
-                alignItems: "center",
-                marginBottom: 16,
-                background: "var(--bg-app)",
-                borderColor: "var(--border-color)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                fontWeight: 500,
-              }}
-            >
-              🏢 Склад: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>{getStoreName(selectedStoreId)}</b>
-            </div>
-          )}
 
           {/* Supplier Selection for Admin / Readonly for Supplier */}
           {isAdmin ? (
