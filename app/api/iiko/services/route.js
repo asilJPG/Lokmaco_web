@@ -23,7 +23,7 @@ export async function POST(request) {
     };
 
     body = await request.json();
-    const { store_id, store_name, account_id, account_name, sum, comment } = body;
+    const { store_id, store_name, supplier_id, supplier_name, account_id, account_name, sum, comment } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "supplier"];
@@ -51,9 +51,11 @@ export async function POST(request) {
     const dn = "Автоматический";
 
     // Build XML
-    // Supplier: 'Представительские' (f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d)
+    // Supplier: 'Представительские' (f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d) by default or if role is supplier
     // Product: 'Транспорт расходы' (69aab99f-deeb-4bf1-804b-0b13373910a0)
-    const supplierId = "f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d";
+    const isSupplierRole = baseRole === "supplier";
+    const supplierId = isSupplierRole ? "f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d" : (supplier_id || "f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d");
+    const supplierName = isSupplierRole ? "Представительские" : (supplier_name || "Представительские");
     const productId = "69aab99f-deeb-4bf1-804b-0b13373910a0";
 
     const itemsXml = `<item><num>1</num><product>${escapeXml(productId)}</product><amount>1</amount><price>${escapeXml(String(sumVal))}</price><sum>${escapeXml(String(sumVal))}</sum><store>${escapeXml(String(store_id))}</store></item>`;
@@ -69,7 +71,7 @@ export async function POST(request) {
 
     const details = {
       supplier_id: supplierId,
-      supplier_name: "Представительские",
+      supplier_name: supplierName,
       store_id: store_id,
       store_name: store_name || "Неизвестный склад",
       account_id: account_id,

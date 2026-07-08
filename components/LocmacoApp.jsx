@@ -2479,6 +2479,7 @@ export default function LocmacoApp() {
         {tab === "services" && (
           <ServicesView
             stores={stores}
+            suppliers={suppliers}
             showToast={showToast}
             loggedInUser={loggedInUser}
             loadHistory={loadHistory}
@@ -6716,6 +6717,7 @@ function WriteoffView({
 
 function ServicesView({
   stores = [],
+  suppliers = [],
   showToast,
   loggedInUser,
   loadHistory,
@@ -6727,15 +6729,17 @@ function ServicesView({
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d"); // Default: "Представительские"
   const [selectedAccountId, setSelectedAccountId] = useState("0ca10c4d-e132-4348-a711-1380af66ee52"); // Default: "Доставка продуктов"
+
+  const [accounts, setAccounts] = useState([
+    { id: "0ca10c4d-e132-4348-a711-1380af66ee52", name: "Доставка продуктов" },
+    { id: "d07478d5-c4e8-4618-b40d-23cbbce41a18", name: "Автомобильные расходы" },
+  ]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [baseRole] = (loggedInUser?.role || "").split(":");
   const isAdmin = baseRole === "admin" || baseRole === "director";
-
-  const accounts = [
-    { id: "0ca10c4d-e132-4348-a711-1380af66ee52", name: "Доставка продуктов" },
-    { id: "d07478d5-c4e8-4618-b40d-23cbbce41a18", name: "Автомобильные расходы" },
-  ];
 
   useEffect(() => {
     if (loggedInUser?.storeId) {
@@ -6744,6 +6748,39 @@ function ServicesView({
       setSelectedStoreId("");
     }
   }, [loggedInUser]);
+
+  useEffect(() => {
+    if (isAdmin && mode === "new") {
+      const fetchAccounts = async () => {
+        try {
+          setAccountsLoading(true);
+          const res = await API.getAccounts();
+          if (res?.success && Array.isArray(res.data)) {
+            setAccounts(res.data);
+            const defaultAcc = res.data.find(a => a.id === "0ca10c4d-e132-4348-a711-1380af66ee52");
+            if (defaultAcc) {
+              setSelectedAccountId(defaultAcc.id);
+            } else if (res.data.length > 0) {
+              setSelectedAccountId(res.data[0].id);
+            }
+          } else {
+            showToast(res?.error || "Не удалось загрузить счета из iiko", "error");
+          }
+        } catch (err) {
+          showToast("Ошибка при получении счетов услуг", "error");
+        } finally {
+          setAccountsLoading(false);
+        }
+      };
+      fetchAccounts();
+    } else if (!isAdmin) {
+      setAccounts([
+        { id: "0ca10c4d-e132-4348-a711-1380af66ee52", name: "Доставка продуктов" },
+        { id: "d07478d5-c4e8-4618-b40d-23cbbce41a18", name: "Автомобильные расходы" },
+      ]);
+      setSelectedAccountId("0ca10c4d-e132-4348-a711-1380af66ee52");
+    }
+  }, [isAdmin, mode]);
 
   const handleSubmit = async () => {
     if (!selectedStoreId || !selectedAccountId || !sum) {
@@ -6758,6 +6795,10 @@ function ServicesView({
 
     const store = stores.find((s) => s.id === selectedStoreId);
     const storeName = store ? store.name : "Неизвестный склад";
+
+    const supplierObj = suppliers.find((s) => s.id === selectedSupplierId);
+    const supplierName = supplierObj ? supplierObj.name : "Представительские";
+
     const acc = accounts.find((a) => a.id === selectedAccountId);
     const accountName = acc ? acc.name : "Неизвестный счет";
 
@@ -6765,6 +6806,8 @@ function ServicesView({
     const result = await API.createService({
       store_id: selectedStoreId,
       store_name: storeName,
+      supplier_id: selectedSupplierId,
+      supplier_name: supplierName,
       account_id: selectedAccountId,
       account_name: accountName,
       sum: sumVal,
@@ -6807,6 +6850,7 @@ function ServicesView({
               setMode("new");
               setSum("");
               setComment("");
+              setSelectedSupplierId("f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d");
             }}
           >
             {I.plus} Новый акт услуг
@@ -6835,6 +6879,7 @@ function ServicesView({
             onRestore={(act) => {
               if (act.details) {
                 setSelectedStoreId(act.details.store_id || "");
+                setSelectedSupplierId(act.details.supplier_id || "f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d");
                 setSelectedAccountId(act.details.account_id || "0ca10c4d-e132-4348-a711-1380af66ee52");
                 setSum(String(act.details.sum || ""));
                 setComment(act.details.comment || "");
@@ -6890,37 +6935,61 @@ function ServicesView({
             </div>
           )}
 
-          {/* Supplier (Readonly locked to "Представительские") */}
-          <div
-            style={{
-              ...crumb,
-              display: "flex",
-              alignItems: "center",
-              marginBottom: 16,
-              background: "var(--bg-app)",
-              borderColor: "var(--border-color)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            🤝 Поставщик: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Представительские</b>
-          </div>
+          {/* Supplier Selection for Admin / Readonly for Supplier */}
+          {isAdmin ? (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Поставщик</label>
+              <select
+                value={selectedSupplierId}
+                onChange={(e) => setSelectedSupplierId(e.target.value)}
+                style={inp}
+              >
+                <option value="">-- Выберите поставщика --</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    🤝 {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div
+              style={{
+                ...crumb,
+                display: "flex",
+                alignItems: "center",
+                marginBottom: 16,
+                background: "var(--bg-app)",
+                borderColor: "var(--border-color)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              🤝 Поставщик: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Представительские</b>
+            </div>
+          )}
 
           {/* Service Account Selection */}
           <div style={{ marginBottom: 16 }}>
             <label style={lbl}>Счет услуги</label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              style={inp}
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  📊 {acc.name}
-                </option>
-              ))}
-            </select>
+            {accountsLoading ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                {I.loader} Загрузка счетов из iiko...
+              </div>
+            ) : (
+              <select
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                style={inp}
+              >
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    📊 [{acc.code || "—"}] {acc.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Sum Input */}
@@ -6977,6 +7046,7 @@ function ServicesView({
     </div>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 //  EMPLOYEES — управление сотрудниками (без привязки к ТГ)
