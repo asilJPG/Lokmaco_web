@@ -107,6 +107,9 @@ const API = {
   createInvoice(data) {
     return this.post("/invoice", data);
   },
+  createService(data) {
+    return this.post("/services", data);
+  },
   createTransfer(data) {
     return this.post("/transfer", data);
   },
@@ -1185,6 +1188,7 @@ export default function LocmacoApp() {
 
   const tabs = [
     { id: "incoming", label: "Приход", icon: I.inbox },
+    { id: "services", label: "Услуги", icon: I.inventory },
     { id: "transfer", label: "Перемещение", icon: I.transfer },
     { id: "inventory", label: "Инвентаризация", icon: I.inventory },
     { id: "production", label: "Приготовление", icon: I.cooking },
@@ -1212,6 +1216,8 @@ export default function LocmacoApp() {
     switch (tabId) {
       case "incoming":
         return role === "supplier";
+      case "services":
+        return ["supplier", "director"].includes(role);
       case "transfer":
         return ["kitchen", "prep_chef", "bar", "supplier", "hall"].includes(role);
       case "inventory":
@@ -2373,6 +2379,16 @@ export default function LocmacoApp() {
             loggedInUser={loggedInUser}
             loadHistory={loadHistory}
             history={history.filter((h) => h.action_type === "invoice")}
+            historyLoading={historyLoading}
+          />
+        )}
+        {tab === "services" && (
+          <ServicesView
+            stores={stores}
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+            loadHistory={loadHistory}
+            history={history.filter((h) => h.action_type === "services")}
             historyLoading={historyLoading}
           />
         )}
@@ -6594,6 +6610,274 @@ function WriteoffView({
               </div>
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SERVICES — акты приема услуг (для снабженца и админа)
+// ═══════════════════════════════════════════════════════════════
+
+function ServicesView({
+  stores = [],
+  showToast,
+  loggedInUser,
+  loadHistory,
+  history,
+  historyLoading,
+}) {
+  const [mode, setMode] = useState("idle");
+  const [sum, setSum] = useState("");
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("0ca10c4d-e132-4348-a711-1380af66ee52"); // Default: "Доставка продуктов"
+
+  const [baseRole] = (loggedInUser?.role || "").split(":");
+  const isAdmin = baseRole === "admin" || baseRole === "director";
+
+  const accounts = [
+    { id: "0ca10c4d-e132-4348-a711-1380af66ee52", name: "Доставка продуктов" },
+    { id: "d07478d5-c4e8-4618-b40d-23cbbce41a18", name: "Автомобильные расходы" },
+  ];
+
+  useEffect(() => {
+    if (loggedInUser?.storeId) {
+      setSelectedStoreId(loggedInUser.storeId);
+    } else {
+      setSelectedStoreId("");
+    }
+  }, [loggedInUser]);
+
+  const handleSubmit = async () => {
+    if (!selectedStoreId || !selectedAccountId || !sum) {
+      showToast("Заполните все поля", "error");
+      return;
+    }
+    const sumVal = parseFloat(sum) || 0;
+    if (sumVal <= 0) {
+      showToast("Сумма услуги должна быть больше нуля", "error");
+      return;
+    }
+
+    const store = stores.find((s) => s.id === selectedStoreId);
+    const storeName = store ? store.name : "Неизвестный склад";
+    const acc = accounts.find((a) => a.id === selectedAccountId);
+    const accountName = acc ? acc.name : "Неизвестный счет";
+
+    setSubmitting(true);
+    const result = await API.createService({
+      store_id: selectedStoreId,
+      store_name: storeName,
+      account_id: selectedAccountId,
+      account_name: accountName,
+      sum: sumVal,
+      comment: comment,
+    });
+    setSubmitting(false);
+
+    if (result?.success) {
+      showToast("Акт приема услуг успешно создан!");
+      loadHistory();
+      setMode("idle");
+      setSum("");
+      setComment("");
+    } else {
+      showToast(result?.error || "Ошибка создания акта", "error");
+    }
+  };
+
+  const getStoreName = (id) => {
+    const s = stores.find((st) => st.id === id);
+    return s ? s.name : id;
+  };
+
+  return (
+    <div style={{ animation: "fadeIn .25s ease" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+          Акты приема услуг
+        </h2>
+        {mode === "idle" ? (
+          <Btn
+            onClick={() => {
+              setMode("new");
+              setSum("");
+              setComment("");
+            }}
+          >
+            {I.plus} Новый акт услуг
+          </Btn>
+        ) : (
+          <Btn
+            outline
+            onClick={() => {
+              setMode("idle");
+              setSum("");
+              setComment("");
+            }}
+          >
+            {I.x} Отмена
+          </Btn>
+        )}
+      </div>
+
+      {mode === "idle" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <HistoryList
+            history={history}
+            loading={historyLoading}
+            onRefresh={loadHistory}
+            emptyText="История актов приема услуг пуста"
+            onRestore={(act) => {
+              if (act.details) {
+                setSelectedStoreId(act.details.store_id || "");
+                setSelectedAccountId(act.details.account_id || "0ca10c4d-e132-4348-a711-1380af66ee52");
+                setSum(String(act.details.sum || ""));
+                setComment(act.details.comment || "");
+                setMode("new");
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {mode === "new" && (
+        <div
+          style={{
+            background: "var(--bg-card)",
+            borderRadius: 16,
+            border: "1px solid var(--border-color)",
+            padding: 20,
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          {/* Sklad Selection */}
+          {isAdmin ? (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Склад</label>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                style={inp}
+              >
+                <option value="">-- Выберите склад --</option>
+                {stores.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    🏢 {st.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div
+              style={{
+                ...crumb,
+                display: "flex",
+                alignItems: "center",
+                marginBottom: 16,
+                background: "var(--bg-app)",
+                borderColor: "var(--border-color)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              🏢 Склад: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>{getStoreName(selectedStoreId)}</b>
+            </div>
+          )}
+
+          {/* Supplier (Readonly locked to "Представительские") */}
+          <div
+            style={{
+              ...crumb,
+              display: "flex",
+              alignItems: "center",
+              marginBottom: 16,
+              background: "var(--bg-app)",
+              borderColor: "var(--border-color)",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+          >
+            🤝 Поставщик: <b style={{ marginLeft: 4, color: "var(--text-main)" }}>Представительские</b>
+          </div>
+
+          {/* Service Account Selection */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Счет услуги</label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              style={inp}
+            >
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  📊 {acc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sum Input */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Сумма (сум)</label>
+            <input
+              type="number"
+              placeholder="Введите сумму услуги..."
+              value={sum}
+              onChange={(e) => setSum(e.target.value)}
+              style={inp}
+            />
+          </div>
+
+          {/* Comment Input */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Комментарий</label>
+            <textarea
+              placeholder="Добавьте примечание..."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              style={{
+                ...inp,
+                height: 80,
+                resize: "none",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          {/* Submit Button */}
+          <div
+            style={{
+              marginTop: 24,
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 12,
+            }}
+          >
+            <Btn
+              onClick={handleSubmit}
+              disabled={submitting}
+              style={{
+                background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                border: "none",
+              }}
+            >
+              {submitting ? I.loader : I.send}{" "}
+              {submitting ? "Отправка..." : "Провести акт в iiko"}
+            </Btn>
+          </div>
         </div>
       )}
     </div>
