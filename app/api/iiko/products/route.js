@@ -14,7 +14,9 @@ const UNIT_MAP = {
   "7ba81c3a-8de5-8f9d-fb9f-e39efcbc57cc": "кг",
   "69859c74-db72-b006-cba5-326cf6f4fc6e": "л",
   "cd19b5ea-1b32-a6e5-1df7-5d2784a0549a": "шт",
-  "109fb602-70ad-473d-ba1f-f037b6e72887": "шт",
+  "6040d92d-e286-f4f9-a613-ed0e6fd241e1": "порц",
+  "effa6e01-7c7c-4195-8ba7-8a0158b636a0": "м",
+  "109fb602-70ad-473d-ba1f-f037b6e72887": "пачка"
 };
 
 export async function GET() {

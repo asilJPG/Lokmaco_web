@@ -1196,6 +1196,7 @@ export default function LocmacoApp() {
     { id: "balances", label: "Остатки", icon: I.box },
     { id: "cash", label: "Касса", icon: I.cash },
     { id: "analytics", label: loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика", icon: I.analytics },
+    { id: "tax_report", label: "Налоговый отчет", icon: I.cash },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1232,6 +1233,8 @@ export default function LocmacoApp() {
         return role === "cashier";
       case "analytics":
         return ["director", "manager"].includes(role);
+      case "tax_report":
+        return ["director"].includes(role);
       case "balances":
         return role !== "manager";
       default:
@@ -2365,6 +2368,53 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "tax_report") && (
+                <button
+                  onClick={() => setTab("tax_report")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🧾
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Налоговый отчет
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Сверка официальной выручки (Humo/Uzcard) и налога 4%
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "employees") && (
                 <button
                   onClick={() => setTab("employees")}
@@ -2554,6 +2604,12 @@ export default function LocmacoApp() {
             history={history}
             historyLoading={historyLoading}
             loadHistory={loadHistory}
+            loggedInUser={loggedInUser}
+          />
+        )}
+        {tab === "tax_report" && (
+          <TaxReportView
+            showToast={showToast}
             loggedInUser={loggedInUser}
           />
         )}
@@ -14030,6 +14086,452 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TAX REPORT VIEW — Tax and 1C export report (sales / ingredients / writeoffs)
+// ═══════════════════════════════════════════════════════════════
+function TaxReportView({ showToast, loggedInUser }) {
+  const [period, setPeriod] = useState("this_month");
+  const [dates, setDates] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const format = (d) => d.toISOString().split("T")[0];
+    const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
+    return { from: format(d1), to: format(tzNow) };
+  });
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [activeSubTab, setActiveSubTab] = useState("sales");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const getDatesForPeriod = (periodType) => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const format = (d) => d.toISOString().split("T")[0];
+
+    switch (periodType) {
+      case "today":
+        return { from: format(tzNow), to: format(tzNow) };
+      case "yesterday": {
+        const y = new Date(tzNow.getTime() - 24 * 60 * 60 * 1000);
+        return { from: format(y), to: format(y) };
+      }
+      case "this_week": {
+        const day = tzNow.getDay();
+        const diff = tzNow.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diff, 12, 0, 0);
+        return { from: format(monday), to: format(tzNow) };
+      }
+      case "last_week": {
+        const day = tzNow.getDay();
+        const diffToMonday = tzNow.getDate() - day + (day === 0 ? -6 : 1);
+        const lastMonday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diffToMonday - 7, 12, 0, 0);
+        const lastSunday = new Date(tzNow.getFullYear(), tzNow.getMonth(), diffToMonday - 1, 12, 0, 0);
+        return { from: format(lastMonday), to: format(lastSunday) };
+      }
+      case "last_10_days": {
+        const d1 = new Date(tzNow.getTime() - 9 * 24 * 60 * 60 * 1000);
+        return { from: format(d1), to: format(tzNow) };
+      }
+      case "this_month": {
+        const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 1, 12, 0, 0);
+        return { from: format(d1), to: format(tzNow) };
+      }
+      case "last_month": {
+        const d1 = new Date(tzNow.getFullYear(), tzNow.getMonth() - 1, 1, 12, 0, 0);
+        const d2 = new Date(tzNow.getFullYear(), tzNow.getMonth(), 0, 12, 0, 0);
+        return { from: format(d1), to: format(d2) };
+      }
+      case "all_time": {
+        const start = new Date(2020, 0, 1, 12, 0, 0);
+        return { from: format(start), to: format(tzNow) };
+      }
+      default:
+        return { from: "", to: "" };
+    }
+  };
+
+  const loadReport = async (periodType, customFrom = "", customTo = "") => {
+    let from = customFrom || dates.from;
+    let to = customTo || dates.to;
+    if (periodType !== "custom") {
+      const pDates = getDatesForPeriod(periodType);
+      from = pDates.from;
+      to = pDates.to;
+      setDates(pDates);
+    }
+    if (!from || !to) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/iiko/analytics/tax-report?from=${from}&to=${to}`, {
+        headers: {
+          "x-user-role": loggedInUser.role || ""
+        }
+      });
+      const resData = await res.json();
+      if (res.ok && resData.success) {
+        setData(resData);
+      } else {
+        const err = resData?.error || "Ошибка при формировании отчета";
+        setError(err);
+        showToast(err, "error");
+      }
+    } catch (e) {
+      setError("Ошибка сети при загрузке отчета");
+      showToast("Ошибка сети при загрузке отчета", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePeriodChange = (pId) => {
+    setPeriod(pId);
+    if (pId !== "custom") {
+      loadReport(pId);
+    }
+  };
+
+  useEffect(() => {
+    loadReport(period);
+  }, []);
+
+  const formatNumber = (num) => {
+    if (num === null || num === undefined) return "0";
+    return parseFloat(Number(num).toFixed(3)).toLocaleString("ru-RU");
+  };
+
+  const formatMoney = (amount) => {
+    if (amount === null || amount === undefined) return "0 сум";
+    return Math.round(amount).toLocaleString("ru-RU") + " сум";
+  };
+
+  const getFilteredData = () => {
+    if (!data) return [];
+    const query = searchQuery.trim().toLowerCase();
+    
+    if (activeSubTab === "sales") {
+      const list = data.sales || [];
+      if (!query) return list;
+      return list.filter(item => 
+        (item.name || "").toLowerCase().includes(query) ||
+        (item.code || "").toLowerCase().includes(query)
+      );
+    } else if (activeSubTab === "ingredients") {
+      const list = data.ingredients || [];
+      if (!query) return list;
+      return list.filter(item => 
+        (item.name || "").toLowerCase().includes(query) ||
+        (item.code || "").toLowerCase().includes(query)
+      );
+    } else if (activeSubTab === "writeoffs") {
+      const list = data.writeoffs || [];
+      if (!query) return list;
+      return list.filter(item => 
+        (item.productName || "").toLowerCase().includes(query) ||
+        (item.code || "").toLowerCase().includes(query) ||
+        (item.storeName || "").toLowerCase().includes(query) ||
+        (item.accountName || "").toLowerCase().includes(query) ||
+        (item.number || "").toLowerCase().includes(query)
+      );
+    }
+    return [];
+  };
+
+  const handleExport = () => {
+    const list = getFilteredData();
+    if (!list || list.length === 0) {
+      showToast("Нет данных для экспорта", "info");
+      return;
+    }
+
+    let csvContent = "\ufeff";
+    if (activeSubTab === "sales") {
+      csvContent += "Артикул;Название блюда;Количество (шт);Дата продажи\n";
+      list.forEach(item => {
+        csvContent += `"${item.code || ""}";"${item.name || ""}";${item.quantity};"${item.date || ""}"\n`;
+      });
+    } else if (activeSubTab === "ingredients") {
+      csvContent += "Артикул;Название ингредиента;Расход;Ед. изм.\n";
+      list.forEach(item => {
+        csvContent += `"${item.code || ""}";"${item.name || ""}";${String(item.quantity).replace(".", ",")};"${item.unit || "шт"}"\n`;
+      });
+    } else if (activeSubTab === "writeoffs") {
+      csvContent += "Дата;Номер;Склад;Счет затрат;Артикул;Товар;Количество;Сумма (UZS)\n";
+      list.forEach(item => {
+        csvContent += `"${item.date || ""}";"${item.number || ""}";"${item.storeName || ""}";"${item.accountName || ""}";"${item.code || ""}";"${item.productName || ""}";${String(item.quantity).replace(".", ",")};${Math.round(item.cost)}\n`;
+      });
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `tax_report_${activeSubTab}_${dates.from}_to_${dates.to}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Отчет успешно экспортирован", "success");
+  };
+
+  const filteredItems = getFilteredData();
+
+  return (
+    <div style={{ padding: "20px 24px", maxWidth: 1200, margin: "0 auto", paddingBottom: 100 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text-main)" }}>
+            🧾 Налоговый отчет / Экспорт 1С
+          </h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+            Выгрузка реализации блюд, списания ингредиентов (рекурсивный расчет ТТК) и актов списаний для налогов и 1С.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 24, background: "var(--bg-card)", padding: 16, borderRadius: 12, border: "1px solid var(--border-color)" }}>
+        <PeriodDropdown
+          period={period}
+          setPeriod={setPeriod}
+          onPeriodChange={handlePeriodChange}
+          customLabel="Свой период"
+        />
+
+        {period === "custom" && (
+          <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="date"
+              value={dates.from}
+              onChange={(e) => setDates({ ...dates, from: e.target.value })}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-card)",
+                color: "var(--text-main)",
+                fontSize: 13,
+                outline: "none"
+              }}
+            />
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>до</span>
+            <input
+              type="date"
+              value={dates.to}
+              onChange={(e) => setDates({ ...dates, to: e.target.value })}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-card)",
+                color: "var(--text-main)",
+                fontSize: 13,
+                outline: "none"
+              }}
+            />
+            <button
+              onClick={() => loadReport("custom", dates.from, dates.to)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--color-primary)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "opacity 0.2s"
+              }}
+            >
+              Сформировать
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: 12 }}>
+          <div className="spinner" style={{
+            width: 32,
+            height: 32,
+            border: "3px solid var(--border-color)",
+            borderTop: "3px solid var(--color-primary)",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite"
+          }}></div>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Загрузка отчета и расчет ТТК...</span>
+        </div>
+      ) : error ? (
+        <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: 12, padding: 20, textAlign: "center", color: "#ef4444", fontSize: 14 }}>
+          ⚠️ {error}
+        </div>
+      ) : data ? (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 4, background: "var(--bg-pill)", padding: 4, borderRadius: 10 }}>
+              {[
+                { id: "sales", label: "🍔 Реализация" },
+                { id: "ingredients", label: "🌾 Расход сырья" },
+                { id: "writeoffs", label: "🗑️ Списания" }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: activeSubTab === sub.id ? "var(--bg-card)" : "transparent",
+                    color: activeSubTab === sub.id ? "var(--text-main)" : "var(--text-muted)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: activeSubTab === sub.id ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flex: 1, justifyContent: "flex-end", minWidth: 280 }}>
+              <input
+                type="text"
+                placeholder="Поиск по названию или коду..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  width: "100%",
+                  maxWidth: 240,
+                  outline: "none"
+                }}
+              />
+              <button
+                onClick={handleExport}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6
+                }}
+              >
+                📥 Экспорт CSV
+              </button>
+            </div>
+          </div>
+
+          <div style={{ background: "var(--bg-card)", borderRadius: 12, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "var(--bg-pill)", borderBottom: "1px solid var(--border-color)" }}>
+                    <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 50 }}>№</th>
+                    {activeSubTab === "sales" && (
+                      <>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120 }}>Код</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)" }}>Название блюда</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120, textAlign: "right" }}>Кол-во</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120 }}>Дата</th>
+                      </>
+                    )}
+                    {activeSubTab === "ingredients" && (
+                      <>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120 }}>Код</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)" }}>Название ингредиента</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120, textAlign: "right" }}>Расход</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100 }}>Ед. изм.</th>
+                      </>
+                    )}
+                    {activeSubTab === "writeoffs" && (
+                      <>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100 }}>Дата</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100 }}>Акт</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 140 }}>Склад</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 140 }}>Счет затрат</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100 }}>Код</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)" }}>Товар</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100, textAlign: "right" }}>Кол-во</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120, textAlign: "right" }}>Сумма</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} style={{ padding: "40px 16px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+                        Данные не найдены
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredItems.map((item, idx) => (
+                      <tr
+                        key={idx}
+                        style={{
+                          borderBottom: "1px solid var(--border-color)",
+                          background: idx % 2 === 1 ? "var(--bg-pill)" : "transparent"
+                        }}
+                      >
+                        <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{idx + 1}</td>
+                        {activeSubTab === "sales" && (
+                          <>
+                            <td style={{ padding: "12px 16px", fontFamily: "monospace" }}>{item.code || "—"}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 600 }}>{item.name}</td>
+                            <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>{item.quantity} шт</td>
+                            <td style={{ padding: "12px 16px" }}>{item.date}</td>
+                          </>
+                        )}
+                        {activeSubTab === "ingredients" && (
+                          <>
+                            <td style={{ padding: "12px 16px", fontFamily: "monospace" }}>{item.code || "—"}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 600 }}>{item.name}</td>
+                            <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>{formatNumber(item.quantity)}</td>
+                            <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{item.unit || "шт"}</td>
+                          </>
+                        )}
+                        {activeSubTab === "writeoffs" && (
+                          <>
+                            <td style={{ padding: "12px 16px" }}>{item.date}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 500 }}>{item.number}</td>
+                            <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{item.storeName}</td>
+                            <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{item.accountName}</td>
+                            <td style={{ padding: "12px 16px", fontFamily: "monospace" }}>{item.code || "—"}</td>
+                            <td style={{ padding: "12px 16px", fontWeight: 600 }}>{item.productName}</td>
+                            <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>{formatNumber(item.quantity)}</td>
+                            <td style={{ padding: "12px 16px", textAlign: "right", color: "#ef4444", fontWeight: 700 }}>{formatMoney(item.cost)}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+          🗓️ Выберите период и нажмите кнопку «Сформировать»
         </div>
       )}
     </div>
