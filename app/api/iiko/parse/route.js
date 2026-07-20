@@ -24,7 +24,7 @@ export async function POST(request) {
 
     // 1. Load products from iiko
     const products = await withIikoSession(async (token) => {
-      const data = await iikoGetJson("v2/entities/products/list", token);
+      const data = await iikoGetJson("v2/entities/products/list?includeDeleted=true", token);
       if (!data) return [];
       return data
         .filter((p) => p.type === "GOODS")

@@ -35,7 +35,7 @@ export async function GET(_request) {
       // Fetch stores, products, and balances in parallel for maximum speed
       const [storesXml, rawProducts, balancesData] = await Promise.all([
         iikoGetRaw("corporation/stores", token).catch(() => null),
-        iikoGetJson("v2/entities/products/list", token).catch(() => null),
+        iikoGetJson("v2/entities/products/list?includeDeleted=true", token).catch(() => null),
         iikoGetJson(`v2/reports/balance/stores?timestamp=${timestamp}`, token).catch(() => null),
       ]);
 

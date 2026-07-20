@@ -1631,6 +1631,7 @@ export default function LocmacoApp() {
         background: "var(--bg-app)",
         color: "var(--text-main)",
         transition: "background 0.25s ease, color 0.25s ease",
+        overflowX: "hidden",
       }}
     >
       <style>{`
@@ -11075,7 +11076,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
             {cashPeriod === "single" && (
               <div
-                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+                style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}
               >
                 <span
                   style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}
@@ -11120,7 +11121,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
             {cashPeriod === "custom" && (
               <div
-                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+                style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}
               >
                 <input
                   type="date"
@@ -12320,7 +12321,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
             {topPeriod === "custom" && (
               <div
-                style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
+                style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}
               >
                 <input
                   type="date"
@@ -14254,14 +14255,14 @@ function TaxReportView({ showToast, loggedInUser }) {
 
     let csvContent = "\ufeff";
     if (activeSubTab === "sales") {
-      csvContent += "Артикул;Название блюда;Количество (шт);Дата продажи\n";
+      csvContent += "Артикул;Название блюда;Количество (шт)\n";
       list.forEach(item => {
-        csvContent += `"${item.code || ""}";"${item.name || ""}";${item.quantity};"${item.date || ""}"\n`;
+        csvContent += `"${item.code || ""}";"${item.name || ""}";${item.quantity}\n`;
       });
     } else if (activeSubTab === "ingredients") {
-      csvContent += "Артикул;Название ингредиента;Расход;Ед. изм.\n";
+      csvContent += "Артикул;Название ингредиента;Расход;Ед. изм.;Цена;Сумма (UZS)\n";
       list.forEach(item => {
-        csvContent += `"${item.code || ""}";"${item.name || ""}";${String(item.quantity).replace(".", ",")};"${item.unit || "шт"}"\n`;
+        csvContent += `"${item.code || ""}";"${item.name || ""}";${String(item.quantity).replace(".", ",")};"${item.unit || "шт"}";${String(Math.round(item.price || 0)).replace(".", ",")};${Math.round(item.cost || 0)}\n`;
       });
     } else if (activeSubTab === "writeoffs") {
       csvContent += "Дата;Номер;Склад;Счет затрат;Артикул;Товар;Количество;Сумма (UZS)\n";
@@ -14305,7 +14306,7 @@ function TaxReportView({ showToast, loggedInUser }) {
         />
 
         {period === "custom" && (
-          <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             <input
               type="date"
               value={dates.from}
@@ -14451,7 +14452,6 @@ function TaxReportView({ showToast, loggedInUser }) {
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120 }}>Код</th>
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)" }}>Название блюда</th>
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120, textAlign: "right" }}>Кол-во</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120 }}>Дата</th>
                       </>
                     )}
                     {activeSubTab === "ingredients" && (
@@ -14460,6 +14460,7 @@ function TaxReportView({ showToast, loggedInUser }) {
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)" }}>Название ингредиента</th>
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 120, textAlign: "right" }}>Расход</th>
                         <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 100 }}>Ед. изм.</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 700, color: "var(--text-muted)", width: 140, textAlign: "right" }}>Сумма</th>
                       </>
                     )}
                     {activeSubTab === "writeoffs" && (
@@ -14498,7 +14499,6 @@ function TaxReportView({ showToast, loggedInUser }) {
                             <td style={{ padding: "12px 16px", fontFamily: "monospace" }}>{item.code || "—"}</td>
                             <td style={{ padding: "12px 16px", fontWeight: 600 }}>{item.name}</td>
                             <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>{item.quantity} шт</td>
-                            <td style={{ padding: "12px 16px" }}>{item.date}</td>
                           </>
                         )}
                         {activeSubTab === "ingredients" && (
@@ -14507,6 +14507,7 @@ function TaxReportView({ showToast, loggedInUser }) {
                             <td style={{ padding: "12px 16px", fontWeight: 600 }}>{item.name}</td>
                             <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>{formatNumber(item.quantity)}</td>
                             <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{item.unit || "шт"}</td>
+                            <td style={{ padding: "12px 16px", textAlign: "right", color: "var(--text-main)", fontWeight: 700 }}>{formatMoney(item.cost)}</td>
                           </>
                         )}
                         {activeSubTab === "writeoffs" && (

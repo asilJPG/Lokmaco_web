@@ -36,7 +36,7 @@ export async function GET(request) {
 
     const reportData = await withIikoSession(async (token) => {
       // 1. Fetch products catalogue
-      const productsRes = await http1Fetch(`${IIKO_SERVER}/resto/api/v2/entities/products/list`, {
+      const productsRes = await http1Fetch(`${IIKO_SERVER}/resto/api/v2/entities/products/list?includeDeleted=true`, {
         headers: { Cookie: `key=${token}`, Accept: "application/json" }
       });
       const rawProducts = productsRes.ok ? await productsRes.json() : [];
@@ -75,11 +75,10 @@ export async function GET(request) {
         });
       }
 
-      // 3. Fetch sales OLAP
       const olapBody = {
         reportType: "SALES",
         buildSummary: "true",
-        groupByRowFields: ["OpenDate.Typed", "DishId", "DishName", "DishCode"],
+        groupByRowFields: ["DishId", "DishName", "DishCode"],
         groupByColFields: [],
         aggregateFields: ["DishAmountInt"],
         filters: {
@@ -140,6 +139,40 @@ export async function GET(request) {
         }
       }
 
+      // 7. Fetch stock balances at the end date (dateTo)
+      const balanceRes = await http1Fetch(`${IIKO_SERVER}/resto/api/v2/reports/balance/stores?timestamp=${dateTo}T23:59:59`, {
+        headers: { Cookie: `key=${token}`, Accept: "application/json" }
+      });
+      const rawBalances = balanceRes.ok ? await balanceRes.json() : [];
+
+      const priceMap = new Map();
+      rawBalances.forEach(item => {
+        const pId = item.product;
+        const amount = parseFloat(item.amount) || 0;
+        const sum = parseFloat(item.sum) || 0;
+        if (amount !== 0 && sum !== 0) {
+          if (!priceMap.has(pId)) {
+            priceMap.set(pId, []);
+          }
+          priceMap.get(pId).push({ amount, sum });
+        }
+      });
+
+      const avgPriceMap = new Map();
+      for (const [pId, list] of priceMap.entries()) {
+        let totalAmount = 0;
+        let totalSum = 0;
+        list.forEach(item => {
+          if ((item.amount > 0 && item.sum > 0) || (item.amount < 0 && item.sum < 0)) {
+            totalAmount += Math.abs(item.amount);
+            totalSum += Math.abs(item.sum);
+          }
+        });
+        if (totalAmount > 0) {
+          avgPriceMap.set(pId, totalSum / totalAmount);
+        }
+      }
+
       // Recursive ingredient expansion function
       function expandIngredients(productId, quantity, saleDate, accumulatedIngredients, path = new Set()) {
         if (path.has(productId)) return; // prevent loop
@@ -182,19 +215,17 @@ export async function GET(request) {
         const dishName = row.DishName;
         const dishCode = row.DishCode;
         const qty = parseFloat(row.DishAmountInt) || 0.0;
-        const saleDate = row["OpenDate.Typed"] || dateFrom;
 
         if (qty > 0) {
           soldDishes.push({
             id: dishId,
             name: dishName,
             code: dishCode,
-            quantity: qty,
-            date: saleDate.substring(0, 10)
+            quantity: qty
           });
 
-          // Expand ingredients recursively
-          expandIngredients(dishId, qty, saleDate, accumulatedIngredients);
+          // Expand ingredients recursively using dateTo as reference date
+          expandIngredients(dishId, qty, dateTo, accumulatedIngredients);
         }
       });
 
@@ -206,12 +237,16 @@ export async function GET(request) {
           code: "",
           unit: "шт"
         };
+        const price = avgPriceMap.get(ingId) || 0.0;
+        const cost = qty * price;
         ingredientsList.push({
           id: ingId,
           name: p.name,
           code: p.code,
           quantity: qty,
-          unit: p.unit
+          unit: p.unit,
+          price: price,
+          cost: cost
         });
       }
 

@@ -22,7 +22,7 @@ const UNIT_MAP = {
 export async function GET() {
   try {
     const products = await withIikoSession(async (token) => {
-      const data = await iikoGetJson("v2/entities/products/list", token);
+      const data = await iikoGetJson("v2/entities/products/list?includeDeleted=true", token);
       if (!data) return [];
 
       return data
