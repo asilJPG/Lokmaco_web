@@ -15266,8 +15266,25 @@ function AssetFormModal({ asset, onClose, onSave }) {
 
 function QrStickerModal({ asset, onClose }) {
   const invNum = asset.inv_number || `EQ-${asset.id.slice(0, 6)}`;
-  const qrData = encodeURIComponent(`https://web.lokmaco.uz/asset/${asset.id}?inv=${invNum}`);
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${qrData}`;
+
+  // QR несёт всю информацию ТЕКСТОМ — при сканировании обычной камерой
+  // данные видны сразу, без перехода на сайт.
+  const qrText = [
+    `Инв. №: ${invNum}`,
+    `Наименование: ${asset.name || "—"}`,
+    asset.category ? `Категория: ${asset.category}` : null,
+    `Дата прихода: ${asset.commissioning_date || "—"}`,
+    `Стоимость: ${formatMoney(asset.initial_cost)}`,
+    asset.quantity ? `Кол-во: ${asset.quantity}` : null,
+    `Локация: ${asset.location || "—"}`,
+    `МОЛ: ${asset.responsible_person || "—"}`,
+    asset.serial_number ? `Код: ${asset.serial_number}` : null,
+    asset.status ? `Статус: ${asset.status}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const qrData = encodeURIComponent(qrText);
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=${qrData}`;
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
@@ -15278,31 +15295,27 @@ function QrStickerModal({ asset, onClose }) {
           <style>
             body { font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
             .sticker {
-              width: 320px;
+              width: 300px;
               border: 2px solid #000;
               border-radius: 12px;
-              padding: 16px;
+              padding: 18px;
               margin: 0 auto;
               background: #fff;
             }
-            .title { font-size: 16px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; }
-            .subtitle { font-size: 11px; color: #555; margin-bottom: 12px; }
-            .qr { width: 160px; height: 160px; margin: 10px auto; }
-            .code { font-family: monospace; font-size: 18px; font-weight: bold; background: #eee; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
-            .info { font-size: 12px; margin-top: 8px; color: #333; }
+            .qr { width: 230px; height: 230px; margin: 0 auto 10px auto; display: block; }
+            .subtitle { font-size: 13px; font-weight: 700; color: #111; }
           </style>
         </head>
         <body>
           <div class="sticker">
-            <div class="title">Lokma & Co</div>
-            <div class="subtitle">Инвентарный стикер оборудования</div>
             <img src="${qrCodeUrl}" class="qr" alt="QR" />
-            <div class="code">${invNum}</div>
-            <div class="info"><b>${asset.name}</b></div>
-            <div class="info">Приход: ${asset.commissioning_date || "—"} | ${formatMoney(asset.initial_cost)}</div>
+            <div class="subtitle">Инвентарная наклейка оборудования</div>
           </div>
           <script>
-            setTimeout(() => { window.print(); window.close(); }, 500);
+            const img = document.querySelector(".qr");
+            const go = () => { window.print(); window.close(); };
+            if (img.complete) { setTimeout(go, 300); }
+            else { img.onload = () => setTimeout(go, 300); img.onerror = () => setTimeout(go, 300); }
           </script>
         </body>
       </html>
@@ -15318,35 +15331,14 @@ function QrStickerModal({ asset, onClose }) {
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
         </div>
 
-        {/* PRINTABLE STICKER PREVIEW */}
+        {/* PRINTABLE STICKER PREVIEW — только QR + подпись */}
         <div style={{ border: "2px solid var(--border-color)", borderRadius: 14, padding: 20, background: "#ffffff", color: "#1e293b", margin: "0 auto 20px auto" }}>
-          <div style={{ fontSize: 16, fontWeight: 900, textTransform: "uppercase", letterSpacing: 1, color: "#0f172a" }}>
-            🍩 Lokma & Co
+          <div style={{ margin: "0 auto 12px auto" }}>
+            <img src={qrCodeUrl} alt="QR Code" style={{ width: 220, height: 220, borderRadius: 8, border: "1px solid #e2e8f0" }} />
           </div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontWeight: 600 }}>
+
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
             Инвентарная наклейка оборудования
-          </div>
-
-          <div style={{ margin: "14px 0" }}>
-            <img src={qrCodeUrl} alt="QR Code" style={{ width: 170, height: 170, borderRadius: 8, border: "1px solid #e2e8f0" }} />
-          </div>
-
-          <div style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 900, background: "#f1f5f9", padding: "6px 14px", borderRadius: 8, display: "inline-block", color: "#4f46e5" }}>
-            {invNum}
-          </div>
-
-          <div style={{ fontSize: 14, fontWeight: 800, marginTop: 10, color: "#0f172a" }}>
-            {asset.name}
-          </div>
-
-          <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-            📅 Приход: <b>{asset.commissioning_date || "—"}</b>
-          </div>
-          <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
-            💰 Стоимость: <b>{formatMoney(asset.initial_cost)}</b>
-          </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
-            📍 {asset.location || "Кухня"} | 👤 {asset.responsible_person || "МОЛ"}
           </div>
         </div>
 
