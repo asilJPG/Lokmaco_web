@@ -190,6 +190,10 @@ const API = {
 
 const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
 const fmtPrice = (n) => fmt(n) + " сум";
+const formatMoney = (amount) => {
+  if (amount === null || amount === undefined) return "0 сум";
+  return new Intl.NumberFormat("ru-RU").format(Math.round(Number(amount) || 0)) + " сум";
+};
 
 const I = {
   box: (
@@ -1249,7 +1253,7 @@ export default function LocmacoApp() {
 
   const hasAccess = (role, tabId) => {
     if (tabId === "fixed_assets") {
-      return role === "admin";
+      return ["admin", "director", "manager", "supplier", "kitchen", "prep_chef", "bar", "hall", "cashier"].includes(role);
     }
     if (role === "admin") return true;
     switch (tabId) {
@@ -14300,11 +14304,6 @@ function TaxReportView({ showToast, loggedInUser }) {
     return parseFloat(Number(num).toFixed(3)).toLocaleString("ru-RU");
   };
 
-  const formatMoney = (amount) => {
-    if (amount === null || amount === undefined) return "0 сум";
-    return Math.round(amount).toLocaleString("ru-RU") + " сум";
-  };
-
   const getFilteredData = () => {
     if (!data) return [];
     const query = searchQuery.trim().toLowerCase();
@@ -14983,7 +14982,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                   return (
                     <tr key={asset.id} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s" }}>
                       <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--color-primary, #6366f1)" }}>
-                        {asset.inv_number || `EQ-${asset.id.slice(0, 6)}`}
+                        {asset.inv_number || `EQ-${asset.id ? String(asset.id).slice(0, 6) : "0000"}`}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>

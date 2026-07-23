@@ -98,15 +98,16 @@ export async function POST(request) {
         }
       }
 
-      // 4. Get existing DB assets
+      // 4. Get existing DB assets.
+      // NOTE: the `assets` table has no `iiko_id`/`code` columns, so we dedupe on the
+      // deterministic inventory number and on the serial number (which stores iiko code).
       const existingAssets = await getAssetsList();
-      const existingMapByIikoId = {};
       const existingMapByCode = {};
+      const existingMapBySerial = {};
 
       existingAssets.forEach(a => {
-        if (a.iiko_id) existingMapByIikoId[a.iiko_id] = a;
         if (a.inv_number) existingMapByCode[a.inv_number] = a;
-        if (a.code) existingMapByCode[a.code] = a;
+        if (a.serial_number) existingMapBySerial[a.serial_number] = a;
       });
 
       let addedCount = 0;
@@ -121,7 +122,9 @@ export async function POST(request) {
         const initialCost = lastPurchase.price || lastPurchase.sum || p.estimatedPurchasePrice || 0;
         const commissioningDate = lastPurchase.date || new Date().toISOString().split("T")[0];
 
-        const existing = existingMapByIikoId[p.id] || existingMapByCode[invNumber] || existingMapByCode[p.code];
+        const existing =
+          existingMapByCode[invNumber] ||
+          (p.code ? existingMapBySerial[p.code] : null);
 
         if (existing) {
           const updates = {};
@@ -131,16 +134,13 @@ export async function POST(request) {
           if (!existing.commissioning_date && commissioningDate) {
             updates.commissioning_date = commissioningDate;
           }
-          if (!existing.iiko_id) {
-            updates.iiko_id = p.id;
-          }
 
           if (Object.keys(updates).length > 0) {
-            await updateAsset(existing.id, updates);
-            updatedCount++;
+            const ok = await updateAsset(existing.id, updates);
+            if (ok) updatedCount++;
           }
         } else {
-          await createAsset({
+          const created = await createAsset({
             inv_number: invNumber,
             name: p.name,
             category: "Оборудование",
@@ -151,10 +151,9 @@ export async function POST(request) {
             commissioning_date: commissioningDate,
             status: "in_use",
             serial_number: p.code || "",
-            notes: `Импортировано из iiko (Код: ${p.code || p.num || ""})`,
-            iiko_id: p.id
+            notes: `Импортировано из iiko (ID: ${p.id}${p.code ? ", Код: " + p.code : ""})`
           });
-          addedCount++;
+          if (created) addedCount++;
         }
       }
 
@@ -170,11 +169,9 @@ export async function POST(request) {
       return Response.json({ success: false, error: syncResult.error }, { status: 400 });
     }
 
-    await logAction("assets_sync_iiko", {
+    await logAction(userTgId, userName, "assets_sync_iiko", "iiko", {
       userId,
-      userName,
       userRole,
-      userTgId,
       added: syncResult.addedCount,
       updated: syncResult.updatedCount
     });
