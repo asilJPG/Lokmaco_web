@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -14640,6 +14640,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   // Modals
   const [editModalAsset, setEditModalAsset] = useState(null); // Asset object to edit or new
   const [qrModalAsset, setQrModalAsset] = useState(null); // Asset object for QR sticker print
+  const [scanOpen, setScanOpen] = useState(false); // Camera-based inventory scanner
 
   const loadAssets = async () => {
     setLoading(true);
@@ -14768,6 +14769,68 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const totalInitialCost = filteredAssets.reduce((sum, a) => sum + (parseFloat(a.initial_cost) || 0), 0);
   const totalCount = filteredAssets.length;
 
+  const handleExportCsv = () => {
+    const rows = [[
+      "Инв. №", "Наименование", "Категория", "Дата прихода",
+      "Первоначальная стоимость", "Количество", "Локация", "МОЛ",
+      "Серийный код", "Статус", "Последняя инвентаризация"
+    ]];
+    filteredAssets.forEach(a => {
+      rows.push([
+        a.inv_number || "", a.name || "", a.category || "",
+        a.commissioning_date || "",
+        a.initial_cost != null ? String(a.initial_cost) : "",
+        a.quantity != null ? String(a.quantity) : "",
+        a.location || "", a.responsible_person || "",
+        a.serial_number || "", a.status || "",
+        a.last_inventoried_at ? new Date(a.last_inventoried_at).toLocaleDateString("ru-RU") : ""
+      ]);
+    });
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = "﻿" + rows.map(r => r.map(esc).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `os-inventory-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast?.(`Экспортировано ${filteredAssets.length} позиций`, "success");
+  };
+
+  const handleFinishScanAudit = async (scannedIds) => {
+    const ids = Array.from(scannedIds);
+    if (ids.length === 0) {
+      showToast?.("Ничего не отсканировано", "warn");
+      return;
+    }
+    const headers = {
+      "Content-Type": "application/json",
+      "x-user-id": loggedInUser?.id || "admin",
+      "x-user-role": loggedInUser?.baseRole || "admin",
+      "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ")
+    };
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch("/api/iiko/assets", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ id, action: "audit" })
+        });
+        if (res.ok) ok++;
+      } catch (e) {
+        console.error("[audit] failed for", id, e);
+      }
+    }
+    showToast?.(`Инвентаризация сохранена: ${ok} из ${ids.length}`, "success");
+    setScanOpen(false);
+    await loadAssets();
+  };
+
   return (
     <div style={{ padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
       {/* Header Bar */}
@@ -14785,6 +14848,45 @@ function FixedAssetsView({ showToast, loggedInUser }) {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setScanOpen(true)}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "none",
+              background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.25)"
+            }}
+          >
+            📷 Инвентаризация сканером
+          </button>
+
+          <button
+            onClick={handleExportCsv}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8
+            }}
+          >
+            📊 Экспорт CSV
+          </button>
+
           <button
             onClick={handleSyncIiko}
             disabled={syncing}
@@ -15092,6 +15194,240 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           onClose={() => setQrModalAsset(null)}
         />
       )}
+
+      {/* INVENTORY SCANNER MODAL */}
+      {scanOpen && (
+        <InventoryScanModal
+          assets={assets}
+          onClose={() => setScanOpen(false)}
+          onFinish={handleFinishScanAudit}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const detectorRef = useRef(null);
+  const [scannedIds, setScannedIds] = useState(new Set());
+  const [lastScan, setLastScan] = useState(null);
+  const [error, setError] = useState("");
+  const [supported, setSupported] = useState(true);
+  const [showMissing, setShowMissing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const byInv = useMemo(() => {
+    const m = new Map();
+    assets.forEach(a => {
+      if (a.inv_number) m.set(String(a.inv_number).trim().toUpperCase(), a);
+    });
+    return m;
+  }, [assets]);
+
+  const parseInv = (text) => {
+    if (!text) return null;
+    const m = text.match(/Инв\.\s*№\s*[:：]?\s*([A-Za-zА-Яа-я0-9\-_]+)/i);
+    if (m) return m[1].trim().toUpperCase();
+    // fallback: если QR — просто инв. номер
+    const t = text.trim();
+    if (/^[A-Z0-9\-_]{3,}$/i.test(t)) return t.toUpperCase();
+    return null;
+  };
+
+  const stopCamera = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          setSupported(false);
+          setError("Камера недоступна в этом браузере");
+          return;
+        }
+        if (!("BarcodeDetector" in window)) {
+          setSupported(false);
+          setError("QR-детектор не поддержан. Используйте Chrome (Android) или Safari 17+ на iPhone.");
+          return;
+        }
+        detectorRef.current = new window.BarcodeDetector({ formats: ["qr_code"] });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }
+        });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+
+        const loop = async () => {
+          if (cancelled || !videoRef.current) return;
+          try {
+            const codes = await detectorRef.current.detect(videoRef.current);
+            if (codes && codes.length > 0) {
+              for (const c of codes) {
+                const inv = parseInv(c.rawValue || "");
+                if (!inv) continue;
+                const asset = byInv.get(inv);
+                if (asset) {
+                  setScannedIds(prev => {
+                    if (prev.has(asset.id)) return prev;
+                    const next = new Set(prev);
+                    next.add(asset.id);
+                    return next;
+                  });
+                  setLastScan({ ok: true, inv, name: asset.name });
+                  if (navigator.vibrate) navigator.vibrate(60);
+                } else {
+                  setLastScan({ ok: false, inv, name: "Не найдено в базе" });
+                }
+              }
+            }
+          } catch (e) {
+            // ignore detect errors
+          }
+          rafRef.current = requestAnimationFrame(loop);
+        };
+        rafRef.current = requestAnimationFrame(loop);
+      } catch (e) {
+        console.error("[scan] init error:", e);
+        setError(e.message || "Не удалось открыть камеру");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const total = assets.length;
+  const scannedCount = scannedIds.size;
+  const missing = assets.filter(a => !scannedIds.has(a.id));
+
+  const doFinish = async () => {
+    setSaving(true);
+    await onFinish(scannedIds);
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 1200, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
+      <div style={{ background: "var(--bg-card)", width: "100%", maxWidth: 560, display: "flex", flexDirection: "column" }}>
+        {/* header */}
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>📷 Инвентаризация</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Наведите камеру на QR-стикеры оборудования</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+        </div>
+
+        {/* camera */}
+        <div style={{ position: "relative", background: "#000", aspectRatio: "3/4", maxHeight: "50vh", overflow: "hidden" }}>
+          {supported ? (
+            <>
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+              <canvas ref={canvasRef} style={{ display: "none" }} />
+              {/* reticle */}
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                <div style={{ width: "62%", aspectRatio: "1/1", border: "3px solid rgba(255,255,255,0.85)", borderRadius: 20, boxShadow: "0 0 0 9999px rgba(0,0,0,0.35)" }} />
+              </div>
+            </>
+          ) : (
+            <div style={{ padding: 24, color: "#fff", textAlign: "center" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>📷</div>
+              <div>{error || "Сканер недоступен"}</div>
+            </div>
+          )}
+        </div>
+
+        {/* last scan feedback */}
+        <div style={{ padding: "10px 18px", background: lastScan ? (lastScan.ok ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)") : "var(--bg-pill)", borderBottom: "1px solid var(--border-color)", minHeight: 44, display: "flex", alignItems: "center", gap: 10 }}>
+          {lastScan ? (
+            <>
+              <span style={{ fontSize: 18 }}>{lastScan.ok ? "✅" : "⚠️"}</span>
+              <div style={{ fontSize: 13, color: "var(--text-main)" }}>
+                <b>{lastScan.inv}</b> — {lastScan.name}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Наведите на QR-код…</div>
+          )}
+        </div>
+
+        {/* progress */}
+        <div style={{ padding: 16, borderBottom: "1px solid var(--border-color)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Отсканировано</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-main)" }}>
+              {scannedCount} <span style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 600 }}>из {total}</span>
+            </div>
+          </div>
+          <div style={{ height: 8, background: "var(--bg-pill)", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{
+              width: total ? `${(scannedCount / total) * 100}%` : "0%",
+              height: "100%",
+              background: "linear-gradient(90deg, #10b981, #059669)",
+              transition: "width 0.3s"
+            }} />
+          </div>
+          <button
+            onClick={() => setShowMissing(v => !v)}
+            style={{ marginTop: 10, background: "none", border: "none", color: "var(--color-primary, #6366f1)", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0 }}
+          >
+            {showMissing ? "Скрыть пропущенные" : `Показать пропущенные (${missing.length})`}
+          </button>
+          {showMissing && (
+            <div style={{ marginTop: 10, maxHeight: 160, overflowY: "auto", background: "var(--bg-pill)", borderRadius: 8, padding: 10 }}>
+              {missing.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>Всё найдено 🎉</div>
+              ) : missing.map(m => (
+                <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0", color: "var(--text-main)" }}>
+                  <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{m.inv_number}</span>
+                  <span style={{ color: "var(--text-muted)", marginLeft: 10, textAlign: "right", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* actions */}
+        <div style={{ padding: 16, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontWeight: 600, cursor: "pointer" }}
+          >
+            Отмена
+          </button>
+          <button
+            onClick={doFinish}
+            disabled={saving || scannedCount === 0}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: scannedCount === 0 ? "#9ca3af" : "linear-gradient(135deg, #10b981, #059669)", color: "#fff", fontWeight: 700, cursor: scannedCount === 0 ? "not-allowed" : "pointer" }}
+          >
+            {saving ? "Сохранение…" : `✓ Завершить (${scannedCount})`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -15332,12 +15668,30 @@ function QrStickerModal({ asset, onClose }) {
         </div>
 
         {/* PRINTABLE STICKER PREVIEW — только QR + подпись */}
-        <div style={{ border: "2px solid var(--border-color)", borderRadius: 14, padding: 20, background: "#ffffff", color: "#1e293b", margin: "0 auto 20px auto" }}>
-          <div style={{ margin: "0 auto 12px auto" }}>
-            <img src={qrCodeUrl} alt="QR Code" style={{ width: 220, height: 220, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+        <div style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          padding: "22px 22px 18px",
+          background: "#ffffff",
+          color: "#1e293b",
+          margin: "0 auto 20px auto",
+          boxShadow: "0 6px 20px rgba(15,23,42,0.06)"
+        }}>
+          <div style={{ margin: "0 auto 14px auto" }}>
+            <img
+              src={qrCodeUrl}
+              alt="QR Code"
+              style={{ width: 240, height: 240, display: "block", margin: "0 auto" }}
+            />
           </div>
 
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
+          <div style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#0f172a",
+            letterSpacing: "0.2px",
+            textAlign: "center"
+          }}>
             Инвентарная наклейка оборудования
           </div>
         </div>
