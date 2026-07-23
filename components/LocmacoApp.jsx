@@ -1253,7 +1253,7 @@ export default function LocmacoApp() {
 
   const hasAccess = (role, tabId) => {
     if (tabId === "fixed_assets") {
-      return ["admin", "director", "manager", "supplier", "kitchen", "prep_chef", "bar", "hall", "cashier"].includes(role);
+      return role === "admin" || role === "manager";
     }
     if (role === "admin") return true;
     switch (tabId) {

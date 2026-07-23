@@ -17,8 +17,8 @@ export async function POST(request) {
     }
 
     const [baseRole] = userRole.split(":");
-    if (!["admin", "director", "accountant", "manager"].includes(baseRole)) {
-      return Response.json({ error: "Доступ запрещен" }, { status: 403 });
+    if (baseRole !== "admin" && baseRole !== "manager") {
+      return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
     }
 
     const syncResult = await withIikoSession(async (token) => {

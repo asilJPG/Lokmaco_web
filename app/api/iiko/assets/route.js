@@ -5,8 +5,13 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const userId = request.headers.get("x-user-id");
+    const userRole = request.headers.get("x-user-role") || "";
     if (!userId) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const [baseRole] = userRole.split(":");
+    if (baseRole !== "admin" && baseRole !== "manager") {
+      return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -52,8 +57,8 @@ export async function POST(request) {
     }
 
     const [baseRole] = userRole.split(":");
-    if (!["admin", "director", "manager", "supplier", "kitchen", "prep_chef", "bar", "hall", "cashier"].includes(baseRole)) {
-      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    if (baseRole !== "admin" && baseRole !== "manager") {
+      return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -146,8 +151,8 @@ export async function PUT(request) {
     }
 
     const [baseRole] = userRole.split(":");
-    if (!["admin", "director", "manager", "supplier", "kitchen", "prep_chef", "bar", "hall", "cashier"].includes(baseRole)) {
-      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    if (baseRole !== "admin" && baseRole !== "manager") {
+      return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
     }
 
     const ok = await updateAsset(id, updates);
@@ -174,8 +179,8 @@ export async function DELETE(request) {
     }
 
     const [baseRole] = userRole.split(":");
-    if (!["admin", "director"].includes(baseRole)) {
-      return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
+    if (baseRole !== "admin" && baseRole !== "manager") {
+      return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
