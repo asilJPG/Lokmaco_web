@@ -63,7 +63,7 @@ export async function POST(request) {
     const finalComment = `[Счет: ${account_name}] ${comment || ""} (Создал: ${user.name}) (Сгенерировано через сайт)`.trim();
     const commentXml = `<comment>${escapeXml(finalComment)}</comment>`;
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><dateIncoming>${dateStr}</dateIncoming><defaultStore>${escapeXml(String(store_id))}</defaultStore><supplier>${escapeXml(supplierId)}</supplier>${commentXml}<items>${itemsXml}</items></document>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><document><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><defaultStore>${escapeXml(String(store_id))}</defaultStore><supplier>${escapeXml(supplierId)}</supplier>${commentXml}<items>${itemsXml}</items></document>`;
 
     const success = await withIikoSession(async (token) => {
       return await iikoPostXml("documents/import/incomingInvoice", xml, token);

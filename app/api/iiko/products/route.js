@@ -26,7 +26,13 @@ export async function GET() {
       if (!data) return [];
 
       return data
-        .filter((p) => p.type === "GOODS" || p.type === "PREPARED")
+        .filter((p) => {
+          if (p.deleted === true || p.deleted === "true") return false;
+          if (p.type !== "GOODS" && p.type !== "PREPARED") return false;
+          const nameLower = (p.name || "").toLowerCase();
+          if (nameLower.includes("(удалить)") || nameLower.includes("[удалить]")) return false;
+          return true;
+        })
         .map((p) => ({
           id: p.id,
           name: p.name,

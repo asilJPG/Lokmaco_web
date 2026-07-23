@@ -170,6 +170,22 @@ const API = {
   verifyPasskeyLogin(body) {
     return this.post("/auth/passkey/login/verify", body);
   },
+  getAssets(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.get(`/assets?${q}`);
+  },
+  createAsset(data) {
+    return this.post("/assets", data);
+  },
+  updateAsset(data) {
+    return this.put("/assets", data);
+  },
+  deleteAsset(id) {
+    return this.delete(`/assets?id=${id}`);
+  },
+  auditAsset(id) {
+    return this.put("/assets", { id, action: "audit" });
+  },
 };
 
 const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
@@ -462,6 +478,24 @@ const I = {
       <circle cx="12" cy="12" r="1.5" />
       <circle cx="6" cy="12" r="1.5" />
       <circle cx="18" cy="12" r="1.5" />
+    </svg>
+  ),
+  asset: (
+    <svg
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <rect x="7" y="7" width="3" height="3" />
+      <rect x="14" y="7" width="3" height="3" />
+      <rect x="7" y="14" width="3" height="3" />
+      <path d="M14 14h3v3h-3z" />
     </svg>
   ),
 };
@@ -1197,6 +1231,7 @@ export default function LocmacoApp() {
     { id: "cash", label: "Касса", icon: I.cash },
     { id: "analytics", label: loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика", icon: I.analytics },
     { id: "tax_report", label: "Налоговый отчет", icon: I.cash },
+    { id: "fixed_assets", label: "Опись основных средств (ОС)", icon: I.asset },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1213,6 +1248,9 @@ export default function LocmacoApp() {
   };
 
   const hasAccess = (role, tabId) => {
+    if (tabId === "fixed_assets") {
+      return role === "admin";
+    }
     if (role === "admin") return true;
     switch (tabId) {
       case "incoming":
@@ -2416,6 +2454,53 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "fixed_assets") && (
+                <button
+                  onClick={() => setTab("fixed_assets")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🏛️
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}
+                    >
+                      Опись основных средств (ОС)
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Учет оборудования, мебели, техники, инвентаризация и штрихкоды
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "employees") && (
                 <button
                   onClick={() => setTab("employees")}
@@ -2610,6 +2695,12 @@ export default function LocmacoApp() {
         )}
         {tab === "tax_report" && (
           <TaxReportView
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+          />
+        )}
+        {tab === "fixed_assets" && (
+          <FixedAssetsView
             showToast={showToast}
             loggedInUser={loggedInUser}
           />
@@ -14538,3 +14629,745 @@ function TaxReportView({ showToast, loggedInUser }) {
     </div>
   );
 }
+
+function FixedAssetsView({ showToast, loggedInUser }) {
+  const [assets, setAssets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  
+  // Modals
+  const [editModalAsset, setEditModalAsset] = useState(null); // Asset object to edit or new
+  const [qrModalAsset, setQrModalAsset] = useState(null); // Asset object for QR sticker print
+
+  const loadAssets = async () => {
+    setLoading(true);
+    try {
+      const headers = {
+        "x-user-id": loggedInUser?.id || "admin",
+        "x-user-role": loggedInUser?.baseRole || "admin"
+      };
+      const res = await fetch("/api/iiko/assets", { headers });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setAssets(json.data);
+      } else {
+        setAssets([]);
+      }
+    } catch (e) {
+      console.error("[FixedAssetsView] load error:", e);
+      showToast?.("Ошибка загрузки активов", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAssets();
+  }, []);
+
+  const handleSyncIiko = async () => {
+    setSyncing(true);
+    try {
+      const headers = {
+        "x-user-id": loggedInUser?.id || "admin",
+        "x-user-role": loggedInUser?.baseRole || "admin",
+        "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ")
+      };
+      const res = await fetch("/api/iiko/assets/sync", {
+        method: "POST",
+        headers
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast?.(json.message || "Оборудование из iiko успешно импортировано!", "success");
+        await loadAssets();
+      } else {
+        showToast?.(json.error || "Ошибка синхронизации с iiko", "error");
+      }
+    } catch (e) {
+      console.error("[FixedAssetsView] sync error:", e);
+      showToast?.("Ошибка при синхронизации с iiko", "error");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSaveAsset = async (formData) => {
+    try {
+      const isEdit = !!formData.id;
+      const url = "/api/iiko/assets";
+      const method = isEdit ? "PUT" : "POST";
+      const headers = {
+        "Content-Type": "application/json",
+        "x-user-id": loggedInUser?.id || "admin",
+        "x-user-role": loggedInUser?.baseRole || "admin",
+        "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ")
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify(formData)
+      });
+      const json = await res.json();
+
+      if (json.success || res.ok) {
+        showToast?.(isEdit ? "Данные оборудования обновлены" : "Новое оборудование добавлено", "success");
+        setEditModalAsset(null);
+        await loadAssets();
+      } else {
+        showToast?.(json.error || "Ошибка сохранения", "error");
+      }
+    } catch (e) {
+      console.error("[FixedAssetsView] save error:", e);
+      showToast?.("Ошибка сохранения данных", "error");
+    }
+  };
+
+  const handleDeleteAsset = async (id, name) => {
+    if (!window.confirm(`Вы действительно хотите удалить или списать "${name}"?`)) return;
+    try {
+      const headers = {
+        "x-user-id": loggedInUser?.id || "admin",
+        "x-user-role": loggedInUser?.baseRole || "admin"
+      };
+      const res = await fetch(`/api/iiko/assets?id=${id}`, {
+        method: "DELETE",
+        headers
+      });
+      if (res.ok) {
+        showToast?.("Запись удалена", "success");
+        await loadAssets();
+      } else {
+        showToast?.("Ошибка при удалении", "error");
+      }
+    } catch (e) {
+      console.error("[FixedAssetsView] delete error:", e);
+      showToast?.("Ошибка при удалении", "error");
+    }
+  };
+
+  // Calculations for financial summary
+  const filteredAssets = assets.filter(a => {
+    if (categoryFilter !== "all" && a.category !== categoryFilter) return false;
+    if (statusFilter !== "all" && a.status !== statusFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        (a.name || "").toLowerCase().includes(q) ||
+        (a.inv_number || "").toLowerCase().includes(q) ||
+        (a.responsible_person || "").toLowerCase().includes(q) ||
+        (a.location || "").toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const totalInitialCost = filteredAssets.reduce((sum, a) => sum + (parseFloat(a.initial_cost) || 0), 0);
+  const totalCount = filteredAssets.length;
+
+  return (
+    <div style={{ padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
+      {/* Header Bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-main)", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
+            🏛️ Основные средства и НМА
+            <span style={{ fontSize: 13, fontWeight: 600, background: "var(--bg-pill)", padding: "3px 10px", borderRadius: 20, color: "var(--text-muted)" }}>
+              {totalCount} объектов
+            </span>
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+            Учет оборудования ресторана, даты приходов, первоначальная стоимость, износ и QR-коды для инвентаризации
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={handleSyncIiko}
+            disabled={syncing}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "none",
+              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: syncing ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)",
+              opacity: syncing ? 0.7 : 1
+            }}
+          >
+            {syncing ? "⌛ Синхронизация с iiko..." : "⚡ Импортировать приходы из iiko"}
+          </button>
+
+          <button
+            onClick={() => setEditModalAsset({
+              inv_number: "",
+              name: "",
+              category: "Оборудование",
+              location: "Кухня",
+              responsible_person: "Шеф-повар",
+              initial_cost: "",
+              commissioning_date: new Date().toISOString().split("T")[0],
+              status: "in_use",
+              notes: ""
+            })}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "none",
+              background: "var(--color-primary, #10b981)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)"
+            }}
+          >
+            ➕ Добавить оборудование
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Первоначальная стоимость оборудования
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", marginTop: 6 }}>
+            {formatMoney(totalInitialCost)}
+          </div>
+          <div style={{ fontSize: 12, color: "#10b981", marginTop: 4 }}>
+            По всем {totalCount} выбранным позициям
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            В эксплуатации
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#10b981", marginTop: 6 }}>
+            {filteredAssets.filter(a => a.status === "in_use" || !a.status).length} шт.
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Готово к работе в заведении
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            На обслуживании / В ремонте
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 6 }}>
+            {filteredAssets.filter(a => a.status === "repair" || a.status === "in_stock").length} шт.
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Требуют внимания или инспекции
+          </div>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 16, marginBottom: 20, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: 1, minWidth: 280 }}>
+          <input
+            type="text"
+            placeholder="🔎 Поиск по названию, коду или МОЛ..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              flex: 1,
+              minWidth: 220,
+              outline: "none"
+            }}
+          />
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              outline: "none",
+              cursor: "pointer"
+            }}
+          >
+            <option value="all">📁 Все категории</option>
+            <option value="Оборудование">🍳 Оборудование</option>
+            <option value="Инвентарь">📦 Инвентарь</option>
+            <option value="IT/Кассы">💻 IT / Кассы / Роутеры</option>
+            <option value="Мебель">🪑 Мебель</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              outline: "none",
+              cursor: "pointer"
+            }}
+          >
+            <option value="all">⚡ Все статусы</option>
+            <option value="in_use">🟢 В эксплуатации</option>
+            <option value="repair">🟡 В ремонте</option>
+            <option value="in_stock">🔵 На складе</option>
+            <option value="written_off">🔴 Списано</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Data Table */}
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, overflow: "hidden" }}>
+        {loading ? (
+          <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            ⏳ Загрузка оборудования из базы данных...
+          </div>
+        ) : filteredAssets.length === 0 ? (
+          <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>📦</div>
+            <div>Оборудование не найдено</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>Нажмите «⚡ Импортировать приходы из iiko», чтобы загрузить оборудование из накладных</div>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+              <thead>
+                <tr style={{ background: "var(--bg-pill)", borderBottom: "1px solid var(--border-color)" }}>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700 }}>Инв. №</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700 }}>Наименование</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700 }}>Дата прихода</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700, textAlign: "right" }}>Цена прихода</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700 }}>МОЛ и Локация</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700 }}>Статус</th>
+                  <th style={{ padding: "12px 16px", color: "var(--text-muted)", fontWeight: 700, textAlign: "center" }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAssets.map((asset) => {
+                  const statusColors = {
+                    in_use: { bg: "rgba(16, 185, 129, 0.1)", color: "#10b981", label: "🟢 В эксплуатации" },
+                    repair: { bg: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", label: "🟡 В ремонте" },
+                    in_stock: { bg: "rgba(59, 130, 246, 0.1)", color: "#3b82f6", label: "🔵 На складе" },
+                    written_off: { bg: "rgba(239, 68, 68, 0.1)", color: "#ef4444", label: "🔴 Списан" }
+                  };
+                  const st = statusColors[asset.status] || statusColors.in_use;
+
+                  return (
+                    <tr key={asset.id} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s" }}>
+                      <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--color-primary, #6366f1)" }}>
+                        {asset.inv_number || `EQ-${asset.id.slice(0, 6)}`}
+                      </td>
+
+                      <td style={{ padding: "14px 16px" }}>
+                        <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{asset.name}</div>
+                        {asset.notes && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{asset.notes}</div>}
+                      </td>
+
+                      <td style={{ padding: "14px 16px", color: "var(--text-main)" }}>
+                        📅 {asset.commissioning_date || "—"}
+                      </td>
+
+                      <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                        {formatMoney(asset.initial_cost)}
+                      </td>
+
+                      <td style={{ padding: "14px 16px" }}>
+                        <div style={{ fontWeight: 600 }}>👤 {asset.responsible_person || "Не указан"}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>📍 {asset.location || "Кухня"}</div>
+                      </td>
+
+                      <td style={{ padding: "14px 16px" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, fontWeight: 700, background: st.bg, color: st.color }}>
+                          {st.label}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                          {/* QR Code Button */}
+                          <button
+                            onClick={() => setQrModalAsset(asset)}
+                            title="Сгенерировать QR-код для печати"
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border-color)",
+                              background: "var(--bg-pill)",
+                              color: "var(--text-main)",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4
+                            }}
+                          >
+                            📱 QR-код
+                          </button>
+
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => setEditModalAsset(asset)}
+                            title="Изменить название, дату прихода или цену"
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border-color)",
+                              background: "var(--bg-pill)",
+                              color: "var(--text-main)",
+                              fontSize: 12,
+                              cursor: "pointer"
+                            }}
+                          >
+                            ✏️
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                            title="Удалить"
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid rgba(239, 68, 68, 0.2)",
+                              background: "rgba(239, 68, 68, 0.08)",
+                              color: "#ef4444",
+                              fontSize: 12,
+                              cursor: "pointer"
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* EDIT MODAL */}
+      {editModalAsset && (
+        <AssetFormModal
+          asset={editModalAsset}
+          onClose={() => setEditModalAsset(null)}
+          onSave={handleSaveAsset}
+        />
+      )}
+
+      {/* QR STICKER PRINT MODAL */}
+      {qrModalAsset && (
+        <QrStickerModal
+          asset={qrModalAsset}
+          onClose={() => setQrModalAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AssetFormModal({ asset, onClose, onSave }) {
+  const [form, setForm] = useState({
+    id: asset.id || null,
+    inv_number: asset.inv_number || "",
+    name: asset.name || "",
+    category: asset.category || "Оборудование",
+    location: asset.location || "Кухня",
+    responsible_person: asset.responsible_person || "Материально-ответственное лицо",
+    initial_cost: asset.initial_cost || 0,
+    commissioning_date: asset.commissioning_date || new Date().toISOString().split("T")[0],
+    status: asset.status || "in_use",
+    notes: asset.notes || ""
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return alert("Укажите название оборудования");
+    onSave(form);
+  };
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "var(--bg-card)", borderRadius: 16, border: "1px solid var(--border-color)", padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
+            {form.id ? "✏️ Редактирование оборудования" : "➕ Новое оборудование"}
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+              Наименование оборудования *
+            </label>
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="например, Посудамойка или Смартфон"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                Инвентарный № / Код
+              </label>
+              <input
+                type="text"
+                value={form.inv_number}
+                onChange={(e) => setForm({ ...form, inv_number: e.target.value })}
+                placeholder="EQ-0720"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                Категория
+              </label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              >
+                <option value="Оборудование">Оборудование</option>
+                <option value="Инвентарь">Инвентарь</option>
+                <option value="IT/Кассы">IT / Кассы</option>
+                <option value="Мебель">Мебель</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                Дата прихода / ввода
+              </label>
+              <input
+                type="date"
+                value={form.commissioning_date}
+                onChange={(e) => setForm({ ...form, commissioning_date: e.target.value })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                Цена прихода (сум)
+              </label>
+              <input
+                type="number"
+                value={form.initial_cost}
+                onChange={(e) => setForm({ ...form, initial_cost: e.target.value })}
+                placeholder="3690500"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                МОЛ (Ответственный)
+              </label>
+              <input
+                type="text"
+                value={form.responsible_person}
+                onChange={(e) => setForm({ ...form, responsible_person: e.target.value })}
+                placeholder="ФИО сотрудника"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                Локация
+              </label>
+              <input
+                type="text"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="Кухня, Бар, Зал"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+              Статус оборудования
+            </label>
+            <select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
+            >
+              <option value="in_use">🟢 В эксплуатации</option>
+              <option value="repair">🟡 В ремонте</option>
+              <option value="in_stock">🔵 На складе</option>
+              <option value="written_off">🔴 Списано</option>
+            </select>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontWeight: 600, cursor: "pointer" }}
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "var(--color-primary, #6366f1)", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+            >
+              Сохранить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function QrStickerModal({ asset, onClose }) {
+  const invNum = asset.inv_number || `EQ-${asset.id.slice(0, 6)}`;
+  const qrData = encodeURIComponent(`https://web.lokmaco.uz/asset/${asset.id}?inv=${invNum}`);
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${qrData}`;
+
+  const handlePrint = () => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Печать стикера - ${invNum}</title>
+          <style>
+            body { font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
+            .sticker {
+              width: 320px;
+              border: 2px solid #000;
+              border-radius: 12px;
+              padding: 16px;
+              margin: 0 auto;
+              background: #fff;
+            }
+            .title { font-size: 16px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; }
+            .subtitle { font-size: 11px; color: #555; margin-bottom: 12px; }
+            .qr { width: 160px; height: 160px; margin: 10px auto; }
+            .code { font-family: monospace; font-size: 18px; font-weight: bold; background: #eee; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
+            .info { font-size: 12px; margin-top: 8px; color: #333; }
+          </style>
+        </head>
+        <body>
+          <div class="sticker">
+            <div class="title">Lokma & Co</div>
+            <div class="subtitle">Инвентарный стикер оборудования</div>
+            <img src="${qrCodeUrl}" class="qr" alt="QR" />
+            <div class="code">${invNum}</div>
+            <div class="info"><b>${asset.name}</b></div>
+            <div class="info">Приход: ${asset.commissioning_date || "—"} | ${formatMoney(asset.initial_cost)}</div>
+          </div>
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "var(--bg-card)", borderRadius: 16, border: "1px solid var(--border-color)", padding: 24, width: "100%", maxWidth: 420, textAlign: "center", boxShadow: "0 20px 40px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>📱 QR-код и Инвентарный стикер</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+        </div>
+
+        {/* PRINTABLE STICKER PREVIEW */}
+        <div style={{ border: "2px solid var(--border-color)", borderRadius: 14, padding: 20, background: "#ffffff", color: "#1e293b", margin: "0 auto 20px auto" }}>
+          <div style={{ fontSize: 16, fontWeight: 900, textTransform: "uppercase", letterSpacing: 1, color: "#0f172a" }}>
+            🍩 Lokma & Co
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontWeight: 600 }}>
+            Инвентарная наклейка оборудования
+          </div>
+
+          <div style={{ margin: "14px 0" }}>
+            <img src={qrCodeUrl} alt="QR Code" style={{ width: 170, height: 170, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+          </div>
+
+          <div style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 900, background: "#f1f5f9", padding: "6px 14px", borderRadius: 8, display: "inline-block", color: "#4f46e5" }}>
+            {invNum}
+          </div>
+
+          <div style={{ fontSize: 14, fontWeight: 800, marginTop: 10, color: "#0f172a" }}>
+            {asset.name}
+          </div>
+
+          <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+            📅 Приход: <b>{asset.commissioning_date || "—"}</b>
+          </div>
+          <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
+            💰 Стоимость: <b>{formatMoney(asset.initial_cost)}</b>
+          </div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+            📍 {asset.location || "Кухня"} | 👤 {asset.responsible_person || "МОЛ"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontWeight: 600, cursor: "pointer" }}
+          >
+            Закрыть
+          </button>
+
+          <button
+            onClick={handlePrint}
+            style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", color: "#fff", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)" }}
+          >
+            🖨️ Распечатать стикер
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

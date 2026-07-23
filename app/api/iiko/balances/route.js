@@ -62,12 +62,19 @@ export async function GET(_request) {
       // 2. Process products
       let productsList = [];
       if (rawProducts && Array.isArray(rawProducts)) {
-        productsList = rawProducts.map(p => ({
-          id: p.id,
-          name: p.name,
-          num: p.num || "",
-          mainUnitName: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт"
-        }));
+        productsList = rawProducts
+          .filter(p => {
+            if (p.deleted === true || p.deleted === "true") return false;
+            const nameLower = (p.name || "").toLowerCase();
+            if (nameLower.includes("(удалить)") || nameLower.includes("[удалить]")) return false;
+            return true;
+          })
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            num: p.num || "",
+            mainUnitName: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт"
+          }));
       }
       const productsMap = new Map(productsList.map(p => [p.id, p]));
 
