@@ -211,7 +211,7 @@ export async function GET(request) {
     }, { cashGross: 0, cashFiscal: 0, humo: 0, uzcard: 0, rahmat: 0, uzum: 0, yandex: 0, total: 0, iikoRevenue: 0, diff: 0 });
 
     return Response.json(
-      { success: true, month: monthParam, days, totals },
+      { success: true, month: monthParam, days, totals, version: "2026-07-25-fiscal+encashment" },
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
