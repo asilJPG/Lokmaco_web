@@ -1236,6 +1236,7 @@ export default function LocmacoApp() {
     { id: "analytics", label: loggedInUser?.baseRole === "manager" ? "Мониторинг" : "Аналитика", icon: I.analytics },
     { id: "tax_report", label: "Налоговый отчет", icon: I.cash },
     { id: "fixed_assets", label: "Опись основных средств (ОС)", icon: I.asset },
+    { id: "reports", label: "Отчеты", icon: I.analytics },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -2505,6 +2506,51 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "reports") && (
+                <button
+                  onClick={() => setTab("reports")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    📊
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+                      Отчеты
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Месячная сводка кассы: типы оплат, iiko продажи, расхождения
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "employees") && (
                 <button
                   onClick={() => setTab("employees")}
@@ -2705,6 +2751,12 @@ export default function LocmacoApp() {
         )}
         {tab === "fixed_assets" && (
           <FixedAssetsView
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+          />
+        )}
+        {tab === "reports" && (
+          <MonthlyReportsView
             showToast={showToast}
             loggedInUser={loggedInUser}
           />
@@ -15204,6 +15256,239 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           showToast={showToast}
         />
       )}
+    </div>
+  );
+}
+
+function MonthlyReportsView({ showToast, loggedInUser }) {
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [month, setMonth] = useState(defaultMonth);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+
+  const load = async (m) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/iiko/reports/monthly-cash?month=${encodeURIComponent(m)}`, {
+        headers: {
+          "x-user-id": loggedInUser?.id || "admin",
+          "x-user-role": loggedInUser?.baseRole || "admin",
+        },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setData(json);
+      } else {
+        showToast?.(json.error || "Ошибка загрузки отчёта", "error");
+        setData(null);
+      }
+    } catch (e) {
+      console.error("[MonthlyReports] load error:", e);
+      showToast?.("Ошибка загрузки отчёта", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(month); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month]);
+
+  const fmt = (n) => n ? new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) : "";
+  const fmtDate = (iso) => {
+    const [y, mo, d] = iso.split("-");
+    return `${d}.${mo}.${y}`;
+  };
+  const monthTitle = (() => {
+    const [y, mo] = month.split("-");
+    const names = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+    return `${names[parseInt(mo, 10) - 1]} ${y}`;
+  })();
+
+  const handleExport = () => {
+    if (!data) return;
+    const rows = [[
+      "№", "Дата", "День недели",
+      "Наличные -", "Наличные фискал",
+      "ТЕРМИНАЛ HUMO", "ТЕРМИНАЛ Uzcard",
+      "Рахмат (Rakhmat)", "Uzum", "Yandex Eats",
+      "Общая Сумма", "iiko сумма продаж", "Разница"
+    ]];
+    data.days.forEach((r, i) => {
+      rows.push([
+        i + 1, fmtDate(r.date), r.weekday,
+        r.hasCash ? r.cashGross : "",
+        r.hasCash ? r.cashFiscal : "",
+        r.hasCash ? r.humo : "",
+        r.hasCash ? r.uzcard : "",
+        r.hasCash ? r.rahmat : "",
+        r.hasCash ? r.uzum : "",
+        r.hasCash ? r.yandex : "",
+        r.hasCash ? r.total : "",
+        r.iikoRevenue || "",
+        r.hasCash ? r.diff : ""
+      ]);
+    });
+    const t = data.totals;
+    rows.push(["", "ИТОГО", "", t.cashGross, t.cashFiscal, t.humo, t.uzcard, t.rahmat, t.uzum, t.yandex, t.total, t.iikoRevenue, t.diff]);
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = "﻿" + rows.map(r => r.map(esc).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `касса-${month}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast?.("CSV скачан", "success");
+  };
+
+  const th = { padding: "10px 12px", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 12, fontWeight: 700, textAlign: "right", borderBottom: "1px solid var(--border-color)", whiteSpace: "nowrap" };
+  const thLeft = { ...th, textAlign: "left" };
+  const td = { padding: "8px 12px", fontSize: 13, color: "var(--text-main)", textAlign: "right", borderBottom: "1px solid var(--border-color)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
+  const tdLeft = { ...td, textAlign: "left" };
+
+  return (
+    <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-main)", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
+            📊 КАССА THE LOKMACO FERGANA
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+            Дневная сводка кассы: типы оплат по данным кассира и сверка с продажами iiko
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              fontWeight: 600,
+              outline: "none",
+              cursor: "pointer",
+            }}
+          />
+          <button
+            onClick={handleExport}
+            disabled={!data || loading}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: loading || !data ? "not-allowed" : "pointer",
+              opacity: loading || !data ? 0.6 : 1,
+            }}
+          >
+            📊 Экспорт CSV
+          </button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-main)", marginBottom: 10 }}>
+        {monthTitle}
+      </div>
+
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden" }}>
+        {loading ? (
+          <div style={{ padding: "80px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            ⏳ Загрузка отчёта из iiko и базы кассы…
+          </div>
+        ) : !data || !data.days ? (
+          <div style={{ padding: "80px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            Нет данных
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thLeft, width: 36 }}>№</th>
+                  <th style={thLeft}>День</th>
+                  <th style={thLeft}></th>
+                  <th style={th}>Наличные -</th>
+                  <th style={th}>Наличные фискал</th>
+                  <th style={th}>ТЕРМИНАЛ HUMO</th>
+                  <th style={th}>ТЕРМИНАЛ Uzcard</th>
+                  <th style={th}>Рахмат (Rakhmat)</th>
+                  <th style={th}>Uzum</th>
+                  <th style={th}>Yandex Eats</th>
+                  <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>Общая Сумма</th>
+                  <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>iiko сумма продаж</th>
+                  <th style={th}>Разница</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.days.map((r, i) => {
+                  const isWeekend = r.weekday === "суббота" || r.weekday === "воскресенье";
+                  const rowBg = isWeekend ? "rgba(245, 158, 11, 0.08)" : "transparent";
+                  const diffColor = !r.hasCash ? "var(--text-muted)"
+                    : Math.abs(r.diff) < 0.5 ? "var(--text-muted)"
+                    : r.diff > 0 ? "#ef4444" : "#10b981";
+                  return (
+                    <tr key={r.date} style={{ background: rowBg }}>
+                      <td style={{ ...tdLeft, color: "var(--text-muted)", fontWeight: 600 }}>{i + 1}</td>
+                      <td style={tdLeft}>{fmtDate(r.date)}</td>
+                      <td style={{ ...tdLeft, background: isWeekend ? "rgba(245, 158, 11, 0.2)" : "transparent", fontWeight: isWeekend ? 700 : 400 }}>{r.weekday}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.cashGross) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.cashFiscal) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.humo) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.uzcard) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.rahmat) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.uzum) : ""}</td>
+                      <td style={td}>{r.hasCash ? fmt(r.yandex) : ""}</td>
+                      <td style={{ ...td, borderLeft: "2px solid var(--border-color)", fontWeight: 700 }}>
+                        {r.hasCash ? fmt(r.total) : ""}
+                      </td>
+                      <td style={{ ...td, borderLeft: "2px solid var(--border-color)", fontWeight: 700 }}>
+                        {r.iikoRevenue ? fmt(r.iikoRevenue) : ""}
+                      </td>
+                      <td style={{ ...td, color: diffColor, fontWeight: 700 }}>
+                        {r.hasCash ? fmt(r.diff) : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: "var(--bg-pill)" }}>
+                  <td style={{ ...tdLeft, fontWeight: 800 }} colSpan={3}>ИТОГО ЗА МЕСЯЦ</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.cashGross)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.cashFiscal)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.humo)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.uzcard)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.rahmat)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.uzum)}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.yandex)}</td>
+                  <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)" }}>{fmt(data.totals.total)}</td>
+                  <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)" }}>{fmt(data.totals.iikoRevenue)}</td>
+                  <td style={{ ...td, fontWeight: 800, color: Math.abs(data.totals.diff) < 0.5 ? "var(--text-muted)" : data.totals.diff > 0 ? "#ef4444" : "#10b981" }}>
+                    {fmt(data.totals.diff)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+        «Наличные -» = сдача кассира + его расходы из кассы. «Общая Сумма» = наличные − валом + все безналичные типы. «Разница» = Общая − iiko продажи. Красным помечены дни, где мы посчитали больше, чем показывает iiko.
+      </div>
     </div>
   );
 }
