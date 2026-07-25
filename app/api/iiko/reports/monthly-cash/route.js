@@ -116,10 +116,13 @@ export async function GET(request) {
             const p = details.payments || {};
             const cashFiscal = parseFloat(p.cash) || 0;
             const encashment = parseFloat(p.encashment) || 0;
-            // «Наличные -» (гросс) = фискал + инкассация. Так у бухгалтера:
-            // Наличные- = 13 685 330, Наличные фискал = 9 936 330, разница
-            // 3 749 000 = payments.encashment.
-            const cashGrossPerReport = cashFiscal + encashment;
+            const expenses = parseFloat(details.total_expenses) || 0;
+            // «Наличные -» (полный вал нала через кассу) = фискал + инкассация +
+            // расходы кассира. Расходы, которые кассир заплатил из ящика (базар,
+            // такси, аренда), тоже были кассовой наличкой от продаж — просто
+            // физически вышли до сдачи. Проверено на реальных днях: без expenses
+            // разница с iiko продажами ≈ ровно на сумму expenses; с ними — 0.
+            const cashGrossPerReport = cashFiscal + encashment + expenses;
             const humo = parseFloat(p.humo) || 0;
             const uzcard = parseFloat(p.uzcard) || 0;
             const rahmat = parseFloat(p.rahmat) || 0;
@@ -211,7 +214,7 @@ export async function GET(request) {
     }, { cashGross: 0, cashFiscal: 0, humo: 0, uzcard: 0, rahmat: 0, uzum: 0, yandex: 0, total: 0, iikoRevenue: 0, diff: 0 });
 
     return Response.json(
-      { success: true, month: monthParam, days, totals, version: "2026-07-25-fiscal+encashment" },
+      { success: true, month: monthParam, days, totals, version: "2026-07-25-fiscal+encashment+expenses" },
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
