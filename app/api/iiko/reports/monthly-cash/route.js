@@ -115,7 +115,11 @@ export async function GET(request) {
             if (!dateKey || dateKey < dateFrom || dateKey > dateTo) continue;
             const p = details.payments || {};
             const cashFiscal = parseFloat(p.cash) || 0;
-            const expenses = parseFloat(details.total_expenses) || 0;
+            const encashment = parseFloat(p.encashment) || 0;
+            // «Наличные -» (гросс) = фискал + инкассация. Так у бухгалтера:
+            // Наличные- = 13 685 330, Наличные фискал = 9 936 330, разница
+            // 3 749 000 = payments.encashment.
+            const cashGrossPerReport = cashFiscal + encashment;
             const humo = parseFloat(p.humo) || 0;
             const uzcard = parseFloat(p.uzcard) || 0;
             const rahmat = parseFloat(p.rahmat) || 0;
@@ -124,8 +128,8 @@ export async function GET(request) {
             const online = parseFloat(p.online) || 0;
 
             const entry = map[dateKey] || {
+              cashGross: 0,
               cashFiscal: 0,
-              expenses: 0,
               humo: 0,
               uzcard: 0,
               rahmat: 0,
@@ -134,8 +138,8 @@ export async function GET(request) {
               online: 0,
               cashiers: new Set(),
             };
+            entry.cashGross += cashGrossPerReport;
             entry.cashFiscal += cashFiscal;
-            entry.expenses += expenses;
             entry.humo += humo;
             entry.uzcard += uzcard;
             entry.rahmat += rahmat;
@@ -161,8 +165,7 @@ export async function GET(request) {
       const iikoRevenue = iikoByDay[date] || 0;
 
       const cashFiscal = cash?.cashFiscal || 0;
-      const expenses = cash?.expenses || 0;
-      const cashGross = cashFiscal + expenses; // «Наличные -»
+      const cashGross = cash?.cashGross || 0; // «Наличные -» = payments.encashment
       const humo = cash?.humo || 0;
       const uzcard = cash?.uzcard || 0;
       const rahmat = cash?.rahmat || 0;
