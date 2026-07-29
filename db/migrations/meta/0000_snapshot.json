@@ -1,0 +1,698 @@
+{
+  "id": "747057a6-eb57-4897-a4a6-e09286d82212",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.bot_actions": {
+      "name": "bot_actions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "filial_id": {
+          "name": "filial_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tg_id": {
+          "name": "tg_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_name": {
+          "name": "user_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action_type": {
+          "name": "action_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_number": {
+          "name": "document_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bot_actions_filial_type_idx": {
+          "name": "bot_actions_filial_type_idx",
+          "columns": [
+            {
+              "expression": "filial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bot_actions_selected_date_idx": {
+          "name": "bot_actions_selected_date_idx",
+          "columns": [
+            {
+              "expression": "filial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bot_actions_created_idx": {
+          "name": "bot_actions_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bot_actions_filial_id_filials_id_fk": {
+          "name": "bot_actions_filial_id_filials_id_fk",
+          "tableFrom": "bot_actions",
+          "tableTo": "filials",
+          "columnsFrom": [
+            "filial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cash_reports": {
+      "name": "cash_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "filial_id": {
+          "name": "filial_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cashier_tg_id": {
+          "name": "cashier_tg_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cashier_name": {
+          "name": "cashier_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_cash": {
+          "name": "reported_cash",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "iiko_cash": {
+          "name": "iiko_cash",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "difference": {
+          "name": "difference",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cash_reports_filial_date_idx": {
+          "name": "cash_reports_filial_date_idx",
+          "columns": [
+            {
+              "expression": "filial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cash_reports_filial_id_filials_id_fk": {
+          "name": "cash_reports_filial_id_filials_id_fk",
+          "tableFrom": "cash_reports",
+          "tableTo": "filials",
+          "columnsFrom": [
+            "filial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.filials": {
+      "name": "filials",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iiko_org_id": {
+          "name": "iiko_org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iiko_login": {
+          "name": "iiko_login",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iiko_password_enc": {
+          "name": "iiko_password_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Asia/Tashkent'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pending_transfers": {
+      "name": "pending_transfers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "filial_id": {
+          "name": "filial_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_tg_id": {
+          "name": "creator_tg_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creator_name": {
+          "name": "creator_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creator_role": {
+          "name": "creator_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "store_from": {
+          "name": "store_from",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "store_from_name": {
+          "name": "store_from_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "store_to": {
+          "name": "store_to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "store_to_name": {
+          "name": "store_to_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "items": {
+          "name": "items",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receiver_comment": {
+          "name": "receiver_comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pending_transfers_filial_status_idx": {
+          "name": "pending_transfers_filial_status_idx",
+          "columns": [
+            {
+              "expression": "filial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pending_transfers_filial_id_filials_id_fk": {
+          "name": "pending_transfers_filial_id_filials_id_fk",
+          "tableFrom": "pending_transfers",
+          "tableTo": "filials",
+          "columnsFrom": [
+            "filial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_filials": {
+      "name": "user_filials",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filial_id": {
+          "name": "filial_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "user_filials_filial_idx": {
+          "name": "user_filials_filial_idx",
+          "columns": [
+            {
+              "expression": "filial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_filials_user_id_users_id_fk": {
+          "name": "user_filials_user_id_users_id_fk",
+          "tableFrom": "user_filials",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_filials_filial_id_filials_id_fk": {
+          "name": "user_filials_filial_id_filials_id_fk",
+          "tableFrom": "user_filials",
+          "tableTo": "filials",
+          "columnsFrom": [
+            "filial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_filials_user_id_filial_id_pk": {
+          "name": "user_filials_user_id_filial_id_pk",
+          "columns": [
+            "user_id",
+            "filial_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_passkeys": {
+      "name": "user_passkeys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counter": {
+          "name": "counter",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "passkeys_user_idx": {
+          "name": "passkeys_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_passkeys_user_id_users_id_fk": {
+          "name": "user_passkeys_user_id_users_id_fk",
+          "tableFrom": "user_passkeys",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_passkeys_credential_id_unique": {
+          "name": "user_passkeys_credential_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "credential_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tg_id": {
+          "name": "tg_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_code": {
+          "name": "access_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_login_at": {
+          "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_login_method": {
+          "name": "last_login_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_tg_id_unique": {
+          "name": "users_tg_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tg_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -1,0 +1,183 @@
+import { requireSession } from '@/lib/auth-session';
+import { getCurrentFilialIds } from '@/lib/current-filial';
+import { resolveIikoCreds } from '@/lib/filial-iiko';
+import { submitDocument } from '@/lib/iiko-web-docs';
+import { db, schema } from '@/db/client';
+import {
+  createPendingTransfer,
+  getPendingTransferById,
+  listPendingTransfers,
+  updatePendingTransfer,
+  type TransferItem,
+} from '@/lib/pending-transfer';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const session = await requireSession();
+  const filialIds = await getCurrentFilialIds();
+  const list = await listPendingTransfers(filialIds);
+
+  const [baseRole, storeId] = session.role.split(':');
+  const isAdmin = baseRole === 'admin';
+  const tgId = String(session.tgId ?? '');
+
+  const incoming = list.filter((it) =>
+    (it.status === 'pending_receiver' || it.status === 'pending_sender') &&
+    (isAdmin ||
+      (it.status === 'pending_receiver' && String(it.storeTo) === String(storeId)) ||
+      (it.status === 'pending_sender' && String(it.storeFrom) === String(storeId)))
+  );
+  const returned = list.filter((it) => it.status === 'pending_creator' && (isAdmin || String(it.creatorTgId) === tgId));
+  const outgoing = list.filter(
+    (it) => (it.status === 'pending_receiver' || it.status === 'pending_sender') &&
+      String(it.creatorTgId) === tgId &&
+      !incoming.some((i) => i.id === it.id)
+  );
+
+  return Response.json({ incoming, returned, outgoing });
+}
+
+export async function POST(req: Request) {
+  try {
+    return await handlePost(req);
+  } catch (e) {
+    console.error('[pending-transfer POST]', e);
+    return Response.json({ error: e instanceof Error ? e.message : 'server error' }, { status: 500 });
+  }
+}
+
+async function handlePost(req: Request) {
+  const session = await requireSession();
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'no filial' }, { status: 400 });
+  const filialId = filialIds[0];
+
+  const b = await req.json();
+  const action: string | undefined = b.action;
+  const [baseRole, userStoreId] = session.role.split(':');
+  const isAdmin = baseRole === 'admin';
+
+  if (!action) {
+    if (!b.store_from || !b.store_to || !Array.isArray(b.items) || b.items.length === 0) {
+      return Response.json({ error: 'store_from, store_to, items required' }, { status: 400 });
+    }
+    if (userStoreId && b.store_from !== userStoreId && b.store_to !== userStoreId) {
+      return Response.json({ error: 'Только со своего/на свой склад' }, { status: 403 });
+    }
+    let status = 'pending_receiver';
+    if (userStoreId) {
+      if (String(b.store_to) === String(userStoreId)) status = 'pending_sender';
+      else if (String(b.store_from) === String(userStoreId)) status = 'pending_receiver';
+    }
+    const items: TransferItem[] = b.items.map((it: any) => ({
+      product_id: String(it.product_id),
+      product_name: String(it.product_name || ''),
+      quantity: Number(it.quantity) || 0,
+      unit: String(it.unit || 'шт'),
+      received_quantity: null,
+    }));
+    const inserted = await createPendingTransfer({
+      filialId,
+      creatorTgId: session.tgId ? String(session.tgId) : null,
+      creatorName: session.name,
+      creatorRole: session.role,
+      storeFrom: String(b.store_from),
+      storeFromName: String(b.store_from_name || ''),
+      storeTo: String(b.store_to),
+      storeToName: String(b.store_to_name || ''),
+      items,
+      comment: String(b.comment || ''),
+      status,
+    });
+    return Response.json({ success: true, id: inserted.id });
+  }
+
+  const id = String(b.id || '');
+  if (!id) return Response.json({ error: 'id required' }, { status: 400 });
+  const doc = await getPendingTransferById(id);
+  if (!doc) return Response.json({ error: 'not found' }, { status: 404 });
+  if (!isAdmin && !session.filialIds.includes(doc.filialId)) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (['approve_by_receiver', 'reject_by_receiver', 'modify_by_receiver'].includes(action)) {
+    if (doc.status === 'pending_receiver') {
+      if (!isAdmin && String(doc.storeTo) !== String(userStoreId)) return Response.json({ error: 'Не получатель' }, { status: 403 });
+    } else if (doc.status === 'pending_sender') {
+      if (!isAdmin && String(doc.storeFrom) !== String(userStoreId)) return Response.json({ error: 'Не отправитель' }, { status: 403 });
+    } else {
+      return Response.json({ error: 'Неверный статус' }, { status: 400 });
+    }
+  }
+  if (['approve_by_creator', 'reject_by_creator'].includes(action)) {
+    if (!isAdmin && String(doc.creatorTgId) !== String(session.tgId)) return Response.json({ error: 'Не создатель' }, { status: 403 });
+  }
+
+  const items: TransferItem[] = Array.isArray(b.items) ? b.items : doc.items;
+  const receiverComment: string | undefined = b.receiver_comment;
+
+  if (action === 'approve_by_receiver') {
+    const { web: creds } = await resolveIikoCreds(doc.filialId);
+    const finalComment = `Принял: ${session.name}${b.comment ? ` | ${b.comment}` : ''}`;
+    const result = await submitDocument({
+      type: 'INTERNAL_TRANSFER',
+      storeFrom: doc.storeFrom!,
+      storeTo: doc.storeTo!,
+      items: items.map((it) => ({ product_id: it.product_id, product_name: it.product_name, quantity: it.quantity })),
+      comment: finalComment,
+    }, creds);
+    if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    await updatePendingTransfer(id, 'accepted');
+    await db.insert(schema.botActions).values({
+      filialId: doc.filialId, tgId: session.tgId, userName: session.name,
+      actionType: 'transfer', documentNumber: result.documentNumber,
+      details: { store_from_name: doc.storeFromName, store_to_name: doc.storeToName, items, comment: finalComment },
+    });
+    return Response.json({ success: true, documentNumber: result.documentNumber });
+  }
+
+  if (action === 'reject_by_receiver') {
+    await updatePendingTransfer(id, 'rejected', { receiverComment: receiverComment || '' });
+    return Response.json({ success: true });
+  }
+
+  if (action === 'modify_by_receiver') {
+    await updatePendingTransfer(id, 'pending_creator', { items, receiverComment: receiverComment || '' });
+    return Response.json({ success: true });
+  }
+
+  if (action === 'approve_by_creator') {
+    const { web: creds } = await resolveIikoCreds(doc.filialId);
+    const prepared = items
+      .map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        quantity: it.received_quantity != null ? Number(it.received_quantity) : Number(it.quantity),
+      }))
+      .filter((it) => it.quantity > 0);
+    const finalComment = `Принял: ${session.name}${doc.receiverComment ? ` | ${doc.receiverComment}` : ''}`;
+    const result = await submitDocument({
+      type: 'INTERNAL_TRANSFER',
+      storeFrom: doc.storeFrom!,
+      storeTo: doc.storeTo!,
+      items: prepared,
+      comment: finalComment,
+    }, creds);
+    if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    await updatePendingTransfer(id, 'accepted');
+    await db.insert(schema.botActions).values({
+      filialId: doc.filialId, tgId: session.tgId, userName: session.name,
+      actionType: 'transfer', documentNumber: result.documentNumber,
+      details: { store_from_name: doc.storeFromName, store_to_name: doc.storeToName, items: prepared, comment: finalComment, receiver_comment: doc.receiverComment },
+    });
+    return Response.json({ success: true, documentNumber: result.documentNumber });
+  }
+
+  if (action === 'reject_by_creator') {
+    await updatePendingTransfer(id, 'rejected');
+    return Response.json({ success: true });
+  }
+
+  return Response.json({ error: 'Invalid action' }, { status: 400 });
+}
