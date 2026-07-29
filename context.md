@@ -15,7 +15,10 @@
 
 **Дизайн**: всё в `app/globals.css`, без Tailwind. Классы: `.card`, `.btn[--primary|--danger|--sm|--icon]`, `.stat-card`, `.stat-grid`, `.banner[--info|--warn|--error|--success]`, `.field`, `.input[--inline|--number]`, `.totals-row`, `.empty-state`, `.action-bar`, `.tabs/.tab`, `.nav-badge`, `.cat-grid/.cat-tile` (категории-плитки на landing-страницах разделов). Dark mode через `prefers-color-scheme`. Print-friendly.
 
-**Навигация**: сайдбар сгруппирован в 6 категорий вместо 14 плоских вкладок — `components/nav.tsx`: Главная/Операции/Аналитика/Склад/Профиль/Админ. Внутри каждой категории — landing-страница с `CategoryGrid` (`components/category-grid.tsx`) с крупными плитками-ссылками на конкретные страницы.
+**Навигация** (`components/nav.tsx`): на десктопе — раскрытое дерево по группам **Смена / Склад / Аналитика / Финансы / Настройки**, каждая страница в один клик. На мобильном рендерится второй `<nav>` (`.app-sidebar__nav--mobile`) с точками входа в разделы (landing-страницы с `CategoryGrid`), потому что в нижнюю панель влезает ~6 пунктов. Переключение — чисто CSS по `max-width: 768px`.
+- Финансы (сейф/зарплаты/P&L) вынесены из Аналитики: это данные кассы и доступны всем, а Аналитика — только iiko и по ролям admin/director/manager.
+
+⚠️ **iikoWeb ходит только через `lib/http1.ts`** (`iikoWebFetch`), а не через глобальный `fetch`: undici получает от этого хоста 500 на любой запрос, `node:https` — 200. Проверено: content-length, accept-encoding, connection, тело как Buffer и form-urlencoded — всё через fetch падало. iiko XML API с глобальным fetch работает нормально.
 
 **БД в проде**: реальный Supabase (shared проект, там же чужие таблицы appointments/pipls_*/etc — не трогать). Подключение строго через **Transaction pooler** (`aws-1-ap-south-1.pooler.supabase.com:6543`), direct connection (`db.*.supabase.co:5432`) не резолвится для новых проектов. `DATABASE_URL` в `.env` (не `.env.local`). Таблица `users` в реальной БД называется `bot_users`, `tgId` — bigint. Готовится деплой на Vercel (без своего сервера).
 
