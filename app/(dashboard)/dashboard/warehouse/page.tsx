@@ -13,6 +13,8 @@ export default function WarehousePage() {
         { href: '/dashboard/invoice', icon: '🚚', title: 'Приход накладной', desc: 'Текст накладной → AI-распознавание → документ в iiko' },
         { href: '/dashboard/inventory', icon: '📋', title: 'Инвентаризация', desc: 'Ввести фактические остатки на складе' },
         { href: '/dashboard/production', icon: '🍳', title: 'Приготовление', desc: 'Заготовки и полуфабрикаты' },
+        { href: '/dashboard/writeoff', icon: '🗑', title: 'Списание', desc: 'Бой, порча, пищевые потери — акт в iiko' },
+        { href: '/dashboard/services', icon: '🧾', title: 'Услуги', desc: 'Разовые расходы без товара: доставка, транспорт' },
         { href: '/dashboard/documents', icon: '📑', title: 'Документы iiko', desc: 'Все документы за период, фильтр по типу' },
       ]} />
     </div>

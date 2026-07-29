@@ -46,6 +46,8 @@ const GROUPS: Group[] = [
       { href: '/dashboard/invoice', label: 'Приход накладной', icon: '🚚' },
       { href: '/dashboard/inventory', label: 'Инвентаризация', icon: '📋' },
       { href: '/dashboard/production', label: 'Приготовление', icon: '🍳' },
+      { href: '/dashboard/writeoff', label: 'Списание', icon: '🗑', roles: ['admin', 'bar'] },
+      { href: '/dashboard/services', label: 'Услуги', icon: '🧾', roles: ['admin', 'director', 'supplier'] },
       { href: '/dashboard/documents', label: 'Документы iiko', icon: '📑' },
     ],
   },
