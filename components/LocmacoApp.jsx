@@ -1237,6 +1237,7 @@ export default function LocmacoApp() {
     { id: "tax_report", label: "Налоговый отчет", icon: I.cash },
     { id: "fixed_assets", label: "Опись основных средств (ОС)", icon: I.asset },
     { id: "reports", label: "Отчеты", icon: I.analytics },
+    { id: "agent", label: "Агент", icon: I.analytics },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1255,6 +1256,9 @@ export default function LocmacoApp() {
   const hasAccess = (role, tabId) => {
     if (tabId === "fixed_assets") {
       return role === "admin" || role === "manager";
+    }
+    if (tabId === "agent") {
+      return role === "admin";
     }
     if (role === "admin") return true;
     switch (tabId) {
@@ -2506,6 +2510,51 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "agent") && (
+                <button
+                  onClick={() => setTab("agent")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🤖
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+                      Агент
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Спроси про выручку, средний чек, расходы — посчитает по данным iiko
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "reports") && (
                 <button
                   onClick={() => setTab("reports")}
@@ -2757,6 +2806,12 @@ export default function LocmacoApp() {
         )}
         {tab === "reports" && (
           <MonthlyReportsView
+            showToast={showToast}
+            loggedInUser={loggedInUser}
+          />
+        )}
+        {tab === "agent" && (
+          <AgentChatView
             showToast={showToast}
             loggedInUser={loggedInUser}
           />
@@ -15256,6 +15311,289 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           showToast={showToast}
         />
       )}
+    </div>
+  );
+}
+
+const AGENT_EXAMPLES = [
+  "Сколько выручки за вчера?",
+  "Средний чек по направлениям за прошлый месяц",
+  "Топ-10 блюд за неделю",
+  "Расходы за июнь, где больше всего утекло",
+  "Касса просела в этом месяце?",
+];
+
+function AgentChatView({ showToast, loggedInUser }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toolLabel, setToolLabel] = useState("");
+  const scrollRef = useRef(null);
+  const abortRef = useRef(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, toolLabel]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const ask = async (question) => {
+    const text = (question ?? input).trim();
+    if (!text || busy) return;
+
+    const nextMessages = [...messages, { role: "user", content: text }];
+    setMessages([...nextMessages, { role: "assistant", content: "" }]);
+    setInput("");
+    setBusy(true);
+    setToolLabel("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/iiko/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: nextMessages }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Ошибка ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const appendToLast = (chunk) =>
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant") {
+            copy[copy.length - 1] = { ...last, content: last.content + chunk };
+          }
+          return copy;
+        });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          let evt;
+          try {
+            evt = JSON.parse(line.slice(5).trim());
+          } catch {
+            continue;
+          }
+
+          if (evt.type === "text") {
+            setToolLabel("");
+            appendToLast(evt.text);
+          } else if (evt.type === "tool") {
+            setToolLabel(evt.label);
+          } else if (evt.type === "error") {
+            appendToLast(`\n\n⚠️ ${evt.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        console.error("[agent] ", e);
+        showToast?.(e.message || "Ошибка агента", "error");
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant" && !last.content) {
+            copy[copy.length - 1] = { ...last, content: `⚠️ ${e.message}` };
+          }
+          return copy;
+        });
+      }
+    } finally {
+      setBusy(false);
+      setToolLabel("");
+      abortRef.current = null;
+    }
+  };
+
+  const bubble = (role) => ({
+    maxWidth: "82%",
+    padding: "12px 16px",
+    borderRadius: 14,
+    fontSize: 14,
+    lineHeight: 1.55,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    alignSelf: role === "user" ? "flex-end" : "flex-start",
+    background: role === "user" ? "var(--color-primary, #6366f1)" : "var(--bg-pill)",
+    color: role === "user" ? "#fff" : "var(--text-main)",
+  });
+
+  return (
+    <div
+      style={{
+        padding: "20px 24px",
+        maxWidth: 900,
+        margin: "0 auto",
+        height: "calc(100vh - 120px)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+            🤖 Агент-аналитик
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+            Считает по живым данным iiko. Только чтение — ничего не меняет.
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setMessages([])}
+            disabled={busy}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.5 : 1,
+            }}
+          >
+            Новый диалог
+          </button>
+        )}
+      </div>
+
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-color)",
+          borderRadius: 14,
+          padding: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {messages.length === 0 ? (
+          <div style={{ margin: "auto", textAlign: "center", maxWidth: 460 }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📊</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-main)", marginBottom: 6 }}>
+              Спроси что-нибудь про ресторан
+            </div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18 }}>
+              Выручка, средний чек, маржа, расходы, топ блюд, загрузка зала
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {AGENT_EXAMPLES.map((ex) => (
+                <button
+                  key={ex}
+                  onClick={() => ask(ex)}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-pill)",
+                    color: "var(--text-main)",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((m, i) => (
+            <div key={i} style={bubble(m.role)}>
+              {m.content || (busy && i === messages.length - 1 ? "…" : "")}
+            </div>
+          ))
+        )}
+
+        {toolLabel && (
+          <div
+            style={{
+              alignSelf: "flex-start",
+              fontSize: 12,
+              color: "var(--text-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "4px 2px",
+            }}
+          >
+            <span style={{ animation: "pulse 1.2s ease-in-out infinite" }}>⏳</span>
+            {toolLabel}…
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              ask();
+            }
+          }}
+          placeholder="Спроси про выручку, чек, расходы…  (Enter — отправить)"
+          rows={2}
+          disabled={busy}
+          style={{
+            flex: 1,
+            padding: "12px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-pill)",
+            color: "var(--text-main)",
+            fontSize: 14,
+            resize: "none",
+            outline: "none",
+            fontFamily: "inherit",
+          }}
+        />
+        <button
+          onClick={() => ask()}
+          disabled={busy || !input.trim()}
+          style={{
+            padding: "0 22px",
+            borderRadius: 10,
+            border: "none",
+            background: busy || !input.trim() ? "#9ca3af" : "var(--color-primary, #6366f1)",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: busy || !input.trim() ? "not-allowed" : "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {busy ? "…" : "Спросить"}
+        </button>
+      </div>
     </div>
   );
 }
