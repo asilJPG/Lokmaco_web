@@ -51,10 +51,13 @@ const GROUPS: Group[] = [
   {
     title: 'Аналитика',
     items: [
-      { href: '/dashboard/iiko-analytics', label: 'Обзор и продажи', icon: '📊', roles: IIKO_ROLES },
-      { href: '/dashboard/menu-analytics', label: 'Меню и food cost', icon: '🍽', roles: IIKO_ROLES },
-      { href: '/dashboard/menu-analytics?tab=prices', label: 'Закупки и цены', icon: '🏷', roles: IIKO_ROLES },
-      { href: '/dashboard/reconciliation', label: 'Сверка с кассой', icon: '🧮', adminOnly: true },
+      { href: '/dashboard/analytics', label: 'Обзор', icon: '📊', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=pl', label: 'ОПиУ', icon: '📈', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=abc', label: 'ABC-анализ блюд', icon: '🍽', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=liquidity', label: 'Ликвидность', icon: '🧊', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=purchases', label: 'Закупки', icon: '🏷', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=waiters', label: 'Официанты', icon: '👨‍🍳', roles: IIKO_ROLES },
+      { href: '/dashboard/analytics?tab=reconciliation', label: 'Сверка', icon: '🧮', adminOnly: true },
     ],
   },
   {

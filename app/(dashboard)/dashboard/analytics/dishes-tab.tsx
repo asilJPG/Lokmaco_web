@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { PricesTab } from './prices-tab';
 
 type AbcClass = 'A' | 'B' | 'C';
 type Severity = 'ok' | 'above' | 'critical' | 'urgent';
@@ -79,10 +77,7 @@ const ABC_HINT: Record<AbcClass, string> = {
   C: 'Хвост: последние 5% выручки',
 };
 
-export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) {
-  // The sidebar links straight to the prices view, so the tab comes from the URL.
-  const sp = useSearchParams();
-  const [tab, setTab] = useState<'dishes' | 'prices'>(sp?.get('tab') === 'prices' ? 'prices' : 'dishes');
+export function DishesTab({ from, to }: { from: string; to: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,26 +115,14 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
     return [...rows].sort((a, b) => b[sort] - a[sort]);
   }, [data, sort, abcFilter, query]);
 
-  const tabs = (
-    <div className="segmented" role="tablist">
-      <button type="button" role="tab" aria-selected={tab === 'dishes'} className="segmented__item" onClick={() => setTab('dishes')}>🍽 Блюда и food cost</button>
-      <button type="button" role="tab" aria-selected={tab === 'prices'} className="segmented__item" onClick={() => setTab('prices')}>🔔 Цены и алерты</button>
-    </div>
-  );
-
-  if (tab === 'prices') {
-    return <div className="grid">{tabs}<PricesTab from={from} to={to} /></div>;
-  }
-
-  if (loading) return <div className="grid">{tabs}<div className="card"><div className="empty-state">Загрузка из iiko…</div></div></div>;
-  if (!data) return <div className="grid">{tabs}<div className="banner banner--error">{error || 'Нет данных'}</div></div>;
+  if (loading) return <div className="card"><div className="empty-state">Загрузка из iiko…</div></div>;
+  if (!data) return <div className="banner banner--error">{error || 'Нет данных'}</div>;
 
   const t = data.totals;
   const overTarget = data.dishes.filter((d) => d.potential > 0).length;
 
   return (
     <div className="grid">
-      {tabs}
       {error && <div className="banner banner--warn">{error}</div>}
 
       <div className="stat-grid">
