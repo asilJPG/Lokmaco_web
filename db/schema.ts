@@ -1,4 +1,4 @@
-import { pgTable, serial, bigint, bigserial, text, integer, jsonb, timestamp, uuid, primaryKey, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, bigint, bigserial, text, integer, numeric, date, jsonb, timestamp, uuid, varchar, primaryKey, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const filials = pgTable('filials', {
   id: serial('id').primaryKey(),
@@ -92,6 +92,28 @@ export const pendingTransfers = pgTable('pending_transfers', {
   byFilialStatus: index('pending_transfers_filial_status_idx').on(t.filialId, t.status),
 }));
 
+// Опись основных средств. Таблица общая с легаси-сайтом и без filial_id —
+// колонки описаны ровно те, что уже есть в базе, чтобы не трогать её схему.
+export const assets = pgTable('assets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  invNumber: varchar('inv_number').notNull(),
+  name: varchar('name').notNull(),
+  category: varchar('category'),
+  location: varchar('location').notNull(),
+  responsiblePerson: varchar('responsible_person').notNull(),
+  quantity: integer('quantity').default(1),
+  initialCost: numeric('initial_cost').default('0'),
+  commissioningDate: date('commissioning_date'),
+  status: varchar('status').default('in_use'),
+  serialNumber: varchar('serial_number'),
+  notes: text('notes'),
+  photoUrl: text('photo_url'),
+  lastInventoriedAt: timestamp('last_inventoried_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export type Asset = typeof assets.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type BotAction = typeof botActions.$inferSelect;

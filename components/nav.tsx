@@ -49,6 +49,7 @@ const GROUPS: Group[] = [
       { href: '/dashboard/writeoff', label: 'Списание', icon: '🗑', roles: ['admin', 'bar'] },
       { href: '/dashboard/services', label: 'Услуги', icon: '🧾', roles: ['admin', 'director', 'supplier'] },
       { href: '/dashboard/documents', label: 'Документы iiko', icon: '📑' },
+      { href: '/dashboard/assets', label: 'Опись ОС', icon: '🏛', roles: ['admin', 'manager'] },
     ],
   },
   {

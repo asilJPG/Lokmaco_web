@@ -16,6 +16,7 @@ export default function WarehousePage() {
         { href: '/dashboard/writeoff', icon: '🗑', title: 'Списание', desc: 'Бой, порча, пищевые потери — акт в iiko' },
         { href: '/dashboard/services', icon: '🧾', title: 'Услуги', desc: 'Разовые расходы без товара: доставка, транспорт' },
         { href: '/dashboard/documents', icon: '📑', title: 'Документы iiko', desc: 'Все документы за период, фильтр по типу' },
+        { href: '/dashboard/assets', icon: '🏛', title: 'Опись основных средств (ОС)', desc: 'Учёт оборудования, мебели, техники, инвентаризация и штрихкоды' },
       ]} />
     </div>
   );
