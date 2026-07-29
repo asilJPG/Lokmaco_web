@@ -1,4 +1,4 @@
-import { withIikoWebSession, IIKO_WEB_HEADERS, type IikoWebCreds } from './iiko-web';
+import { withIikoWebSession, iikoWebFetch, type IikoWebCreds } from './iiko-web';
 
 const STORE_NUM = process.env.IIKO_STORE_NUM || '170243';
 const CONCEPTION_ID = process.env.IIKO_CONCEPTION_ID || '2609b25f-2180-bf98-5c1c-967664eea837';
@@ -29,7 +29,6 @@ type CreateOpts = {
 export async function submitDocument(opts: CreateOpts, creds: IikoWebCreds): Promise<{ success: boolean; documentNumber?: string; error?: string }> {
   return withIikoWebSession(async (cookies, url) => {
     const { dateIncoming, dateIncomingMs } = nowDates();
-    const headers = { 'Content-Type': 'application/json', Cookie: cookies, ...IIKO_WEB_HEADERS };
 
     const baseBody: Record<string, unknown> = {
       type: opts.type,
@@ -59,13 +58,13 @@ export async function submitDocument(opts: CreateOpts, creds: IikoWebCreds): Pro
       baseBody.defaultStore = opts.storeId;
     }
 
-    const createRes = await fetch(`${url}/api/documents/create`, { method: 'POST', headers, body: JSON.stringify(baseBody) });
-    const createData = await createRes.json();
+    const createRes = await iikoWebFetch(`${url}/api/documents/create`, { method: 'POST', cookies, body: JSON.stringify(baseBody) });
+    const createData = await createRes.json<any>();
     if (createRes.status !== 200 || createData.error) return { success: false, error: createData.error || 'create failed' };
 
     const docId = createData.data.id;
     const docNumber = createData.data.documentNumber;
-    await fetch(`${url}/api/documents/get/${docId}?type=${opts.type}`, { headers });
+    await iikoWebFetch(`${url}/api/documents/get/${docId}?type=${opts.type}`, { cookies });
 
     const saveItems = opts.items.map((it) => {
       const base = {
@@ -92,8 +91,8 @@ export async function submitDocument(opts: CreateOpts, creds: IikoWebCreds): Pro
       validation: false,
     };
 
-    const saveRes = await fetch(`${url}/api/documents/save/${docId}`, { method: 'POST', headers, body: JSON.stringify(saveBody) });
-    const saveData = await saveRes.json();
+    const saveRes = await iikoWebFetch(`${url}/api/documents/save/${docId}`, { method: 'POST', cookies, body: JSON.stringify(saveBody) });
+    const saveData = await saveRes.json<any>();
     if (saveRes.status === 200 && !saveData.error) return { success: true, documentNumber: docNumber };
     return { success: false, error: saveData.error || 'save failed' };
   }, creds);

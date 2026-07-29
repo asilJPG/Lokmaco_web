@@ -1,4 +1,4 @@
-import { withIikoWebSession, IIKO_WEB_HEADERS } from '@/lib/iiko-web';
+import { withIikoWebSession, iikoWebFetch } from '@/lib/iiko-web';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
@@ -26,11 +26,9 @@ export async function GET(req: Request) {
   try {
     const data = await withIikoWebSession(async (cookies, url) => {
       const qs = new URLSearchParams({ dateFrom, dateTo, store }).toString();
-      const res = await fetch(`${url}/api/documents/list?${qs}`, {
-        headers: { Cookie: cookies, ...IIKO_WEB_HEADERS },
-      });
+      const res = await iikoWebFetch(`${url}/api/documents/list?${qs}`, { cookies });
       if (!res.ok) throw new Error(`iikoWeb ${res.status}`);
-      const payload = await res.json();
+      const payload = await res.json<any>();
       let docs: unknown[] = [];
       if (Array.isArray(payload)) docs = payload;
       else if (payload?.data?.documents && Array.isArray(payload.data.documents)) docs = payload.data.documents;

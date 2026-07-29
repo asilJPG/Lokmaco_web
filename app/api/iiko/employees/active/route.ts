@@ -1,6 +1,6 @@
 import { parseStringPromise } from 'xml2js';
 import { withIikoSession, iikoGetText } from '@/lib/iiko';
-import { withIikoWebSession, IIKO_WEB_HEADERS } from '@/lib/iiko-web';
+import { withIikoWebSession, iikoWebFetch } from '@/lib/iiko-web';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
@@ -47,11 +47,9 @@ export async function GET(req: Request) {
     const wageMap = new Map<string, number>();
     try {
       await withIikoWebSession(async (cookies, url) => {
-        const res = await fetch(`${url}/api/labor/employee/wage/list?from=${date}&to=${date}`, {
-          headers: { Cookie: cookies, ...IIKO_WEB_HEADERS },
-        });
+        const res = await iikoWebFetch(`${url}/api/labor/employee/wage/list?from=${date}&to=${date}`, { cookies });
         if (res.ok) {
-          const json = await res.json();
+          const json = await res.json<any>();
           for (const w of json.data ?? []) {
             if (w.employeeId) wageMap.set(w.employeeId, w.payment ?? 0);
           }

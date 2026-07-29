@@ -1,4 +1,4 @@
-import { withIikoWebSession, IIKO_WEB_HEADERS } from '@/lib/iiko-web';
+import { withIikoWebSession, iikoWebFetch } from '@/lib/iiko-web';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
@@ -18,9 +18,7 @@ export async function GET(req: Request) {
 
   try {
     const data = await withIikoWebSession(async (cookies, url) => {
-      const res = await fetch(`${url}/api/documents/get/${id}?type=${type}`, {
-        headers: { Cookie: cookies, ...IIKO_WEB_HEADERS },
-      });
+      const res = await iikoWebFetch(`${url}/api/documents/get/${id}?type=${type}`, { cookies });
       if (!res.ok) throw new Error(`iikoWeb ${res.status}`);
       return res.json();
     }, creds);

@@ -1,4 +1,4 @@
-import { withIikoWebSession, IIKO_WEB_HEADERS } from '@/lib/iiko-web';
+import { withIikoWebSession, iikoWebFetch } from '@/lib/iiko-web';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
@@ -24,9 +24,9 @@ export async function GET(req: Request) {
 
   try {
     const data = await withIikoWebSession(async (cookies, url) => {
-      const res = await fetch(`${url}/api/kpi/dashboard/get-data`, {
+      const res = await iikoWebFetch(`${url}/api/kpi/dashboard/get-data`, {
         method: 'POST',
-        headers: { Cookie: cookies, 'Content-Type': 'application/json', ...IIKO_WEB_HEADERS },
+        cookies,
         body: JSON.stringify({
           dateFrom: from,
           dateTo: to,
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
         }),
       });
       if (!res.ok) return [];
-      const json = await res.json();
+      const json = await res.json<any>();
       if (json.error || !json.data) return [];
       const sales = json.data.SALES_GROSS_BY_WAITERS || {};
       const orders = json.data.TRN_BY_WAITERS || {};
