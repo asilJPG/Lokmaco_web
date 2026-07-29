@@ -15,7 +15,7 @@ export default async function FinancePage() {
         { href: '/dashboard/safe', icon: '💰', title: 'Сейф', desc: 'Остаток наличных, движение по дням, расходы из сейфа' },
         { href: '/dashboard/wages', icon: '👥', title: 'Зарплаты', desc: 'Итоги за период, разбивка по дням и сотрудникам' },
         { href: '/dashboard/pnl', icon: '📈', title: 'P&L', desc: 'Прибыль и убытки по данным кассы' },
-        ...(isAdmin ? [{ href: '/dashboard/reconciliation', icon: '🧮', title: 'Сверка', desc: 'Отчёты кассиров против продаж iiko по месяцам' }] : []),
+        ...(isAdmin ? [{ href: '/dashboard/reconciliation', icon: '🧮', title: 'Отчёты кассы', desc: 'Месячная сводка: типы оплат, продажи iiko, расхождения' }] : []),
       ]} />
     </div>
   );

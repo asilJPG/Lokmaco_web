@@ -1,28 +1,24 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
-import { toURLSearchParams } from '@/lib/search-params';
-import { parsePeriod } from '@/lib/period';
-import { PeriodPicker } from '@/components/period-picker';
 import { ReconciliationClient } from './reconciliation-client';
 
-export const metadata = { title: 'Сверка' };
+export const metadata = { title: 'Отчёты' };
 export const dynamic = 'force-dynamic';
 
-export default async function ReconciliationPage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
+export default async function ReconciliationPage() {
   const session = await getSession();
   if ((session?.role || '').split(':')[0] !== 'admin') redirect('/dashboard/finance');
 
-  const sp = toURLSearchParams(searchParams);
-  const period = parsePeriod(sp);
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return (
     <div className="grid">
       <div>
-        <h1 className="page-title">Сверка</h1>
-        <p className="page-subtitle">Отчёты кассиров против продаж iiko: где расходятся наличные и безнал.</p>
+        <h1 className="page-title">Отчёты</h1>
+        <p className="page-subtitle">Месячная сводка кассы: типы оплат по данным кассира и сверка с продажами iiko.</p>
       </div>
-      <PeriodPicker from={period.from} to={period.to} activePreset={sp.get('preset') || 'this_month'} />
-      <ReconciliationClient from={period.from} to={period.to} />
+      <ReconciliationClient initialMonth={month} />
     </div>
   );
 }

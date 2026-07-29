@@ -66,7 +66,7 @@ const GROUPS: Group[] = [
       { href: '/dashboard/safe', label: 'Сейф', icon: '💰' },
       { href: '/dashboard/wages', label: 'Зарплаты', icon: '👥' },
       { href: '/dashboard/pnl', label: 'P&L', icon: '📈' },
-      { href: '/dashboard/reconciliation', label: 'Сверка', icon: '🧮', adminOnly: true },
+      { href: '/dashboard/reconciliation', label: 'Отчёты кассы', icon: '🧮', adminOnly: true },
     ],
   },
   {
