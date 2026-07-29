@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DonutChart } from '@/components/charts';
 
-type PricePoint = { date: string; price: number; amount: number; documentNumber: string };
+type PricePoint = { date: string; price: number; amount: number; documentNumber: string; supplierId: string };
 
 type Ingredient = {
   productId: string;
@@ -24,15 +24,25 @@ type Alert = {
   name: string;
   unit: string;
   baselinePrice: number;
+  baselineFrom: string;
+  baselineTo: string;
+  baselineCount: number;
   latestPrice: number;
-  changePercent: number;
   date: string;
+  changePercent: number;
   documentNumber: string;
+  bestPrice: number;
+  bestDate: string;
   impact: number;
 };
 
 type Supplier = { supplierId: string; name: string; total: number; share: number; invoices: number; avgInvoice: number };
-type Saving = { productId: string; name: string; unit: string; bestPrice: number; avgPrice: number; amount: number; saving: number };
+type Saving = {
+  productId: string; name: string; unit: string;
+  bestPrice: number; bestDate: string; bestSupplier: string;
+  avgPrice: number; latestPrice: number; latestDate: string;
+  amount: number; purchases: number; saving: number;
+};
 type Summary = { total: number; invoices: number; suppliers: number; avgInvoice: number };
 
 type Data = {
@@ -48,6 +58,22 @@ type Data = {
 
 function fmt(n: number) {
   return Math.round(n).toLocaleString('ru-RU');
+}
+
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/** 2026-07-14 → «14 июл». */
+function shortDate(iso: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  if (!m) return iso || '—';
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}`;
+}
+
+/** «было» — это период: одна дата, диапазон внутри месяца или через месяцы. */
+function rangeLabel(from: string, to: string) {
+  if (!from || !to) return '';
+  if (from === to) return shortDate(from);
+  return `${shortDate(from)} — ${shortDate(to)}`;
 }
 
 function Sparkline({ points }: { points: PricePoint[] }) {
@@ -69,24 +95,41 @@ function Sparkline({ points }: { points: PricePoint[] }) {
   );
 }
 
+const cell: React.CSSProperties = {
+  padding: '8px',
+  textAlign: 'right',
+  borderBottom: '1px solid var(--border)',
+  fontFamily: 'var(--font-num)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
 function AlertRow({ a }: { a: Alert }) {
   const up = a.changePercent > 0;
   return (
     <tr>
       <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ fontWeight: 600 }}>{a.name}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{a.date} · накл. {a.documentNumber}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>за 1 {a.unit} · накл. {a.documentNumber}</div>
       </td>
-      <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+      <td style={{ ...cell, color: 'var(--text-muted)' }}>
         {fmt(a.baselinePrice)}
+        <div style={{ fontSize: 11, fontFamily: 'inherit', color: 'var(--text-faint)' }}>
+          {rangeLabel(a.baselineFrom, a.baselineTo)}
+          {a.baselineCount > 1 ? ` · ${a.baselineCount} закупок` : ''}
+        </div>
       </td>
-      <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-        {fmt(a.latestPrice)} <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>/{a.unit}</span>
+      <td style={{ ...cell, fontWeight: 600 }}>
+        {fmt(a.latestPrice)}
+        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{shortDate(a.date)}</div>
       </td>
-      <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: up ? 'var(--danger)' : 'var(--success)' }}>
+      <td style={{ ...cell, color: 'var(--success)' }}>
+        {fmt(a.bestPrice)}
+        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{shortDate(a.bestDate)}</div>
+      </td>
+      <td style={{ ...cell, fontWeight: 700, color: up ? 'var(--danger)' : 'var(--success)' }}>
         {up ? '+' : ''}{a.changePercent.toFixed(0)}%
       </td>
-      <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: up ? 'var(--danger)' : 'var(--success)' }}>
+      <td style={{ ...cell, color: up ? 'var(--danger)' : 'var(--success)' }}>
         {up ? '+' : ''}{fmt(a.impact)}
       </td>
     </tr>
@@ -156,7 +199,9 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
             </div>
             <div className="insight__chips">
               {data.savings.slice(0, 5).map((s) => (
-                <span key={s.productId} className="insight__chip">{s.name} <b>−{fmt(s.saving)}</b></span>
+                <span key={s.productId} className="insight__chip" title={`Лучшая цена ${fmt(s.bestPrice)} за 1 ${s.unit} — ${shortDate(s.bestDate)}, ${s.bestSupplier}. Последняя ${fmt(s.latestPrice)} — ${shortDate(s.latestDate)}.`}>
+                  {s.name} <b>−{fmt(s.saving)}</b>
+                </span>
               ))}
             </div>
           </div>
@@ -222,8 +267,9 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                   <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Ингредиент</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Было</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Стало</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Было<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>обычная цена</div></th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Стало<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>последняя закупка</div></th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Лучшая<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>дешевле всего</div></th>
                   <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Изменение</th>
                   <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Влияние, сум</th>
                 </tr>
@@ -254,8 +300,9 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                     <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Ингредиент</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Было</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Стало</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Было<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>обычная цена</div></th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Стало<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>последняя закупка</div></th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Лучшая<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>дешевле всего</div></th>
                     <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Изменение</th>
                     <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Влияние, сум</th>
                   </tr>
@@ -280,7 +327,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                 <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Ингредиент</th>
                 <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>График</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Мин</th>
+                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Мин<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>лучшая цена</div></th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Макс</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Сейчас</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Закупок</th>
@@ -295,7 +342,10 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
                     <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>за 1 {g.unit}</div>
                   </td>
                   <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}><Sparkline points={g.points} /></td>
-                  <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmt(g.minPrice)}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontFamily: 'var(--font-num)', fontVariantNumeric: 'tabular-nums', color: 'var(--success)' }}>
+                    {fmt(g.minPrice)}
+                    <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{shortDate(g.points.reduce((a, b) => (b.price < a.price ? b : a)).date)}</div>
+                  </td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmt(g.maxPrice)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(g.lastPrice)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{g.purchases}</td>

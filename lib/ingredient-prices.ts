@@ -8,6 +8,7 @@ export type PricePoint = {
   price: number;
   amount: number;
   documentNumber: string;
+  supplierId: string;
 };
 
 export type IngredientPrice = {
@@ -33,11 +34,20 @@ export type PriceAlert = {
   unit: string;
   /** Median price of all earlier purchases in the period. */
   baselinePrice: number;
+  /** Даты первой и последней «прошлой» закупки — чтобы «было» имело период. */
+  baselineFrom: string;
+  baselineTo: string;
+  /** Сколько закупок усреднено в «было». */
+  baselineCount: number;
   /** Price of the most recent purchase. */
   latestPrice: number;
-  changePercent: number;
+  /** Дата закупки, которая стала «стало». */
   date: string;
+  changePercent: number;
   documentNumber: string;
+  /** Самая низкая цена за период и когда её давали. */
+  bestPrice: number;
+  bestDate: string;
   /** Extra money the new price costs at the period's purchase volume. */
   impact: number;
 };
@@ -57,8 +67,14 @@ export type SavingOpportunity = {
   name: string;
   unit: string;
   bestPrice: number;
+  /** Когда давали эту цену — чтобы было к чему апеллировать в переговорах. */
+  bestDate: string;
+  bestSupplier: string;
   avgPrice: number;
+  latestPrice: number;
+  latestDate: string;
   amount: number;
+  purchases: number;
   /** Money back if the whole volume had been bought at the best own price. */
   saving: number;
 };
@@ -213,7 +229,7 @@ export async function getIngredientPrices(
         if (!Number.isFinite(price) || price <= 0) continue;
 
         const arr = byProduct.get(productId) || [];
-        arr.push({ date, price, amount, documentNumber });
+        arr.push({ date, price, amount, documentNumber, supplierId });
         byProduct.set(productId, arr);
       }
     }
@@ -252,7 +268,8 @@ export async function getIngredientPrices(
       // last purchase vs. the median of the earlier ones (median, not average,
       // so the oscillation itself doesn't drag the baseline around).
       if (points.length >= 2) {
-        const earlier = prices.slice(0, -1).sort((a, b) => a - b);
+        const earlierPoints = points.slice(0, -1);
+        const earlier = earlierPoints.map((p) => p.price).sort((a, b) => a - b);
         const mid = Math.floor(earlier.length / 2);
         const baselinePrice = earlier.length % 2 === 0 ? (earlier[mid - 1] + earlier[mid]) / 2 : earlier[mid];
         const last = points[points.length - 1];
@@ -260,15 +277,21 @@ export async function getIngredientPrices(
           const changePercent = ((lastPrice - baselinePrice) / baselinePrice) * 100;
           if (Math.abs(changePercent) >= alertThreshold) {
             const totalAmount = points.reduce((s, p) => s + p.amount, 0);
+            const cheapest = points.reduce((a, b) => (b.price < a.price ? b : a));
             alerts.push({
               productId,
               name,
               unit,
               baselinePrice,
+              baselineFrom: earlierPoints[0].date,
+              baselineTo: earlierPoints[earlierPoints.length - 1].date,
+              baselineCount: earlierPoints.length,
               latestPrice: lastPrice,
-              changePercent,
               date: last.date,
+              changePercent,
               documentNumber: last.documentNumber,
+              bestPrice: cheapest.price,
+              bestDate: cheapest.date,
               impact: (lastPrice - baselinePrice) * totalAmount,
             });
           }
@@ -303,13 +326,20 @@ export async function getIngredientPrices(
       .map((g) => {
         const amount = g.points.reduce((s, p) => s + p.amount, 0);
         const saving = g.points.reduce((s, p) => s + (p.price - g.minPrice) * p.amount, 0);
+        const cheapest = g.points.reduce((a, b) => (b.price < a.price ? b : a));
+        const last = g.points[g.points.length - 1];
         return {
           productId: g.productId,
           name: g.name,
           unit: g.unit,
           bestPrice: g.minPrice,
+          bestDate: cheapest.date,
+          bestSupplier: supplierNames.get(cheapest.supplierId) || '—',
           avgPrice: amount > 0 ? g.totalSpend / amount : 0,
+          latestPrice: g.lastPrice,
+          latestDate: last.date,
           amount,
+          purchases: g.purchases,
           saving,
         };
       })
