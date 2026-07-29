@@ -3,7 +3,7 @@ import { db, schema } from '@/db/client';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
-import { fmtMoney, todayTashkent } from '@/lib/period';
+import { fmtMoney, todayTashkent, yesterdayTashkent } from '@/lib/period';
 import { RevenueSparkline, type SparkPoint } from '@/components/revenue-sparkline';
 
 export const metadata = { title: 'Главная' };
@@ -14,6 +14,7 @@ export default async function DashboardHome() {
   const filialIds = await getCurrentFilialIds();
   const sessionFilialIds = session?.filialIds ?? [];
   const today = todayTashkent();
+  const yesterday = yesterdayTashkent();
 
   const todayRowsP = filialIds.length === 0
     ? Promise.resolve({ rows: [{ revenue: '0', cash: '0', expenses: '0', wages: '0' }] })
@@ -29,7 +30,7 @@ export default async function DashboardHome() {
         from bot_actions
         where action_type='cash'
           and filial_id in (${sql.join(filialIds.map((id) => sql`${id}`), sql`, `)})
-          and coalesce(details->>'selected_date', to_char(created_at at time zone 'Asia/Tashkent', 'YYYY-MM-DD')) = ${today}
+          and coalesce(details->>'selected_date', to_char(created_at at time zone 'Asia/Tashkent', 'YYYY-MM-DD')) = ${yesterday}
       `) as Promise<{ rows: { revenue: string; cash: string; expenses: string; wages: string }[] }>;
 
   const weekRowsP = filialIds.length === 0
@@ -77,7 +78,7 @@ export default async function DashboardHome() {
         Роль: <code>{session?.role}</code> · Филиалы: <b>{filialNames}</b>
       </p>
 
-      <h2 style={{ marginTop: 24, marginBottom: 12, fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Сегодня · {today}</h2>
+      <h2 style={{ marginTop: 24, marginBottom: 12, fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Вчера · {yesterday}</h2>
       <div className="stat-grid">
         <div className="stat-card">
           <div className="stat-card__label">💰 Выручка</div>

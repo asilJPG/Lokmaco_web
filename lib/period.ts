@@ -10,6 +10,12 @@ export function todayTashkent(): string {
   return new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10);
 }
 
+export function yesterdayTashkent(): string {
+  const d = new Date(Date.now() + 5 * 3600_000);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function presetPeriod(preset: string): Period {
   const today = new Date(Date.now() + 5 * 3600_000);
   today.setHours(0, 0, 0, 0);
