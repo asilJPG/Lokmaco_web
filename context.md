@@ -26,9 +26,20 @@
 **Перенесено из легаси в v2 (2026-07-25, через параллельных агентов)**:
 - Приход накладных: `app/api/iiko/invoice`, `/parse` (AI-парсинг текста через OpenRouter), `/suppliers` + `dashboard/invoice` страница. ⚠️ `INCOMING_INVOICE` в `lib/iiko-web-docs.ts` — поля инференс по аналогии с легаси XML, НЕ проверено на реальном iikoWeb, тестировать перед продакшн-использованием.
 - `app/api/iiko/employees`, `/documents/detail`, `/analytics/pl/details` — детализация P&L и документов раскрывается по клику в `iiko-analytics/client.tsx` и `documents-client.tsx`.
-- Сверка касса/iiko (`dashboard/reconciliation`, `app/api/iiko/analytics/cash-reconciliation`) и вкладка «Явки»/attendance в `iiko-analytics` — оба доступны **только admin** (сузили по явной просьбе, а не по умолчанию агента). В легаси нашли и исправили баг: в `LocmacoApp.jsx` строки "Наличные"/"Наличные-" сверялись с перепутанными полями кассира (cash↔encashment) и расходы вычитались не из той строки — в новой реализации каждый тип сверяется строго сам с собой.
+- Сверка касса/iiko (`dashboard/reconciliation`) и «Явки» (`dashboard/attendance`) — обе **только admin**.
+
+⚠️ **Формула месячной сверки — ровно как в легаси, не переизобретать.** Первая версия v2 (`analytics/cash-reconciliation`, удалена) сверяла каждый тип оплаты iiko против одноимённого поля кассира и вычитала расходы из наличных iiko — модель была выдумана и давала расхождение в миллионы. Рабочая логика (`app/api/iiko/reports/monthly-cash`, порт `app/api/iiko/reports/monthly-cash/route.js` из легаси):
+- iiko отдаёт **выручку за день целиком**, OLAP группируется по `OpenDate.Typed`, без разбивки по `PayTypes`;
+- **«Наличные -» = `payments.cash` (фискал) + `payments.encashment` (инкассация) + `total_expenses`** — расходы, оплаченные кассиром прямо из ящика, тоже были выручкой налом;
+- «Общая Сумма» = «Наличные -» + humo + uzcard + rahmat + uzum + yandex + online;
+- «Разница» = Общая Сумма − продажи iiko.
+Проверено на июле 2026 живыми данными: по этой формуле дневное расхождение 20–13 000 сум при обороте ~20 млн, без `total_expenses` — миллионы каждый день.
 - Все 3 параллельных агента (invoice+parse+suppliers, cash-reconciliation+attendance, employees+documents-detail+pl-details) завершены, `npx tsc --noEmit` по всему проекту чистый, конфликтов на общих файлах (`iiko-analytics/client.tsx`) не было.
 - ⚠️ Приход накладных (`INCOMING_INVOICE` в `lib/iiko-web-docs.ts`) — поля собраны по аналогии со старым XML-форматом, НЕ протестировано на реальном iikoWeb. Проверить перед реальным использованием.
+
+**Перенесено из легаси (2026-07-29)** — раздел «Склад»: `dashboard/writeoff` (акт списания, XML `v2/documents/writeoff`, счёт по умолчанию «Пищевые потери» `6f983109-…`, склад берётся из роли), `dashboard/services` (услуга без товара — уходит приходной накладной с одной строкой: контрагент «Представительские», товар «Транспорт расходы», счёт затрат пишется в комментарий, потому что документ его не несёт), `dashboard/assets` (опись ОС). Раздел «Финансы»: `dashboard/tax-report` (реализация + расход сырья разворачиванием техкарт + списания, выгрузка для 1С), `dashboard/reconciliation`.
+
+**Опись ОС** (`dashboard/assets`, admin/manager) — таблица `assets` **общая с легаси и без `filial_id`**, схема в `db/schema.ts` описана ровно по существующим колонкам, DDL не делали. Сверка при импорте из iiko идёт по инвентарному номеру (`EQ-<num>`) и по коду iiko, который лежит в `serial_number`, — колонки под iiko-id в таблице нет. QR-стикер несёт данные **текстом**, а не ссылкой, поэтому карточка `dashboard/assets/[id]` лежит внутри дашборда: публичный `/asset/[id]` из легаси ничем не открывался, и middleware трогать не пришлось.
 
 **Аналитика меню** (`dashboard/menu-analytics`, admin/director/manager) — аналог сервиса Ресториум, но данные из iiko, а не из ручного справочника:
 - Вкладка «Блюда»: food cost и наценка по каждому блюду, ABC-анализ, CSV-экспорт. Источник — OLAP SALES с полем `ProductCostBase.ProductCost` (iiko отдаёт себестоимость готовой).
