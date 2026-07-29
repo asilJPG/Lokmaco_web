@@ -89,11 +89,11 @@ export function IikoAnalyticsClient({ from, to, isAdmin }: { from: string; to: s
 
   return (
     <div className="grid">
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button type="button" className={`btn btn--sm ${tab === 'pl' ? 'btn--primary' : ''}`} onClick={() => setTab('pl')}>📈 P&L iiko</button>
-        <button type="button" className={`btn btn--sm ${tab === 'sales' ? 'btn--primary' : ''}`} onClick={() => setTab('sales')}>🍽 Топ блюд</button>
-        <button type="button" className={`btn btn--sm ${tab === 'waiters' ? 'btn--primary' : ''}`} onClick={() => setTab('waiters')}>👨‍🍳 Официанты</button>
-        {isAdmin && <button type="button" className={`btn btn--sm ${tab === 'attendance' ? 'btn--primary' : ''}`} onClick={() => setTab('attendance')}>🕒 Явки</button>}
+      <div className="segmented" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'pl'} className="segmented__item" onClick={() => setTab('pl')}>📈 P&L iiko</button>
+        <button type="button" role="tab" aria-selected={tab === 'sales'} className="segmented__item" onClick={() => setTab('sales')}>🍽 Топ блюд</button>
+        <button type="button" role="tab" aria-selected={tab === 'waiters'} className="segmented__item" onClick={() => setTab('waiters')}>👨‍🍳 Официанты</button>
+        {isAdmin && <button type="button" role="tab" aria-selected={tab === 'attendance'} className="segmented__item" onClick={() => setTab('attendance')}>🕒 Явки</button>}
       </div>
 
       {!loading && tab === 'pl' && (

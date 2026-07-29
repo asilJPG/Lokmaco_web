@@ -24,8 +24,8 @@ export function FilialSwitcher({ filials, current, allowAll }: { filials: Filial
   }
 
   return (
-    <div style={{ padding: '0 var(--space-5) var(--space-3)' }}>
-      <label style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Филиал</label>
+    <div style={{ padding: '0 var(--space-3) var(--space-3)' }}>
+      <label style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Филиал</label>
       <select
         value={String(current)}
         onChange={(e) => switchTo(e.target.value)}
@@ -34,10 +34,10 @@ export function FilialSwitcher({ filials, current, allowAll }: { filials: Filial
           marginTop: 6,
           width: '100%',
           padding: '8px 10px',
-          background: 'rgba(255,255,255,0.06)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 8,
+          background: 'var(--surface-muted)',
+          color: 'var(--text)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
           fontSize: 13,
           cursor: 'pointer',
         }}

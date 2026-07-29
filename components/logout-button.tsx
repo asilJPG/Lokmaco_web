@@ -22,7 +22,6 @@ export function LogoutButton() {
       onClick={logout}
       disabled={busy}
       className="btn btn--sm"
-      style={{ background: 'transparent', borderColor: '#475569', color: '#cbd5e1' }}
     >
       {busy ? 'Выход…' : 'Выйти'}
     </button>

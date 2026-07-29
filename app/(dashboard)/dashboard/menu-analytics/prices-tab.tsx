@@ -146,26 +146,22 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
       </div>
 
       {data.totalSaving > 0 && (
-        <section className="card" style={{ borderLeft: '3px solid var(--success)' }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <div style={{ flex: '1 1 280px' }}>
-              <b style={{ fontSize: 14 }}>💡 Потенциальный эффект: закупать по лучшей своей цене</b>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                По {data.savings.length} товарам цена за период гуляла. Если бы весь объём брали по самой низкой из уже полученных вами цен —
-                переговоры, другой поставщик, объём — вот верхняя оценка экономии.
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                {data.savings.slice(0, 5).map((s) => (
-                  <span key={s.productId} style={{ fontSize: 12, padding: '4px 8px', background: 'var(--surface-muted)', borderRadius: 6 }}>
-                    {s.name} <b style={{ color: 'var(--success)' }}>−{fmt(s.saving)}</b>
-                  </span>
-                ))}
-              </div>
+        <section className="insight">
+          <div className="insight__body">
+            <div className="insight__title">💡 Потенциальный эффект: закупать по лучшей своей цене</div>
+            <div className="insight__desc">
+              По {data.savings.length} товарам цена за период гуляла. Если бы весь объём брали по самой низкой из уже полученных вами цен —
+              переговоры, другой поставщик, объём — вот верхняя оценка экономии.
             </div>
-            <div style={{ textAlign: 'right', minWidth: 140 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>−{fmt(data.totalSaving)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>за период</div>
+            <div className="insight__chips">
+              {data.savings.slice(0, 5).map((s) => (
+                <span key={s.productId} className="insight__chip">{s.name} <b>−{fmt(s.saving)}</b></span>
+              ))}
             </div>
+          </div>
+          <div className="insight__total">
+            <div className="insight__amount">−{fmt(data.totalSaving)}</div>
+            <div className="insight__caption">за период</div>
           </div>
         </section>
       )}

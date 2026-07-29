@@ -118,9 +118,9 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
   }, [data, sort, abcFilter, query]);
 
   const tabs = (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-      <button type="button" className={`btn btn--sm ${tab === 'dishes' ? 'btn--primary' : ''}`} onClick={() => setTab('dishes')}>🍽 Блюда и food cost</button>
-      <button type="button" className={`btn btn--sm ${tab === 'prices' ? 'btn--primary' : ''}`} onClick={() => setTab('prices')}>🔔 Цены и алерты</button>
+    <div className="segmented" role="tablist">
+      <button type="button" role="tab" aria-selected={tab === 'dishes'} className="segmented__item" onClick={() => setTab('dishes')}>🍽 Блюда и food cost</button>
+      <button type="button" role="tab" aria-selected={tab === 'prices'} className="segmented__item" onClick={() => setTab('prices')}>🔔 Цены и алерты</button>
     </div>
   );
 
@@ -159,26 +159,22 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
       </div>
 
       {data.totalPotential > 0 && (
-        <section className="card" style={{ borderLeft: '3px solid var(--success)' }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <div style={{ flex: '1 1 280px' }}>
-              <b style={{ fontSize: 14 }}>📈 Потенциальный эффект: снизить food cost</b>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                У {overTarget} {overTarget === 1 ? 'позиции' : 'позиций'} food cost выше целевых {data.targetFc}%. Вот сколько вернётся, если довести их до цели —
-                через цену, порцию или замену поставщика.
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                {data.topPotential.map((d) => (
-                  <span key={d.name} style={{ fontSize: 12, padding: '4px 8px', background: 'var(--surface-muted)', borderRadius: 6 }}>
-                    {d.name} <b style={{ color: 'var(--success)' }}>+{fmt(d.potential)}</b>
-                  </span>
-                ))}
-              </div>
+        <section className="insight">
+          <div className="insight__body">
+            <div className="insight__title">📈 Потенциальный эффект: снизить food cost</div>
+            <div className="insight__desc">
+              У {overTarget} {overTarget === 1 ? 'позиции' : 'позиций'} food cost выше целевых {data.targetFc}%. Вот сколько вернётся, если довести их до цели —
+              через цену, порцию или замену поставщика.
             </div>
-            <div style={{ textAlign: 'right', minWidth: 140 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>+{fmt(data.totalPotential)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>за период</div>
+            <div className="insight__chips">
+              {data.topPotential.map((d) => (
+                <span key={d.name} className="insight__chip">{d.name} <b>+{fmt(d.potential)}</b></span>
+              ))}
             </div>
+          </div>
+          <div className="insight__total">
+            <div className="insight__amount">+{fmt(data.totalPotential)}</div>
+            <div className="insight__caption">за период</div>
           </div>
         </section>
       )}
