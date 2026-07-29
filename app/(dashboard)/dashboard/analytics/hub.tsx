@@ -1,16 +1,16 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { OverviewTab } from './overview-tab';
 import { IikoTabs } from './iiko-tabs';
 import { DishesTab } from './dishes-tab';
 import { LiquidityTab } from './liquidity-tab';
 import { PricesTab } from './prices-tab';
-import { ReconciliationTab } from './reconciliation-tab';
 
-export type TabId = 'overview' | 'pl' | 'abc' | 'liquidity' | 'sales' | 'purchases' | 'waiters' | 'attendance' | 'reconciliation';
+export type TabId = 'overview' | 'pl' | 'abc' | 'liquidity' | 'sales' | 'purchases' | 'waiters';
 
-const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
+const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Обзор' },
   { id: 'pl', label: 'ОПиУ' },
   { id: 'abc', label: 'ABC-анализ блюд' },
@@ -18,17 +18,27 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: 'sales', label: 'Продажи по группам' },
   { id: 'purchases', label: 'Закупки' },
   { id: 'waiters', label: 'Официанты' },
-  { id: 'attendance', label: 'Явки', adminOnly: true },
-  { id: 'reconciliation', label: 'Сверка', adminOnly: true },
 ];
 
-export function AnalyticsHub({ from, to, isAdmin }: { from: string; to: string; isAdmin: boolean }) {
+/** Явки и Сверка уехали в «Смену» и «Финансы» — старые ссылки не должны ломаться. */
+const MOVED: Record<string, string> = {
+  attendance: '/dashboard/attendance',
+  reconciliation: '/dashboard/reconciliation',
+};
+
+export function AnalyticsHub({ from, to }: { from: string; to: string }) {
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
 
-  const raw = sp?.get('tab') as TabId | null;
-  const visible = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const raw = sp?.get('tab');
+  const moved = raw ? MOVED[raw] : undefined;
+
+  useEffect(() => {
+    if (moved) router.replace(moved);
+  }, [moved, router]);
+
+  const visible = TABS;
   const tab: TabId = visible.some((t) => t.id === raw) ? (raw as TabId) : 'overview';
 
   // The tab lives in the URL so the sidebar can deep-link and the view survives
@@ -61,9 +71,8 @@ export function AnalyticsHub({ from, to, isAdmin }: { from: string; to: string; 
       {tab === 'abc' && <DishesTab from={from} to={to} />}
       {tab === 'liquidity' && <LiquidityTab />}
       {tab === 'purchases' && <PricesTab from={from} to={to} />}
-      {tab === 'reconciliation' && <ReconciliationTab from={from} to={to} />}
-      {(tab === 'pl' || tab === 'sales' || tab === 'waiters' || tab === 'attendance') && (
-        <IikoTabs from={from} to={to} tab={tab} isAdmin={isAdmin} />
+      {(tab === 'pl' || tab === 'sales' || tab === 'waiters') && (
+        <IikoTabs from={from} to={to} tab={tab} />
       )}
     </div>
   );

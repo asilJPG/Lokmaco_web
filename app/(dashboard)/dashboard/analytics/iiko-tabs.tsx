@@ -7,27 +7,17 @@ type Category = { name: string; totalRevenue: number; totalAmount: number; dishe
 type Waiter = { name: string; sales: number; orders: number; refunds: number; avgCheck: number };
 type PnL = { revenue: number; cogs: number; expensesSum: number; netProfit: number; margin: number; expensesDetail: { name: string; amount: number }[] };
 type ExpenseDetailRow = { date: string; document: string; description: string; amount: number };
-type AttendanceShift = { dateFrom: string; dateTo: string; departmentName: string; attendanceType: string; comment: string };
-type AttendanceEmployee = { id: string; name: string; role: string; shifts: AttendanceShift[] };
 
 function fmt(n: number) {
   return n.toLocaleString('ru-RU');
 }
 
-function fmtDateTime(iso: string) {
-  if (!iso) return '—';
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso);
-  if (!m) return iso;
-  return `${m[3]}.${m[2]} ${m[4]}:${m[5]}`;
-}
+export type IikoTab = 'pl' | 'sales' | 'waiters';
 
-export type IikoTab = 'pl' | 'sales' | 'waiters' | 'attendance';
-
-export function IikoTabs({ from, to, tab, isAdmin }: { from: string; to: string; tab: IikoTab; isAdmin: boolean }) {
+export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: IikoTab }) {
   const [pl, setPl] = useState<PnL | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [waiters, setWaiters] = useState<Waiter[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -62,22 +52,19 @@ export function IikoTabs({ from, to, tab, isAdmin }: { from: string; to: string;
       setLoading(true);
       setError(null);
       try {
-        const [plRes, salesRes, waitersRes, attendanceRes] = await Promise.all([
+        const [plRes, salesRes, waitersRes] = await Promise.all([
           fetch(`/api/iiko/analytics/pl?from=${from}&to=${to}`),
           fetch(`/api/iiko/analytics/top-sales?from=${from}&to=${to}`),
           fetch(`/api/iiko/analytics/waiters?from=${from}&to=${to}`),
-          isAdmin ? fetch(`/api/iiko/analytics/attendance?from=${from}&to=${to}`) : Promise.resolve(null),
         ]);
         const plData = await plRes.json();
         const salesData = await salesRes.json();
         const waitersData = await waitersRes.json();
-        const attendanceData = attendanceRes ? await attendanceRes.json() : { data: [] };
         if (cancelled) return;
         setPl(plData.data || null);
         setCategories(salesData.data || []);
         setWaiters(waitersData.data || []);
-        setAttendance(attendanceData.data || []);
-        const err = plData.error || salesData.error || waitersData.error || attendanceData.error;
+        const err = plData.error || salesData.error || waitersData.error;
         if (err) setError(err);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'fetch failed');
@@ -245,42 +232,6 @@ export function IikoTabs({ from, to, tab, isAdmin }: { from: string; to: string;
         </section>
       )}
 
-      {!loading && tab === 'attendance' && (
-        <section className="card">
-          {attendance.length === 0 ? (
-            <div className="empty-state">Явок за период нет</div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Сотрудник</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Роль</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Смены</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendance.map((emp) => (
-                    <tr key={emp.id}>
-                      <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', fontWeight: 600, verticalAlign: 'top' }}>{emp.name}</td>
-                      <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', verticalAlign: 'top' }}>{emp.role}</td>
-                      <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
-                        {emp.shifts.map((s, i) => (
-                          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '2px 0' }}>
-                            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDateTime(s.dateFrom)} — {fmtDateTime(s.dateTo)}</span>
-                            {s.departmentName && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{s.departmentName}</span>}
-                            {s.comment && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>· {s.comment}</span>}
-                          </div>
-                        ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
     </div>
   );
 }

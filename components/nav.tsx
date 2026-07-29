@@ -35,6 +35,7 @@ const GROUPS: Group[] = [
       { href: '/dashboard/cashier', label: 'Закрыть смену', icon: '🧾' },
       { href: '/dashboard/inbox', label: 'Подтверждения', icon: '📨', badgeKey: 'inbox' },
       { href: '/dashboard/history', label: 'История смен', icon: '🗂️' },
+      { href: '/dashboard/attendance', label: 'Явки', icon: '🕒', adminOnly: true },
     ],
   },
   {
@@ -57,7 +58,6 @@ const GROUPS: Group[] = [
       { href: '/dashboard/analytics?tab=liquidity', label: 'Ликвидность', icon: '🧊', roles: IIKO_ROLES },
       { href: '/dashboard/analytics?tab=purchases', label: 'Закупки', icon: '🏷', roles: IIKO_ROLES },
       { href: '/dashboard/analytics?tab=waiters', label: 'Официанты', icon: '👨‍🍳', roles: IIKO_ROLES },
-      { href: '/dashboard/analytics?tab=reconciliation', label: 'Сверка', icon: '🧮', adminOnly: true },
     ],
   },
   {
@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
       { href: '/dashboard/safe', label: 'Сейф', icon: '💰' },
       { href: '/dashboard/wages', label: 'Зарплаты', icon: '👥' },
       { href: '/dashboard/pnl', label: 'P&L', icon: '📈' },
+      { href: '/dashboard/reconciliation', label: 'Сверка', icon: '🧮', adminOnly: true },
     ],
   },
   {

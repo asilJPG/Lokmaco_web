@@ -30,6 +30,7 @@ export default async function OperationsPage() {
         { href: '/dashboard/cashier', icon: '🧾', title: 'Закрыть смену', desc: 'Внести оплаты, расходы и зарплаты за день' },
         { href: '/dashboard/inbox', icon: '📨', title: 'Подтверждения', desc: 'Перемещения, ожидающие твоей реакции', badge: inbox },
         { href: '/dashboard/history', icon: '🗂️', title: 'История смен', desc: 'Все кассовые отчёты, экспорт в CSV, копирование номеров' },
+        ...((session?.role || '').split(':')[0] === 'admin' ? [{ href: '/dashboard/attendance', icon: '🕒', title: 'Явки', desc: 'Приходы и уходы сотрудников из iiko' }] : []),
       ]} />
     </div>
   );

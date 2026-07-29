@@ -23,7 +23,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: { 
         <p className="page-subtitle">Продажи, меню, склад и закупки — всё из iiko за выбранный период.</p>
       </div>
       <PeriodPicker from={period.from} to={period.to} activePreset={sp.get('preset') || 'this_month'} />
-      <AnalyticsHub from={period.from} to={period.to} isAdmin={baseRole === 'admin'} />
+      <AnalyticsHub from={period.from} to={period.to} />
     </div>
   );
 }

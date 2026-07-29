@@ -30,7 +30,7 @@ function DiffCell({ diff }: { diff: number }) {
   );
 }
 
-export function ReconciliationTab({ from, to }: { from: string; to: string }) {
+export function ReconciliationClient({ from, to }: { from: string; to: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
