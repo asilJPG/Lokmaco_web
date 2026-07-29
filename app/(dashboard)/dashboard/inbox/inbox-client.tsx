@@ -18,11 +18,15 @@ type Bucket = { incoming: Pending[]; returned: Pending[]; outgoing: Pending[] };
 
 export function InboxClient() {
   const [data, setData] = useState<Bucket>({ incoming: [], returned: [], outgoing: [] });
-  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // `ready` only gates the very first render. Re-loading after an action must
+  // not unmount the list: swapping the whole tree for a spinner loses the
+  // scroll position and reads as a page reload.
   async function load() {
-    setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/iiko/pending-transfer');
@@ -32,41 +36,55 @@ export function InboxClient() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'fetch failed');
     } finally {
-      setLoading(false);
+      setReady(true);
     }
   }
 
   useEffect(() => { load(); }, []);
 
   async function act(p: Pending, action: string, payload?: { items?: Item[]; receiver_comment?: string }) {
-    const res = await fetch('/api/iiko/pending-transfer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: p.id, action, ...payload }),
-    });
-    const text = await res.text();
-    let data: any = {};
-    try { data = text ? JSON.parse(text) : {}; } catch {}
-    if (!res.ok) return alert(data.error || `Ошибка ${res.status}: ${text.slice(0, 200)}`);
-    await load();
+    if (busyId) return;
+    setBusyId(p.id);
+    setToast(null);
+    try {
+      const res = await fetch('/api/iiko/pending-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, action, ...payload }),
+      });
+      const text = await res.text();
+      let body: any = {};
+      try { body = text ? JSON.parse(text) : {}; } catch {}
+      if (!res.ok) {
+        setToast({ ok: false, text: body.error || `Ошибка ${res.status}: ${text.slice(0, 200)}` });
+        return;
+      }
+      setToast({ ok: true, text: ACTION_DONE[action] || 'Готово' });
+      await load();
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  if (loading) return <div className="card"><div className="empty-state">Загрузка…</div></div>;
-  if (error) return <div className="banner banner--error">{error}</div>;
+  if (!ready) return <div className="card"><div className="empty-state">Загрузка…</div></div>;
+
+  const empty = data.incoming.length === 0 && data.returned.length === 0 && data.outgoing.length === 0;
 
   return (
     <div className="grid">
+      {error && <div className="banner banner--error">{error}</div>}
+      {toast && <div className={`banner ${toast.ok ? 'banner--success' : 'banner--error'}`}>{toast.text}</div>}
       {data.incoming.length > 0 && (
         <Section title={`📥 Входящие (${data.incoming.length})`}>
           {data.incoming.map((p) => (
-            <IncomingCard key={p.id} p={p} onAct={(action, payload) => act(p, action, payload)} />
+            <IncomingCard key={p.id} p={p} busy={busyId === p.id} onAct={(action, payload) => act(p, action, payload)} />
           ))}
         </Section>
       )}
       {data.returned.length > 0 && (
         <Section title={`↩️ Возвращены тебе с изменениями (${data.returned.length})`}>
           {data.returned.map((p) => (
-            <ReturnedCard key={p.id} p={p} onAct={(action) => act(p, action)} />
+            <ReturnedCard key={p.id} p={p} busy={busyId === p.id} onAct={(action) => act(p, action)} />
           ))}
         </Section>
       )}
@@ -77,12 +95,18 @@ export function InboxClient() {
           ))}
         </Section>
       )}
-      {data.incoming.length === 0 && data.returned.length === 0 && data.outgoing.length === 0 && (
-        <div className="card"><div className="empty-state">Активных подтверждений нет</div></div>
-      )}
+      {empty && <div className="card"><div className="empty-state">Активных подтверждений нет</div></div>}
     </div>
   );
 }
+
+const ACTION_DONE: Record<string, string> = {
+  approve_by_receiver: 'Принято, документ ушёл в iiko',
+  modify_by_receiver: 'Возвращено отправителю с изменениями',
+  reject_by_receiver: 'Отклонено',
+  approve_by_creator: 'Изменения приняты, документ ушёл в iiko',
+  reject_by_creator: 'Перемещение отменено',
+};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -120,7 +144,7 @@ function ItemsTable({ items }: { items: Item[] }) {
   );
 }
 
-function IncomingCard({ p, onAct }: { p: Pending; onAct: (action: string, payload?: { items?: Item[]; receiver_comment?: string }) => void }) {
+function IncomingCard({ p, busy, onAct }: { p: Pending; busy: boolean; onAct: (action: string, payload?: { items?: Item[]; receiver_comment?: string }) => void }) {
   const [editing, setEditing] = useState(false);
   const [items, setItems] = useState<Item[]>(p.items.map((it) => ({ ...it, received_quantity: it.quantity })));
   const [rc, setRc] = useState('');
@@ -143,14 +167,14 @@ function IncomingCard({ p, onAct }: { p: Pending; onAct: (action: string, payloa
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {!editing ? (
           <>
-            <button type="button" className="btn btn--primary btn--sm" onClick={() => onAct('approve_by_receiver')}>✅ Принять как есть</button>
-            <button type="button" className="btn btn--sm" onClick={() => setEditing(true)}>✎ Изменить количество</button>
-            <button type="button" className="btn btn--danger btn--sm" onClick={() => { const c = prompt('Причина отказа?'); if (c !== null) onAct('reject_by_receiver', { receiver_comment: c }); }}>✕ Отклонить</button>
+            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => onAct('approve_by_receiver')}>{busy ? 'Отправка…' : '✅ Принять как есть'}</button>
+            <button type="button" className="btn btn--sm" disabled={busy} onClick={() => setEditing(true)}>✎ Изменить количество</button>
+            <button type="button" className="btn btn--danger btn--sm" disabled={busy} onClick={() => { const c = prompt('Причина отказа?'); if (c !== null) onAct('reject_by_receiver', { receiver_comment: c }); }}>✕ Отклонить</button>
           </>
         ) : (
           <>
-            <button type="button" className="btn btn--primary btn--sm" onClick={() => onAct('modify_by_receiver', { items, receiver_comment: rc })}>↻ Вернуть с изменениями</button>
-            <button type="button" className="btn btn--sm" onClick={() => setEditing(false)}>Отмена</button>
+            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => onAct('modify_by_receiver', { items, receiver_comment: rc })}>{busy ? 'Отправка…' : '↻ Вернуть с изменениями'}</button>
+            <button type="button" className="btn btn--sm" disabled={busy} onClick={() => setEditing(false)}>Отмена</button>
           </>
         )}
       </div>
@@ -158,15 +182,15 @@ function IncomingCard({ p, onAct }: { p: Pending; onAct: (action: string, payloa
   );
 }
 
-function ReturnedCard({ p, onAct }: { p: Pending; onAct: (action: string) => void }) {
+function ReturnedCard({ p, busy, onAct }: { p: Pending; busy: boolean; onAct: (action: string) => void }) {
   return (
     <div className="card" style={{ borderColor: 'var(--warning)', borderStyle: 'solid' }}>
       <Header p={p} />
       {p.receiverComment && <div className="banner banner--warn" style={{ marginTop: 8 }}>💬 Получатель: {p.receiverComment}</div>}
       <ItemsTable items={p.items} />
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn--primary btn--sm" onClick={() => onAct('approve_by_creator')}>✅ Принять изменения</button>
-        <button type="button" className="btn btn--danger btn--sm" onClick={() => onAct('reject_by_creator')}>✕ Отклонить и отменить</button>
+        <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => onAct('approve_by_creator')}>{busy ? 'Отправка…' : '✅ Принять изменения'}</button>
+        <button type="button" className="btn btn--danger btn--sm" disabled={busy} onClick={() => onAct('reject_by_creator')}>✕ Отклонить и отменить</button>
       </div>
     </div>
   );
