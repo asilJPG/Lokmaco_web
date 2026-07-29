@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { PricesTab } from './prices-tab';
 
 type AbcClass = 'A' | 'B' | 'C';
@@ -79,7 +80,9 @@ const ABC_HINT: Record<AbcClass, string> = {
 };
 
 export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) {
-  const [tab, setTab] = useState<'dishes' | 'prices'>('dishes');
+  // The sidebar links straight to the prices view, so the tab comes from the URL.
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<'dishes' | 'prices'>(sp?.get('tab') === 'prices' ? 'prices' : 'dishes');
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

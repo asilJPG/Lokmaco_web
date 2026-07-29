@@ -145,6 +145,8 @@ button:focus-visible, a:focus-visible {
   flex-shrink: 0;
 }
 .app-sidebar__nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
+/* Two navs are rendered: the grouped desktop tree and the compact mobile bar. */
+.app-sidebar__nav--mobile { display: none; }
 .app-sidebar__group { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
 .app-sidebar__group + .app-sidebar__group { padding-top: 8px; border-top: 1px solid var(--border); }
 .app-sidebar__group-title {
@@ -234,8 +236,10 @@ button:focus-visible, a:focus-visible {
     gap: 0;
   }
   .app-sidebar__group { flex-direction: row; padding: 0; }
-  .app-sidebar__group + .app-sidebar__group { padding-top: 0; border-top: none; border-left: 1px solid var(--border); }
+  .app-sidebar__group + .app-sidebar__group { padding-top: 0; border-top: none; border-left: none; }
   .app-sidebar__group-title { display: none; }
+  .app-sidebar__nav--desktop { display: none; }
+  .app-sidebar__nav--mobile { display: flex; }
   .app-sidebar__link {
     padding: 10px 14px;
     border-radius: 0;
