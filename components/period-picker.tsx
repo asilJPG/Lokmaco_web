@@ -34,7 +34,7 @@ export function PeriodPicker({ from, to, activePreset }: { from: string; to: str
             key={p.id}
             type="button"
             onClick={() => go({ preset: p.id, from: '', to: '' })}
-            className={`btn btn--sm ${activePreset === p.id ? 'btn--primary' : ''}`}
+            className={`btn btn--sm ${activePreset === p.id ? 'btn--soft' : ''}`}
           >
             {p.label}
           </button>

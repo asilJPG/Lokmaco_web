@@ -33,17 +33,17 @@ export default async function SafePage({ searchParams }: { searchParams: { [k: s
       <PeriodPicker from={period.from} to={period.to} activePreset={sp.get('preset') || 'this_month'} />
 
       <div className="stat-grid">
-        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', borderColor: '#86efac' }}>
-          <div className="stat-card__label" style={{ color: '#166534' }}>💰 Остаток сейфа на {period.to}</div>
-          <div className="stat-card__value" style={{ color: '#064e3b' }}>{fmtMoney(stats.allTimeBalance)} сум</div>
+        <div className="stat-card">
+          <div className="stat-card__label">💰 Остаток сейфа на {period.to}</div>
+          <div className="stat-card__value" style={{ color: 'var(--success)' }}>{fmtMoney(stats.allTimeBalance)} сум</div>
         </div>
-        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', borderColor: '#93c5fd' }}>
-          <div className="stat-card__label" style={{ color: '#1d4ed8' }}>💵 Сдано налом за период</div>
-          <div className="stat-card__value" style={{ color: '#1e3a8a' }}>{fmtMoney(stats.periodCashIn)} сум</div>
+        <div className="stat-card">
+          <div className="stat-card__label">💵 Сдано налом за период</div>
+          <div className="stat-card__value">{fmtMoney(stats.periodCashIn)} сум</div>
         </div>
-        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', borderColor: '#fca5a5' }}>
-          <div className="stat-card__label" style={{ color: '#b91c1c' }}>💸 Расходы из сейфа за период</div>
-          <div className="stat-card__value" style={{ color: '#7f1d1d' }}>{fmtMoney(stats.periodAdminExpenses)} сум</div>
+        <div className="stat-card">
+          <div className="stat-card__label">💸 Расходы из сейфа за период</div>
+          <div className="stat-card__value" style={{ color: 'var(--danger)' }}>{fmtMoney(stats.periodAdminExpenses)} сум</div>
         </div>
       </div>
 

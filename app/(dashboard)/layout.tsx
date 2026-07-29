@@ -36,7 +36,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
-        <div className="app-sidebar__brand">Lokmaco</div>
+        <div className="app-sidebar__brand">
+          <span className="app-sidebar__mark" aria-hidden="true">L</span>
+          <span>Lokmaco</span>
+        </div>
         <FilialSwitcher filials={filials} current={current} allowAll={allowAll} />
         <SidebarNav role={session.role} badges={{ inbox: inboxCount }} />
         <div className="cmdk-hint" data-print-hide style={{

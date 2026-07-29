@@ -1,26 +1,32 @@
 :root {
-  --bg: #f6f7f9;
+  --bg: #f7f8fa;
   --surface: #ffffff;
-  --surface-muted: #f1f5f9;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
-  --brand: #0f172a;
-  --brand-hover: #1e293b;
-  --accent: #2563eb;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
+  --surface-muted: #f2f4f7;
+  --border: #eaecf0;
+  --border-strong: #d0d5dd;
+  --text: #101828;
+  --text-muted: #667085;
+  --text-faint: #98a2b3;
+  --brand: #101828;
+  --brand-hover: #1d2939;
+  --accent: #2f6fed;
+  --accent-soft: #eef4ff;
+  --success: #12904f;
+  --success-soft: #e9f7ef;
+  --danger: #d92d20;
+  --warning: #dc6803;
 
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  /* Flat, low-contrast elevation: the layout reads through borders and
+     background steps rather than drop shadows. */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 8px 20px rgba(16, 24, 40, 0.08);
+
+  --font-num: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -53,7 +59,7 @@ a:not(.btn):not(.card):not(.app-sidebar__link):not(.tab):hover {
 }
 h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
 
-::selection { background: rgba(37, 99, 235, 0.18); color: var(--text); }
+::selection { background: var(--accent-soft); color: var(--text); }
 
 code {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
@@ -101,7 +107,7 @@ button:focus-visible, a:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 268px 1fr;
   min-height: 100vh;
 }
 
@@ -117,11 +123,26 @@ button:focus-visible, a:focus-visible {
   height: 100vh;
 }
 .app-sidebar__brand {
-  padding: 4px var(--space-3) var(--space-4);
+  padding: 4px var(--space-3) var(--space-5);
   font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  font-size: 17px;
+  letter-spacing: -0.02em;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.app-sidebar__mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--brand);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 .app-sidebar__nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
 .app-sidebar__group { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
@@ -135,8 +156,8 @@ button:focus-visible, a:focus-visible {
   font-weight: 600;
 }
 .app-sidebar__link {
-  padding: 9px var(--space-3);
-  border-radius: var(--radius-sm);
+  padding: 10px var(--space-3);
+  border-radius: 10px;
   color: var(--text-muted);
   font-size: 14px;
   font-weight: 500;
@@ -147,8 +168,8 @@ button:focus-visible, a:focus-visible {
 }
 .app-sidebar__link:hover { background: var(--surface-muted); color: var(--text); }
 .app-sidebar__link[data-active="true"] {
-  background: var(--surface-muted);
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
 }
 .app-sidebar__link[data-active="true"] .app-sidebar__icon {
@@ -233,10 +254,10 @@ button:focus-visible, a:focus-visible {
 /* ---------------- UI primitives ---------------- */
 
 .page-title {
-  font-size: clamp(20px, 3vw, 26px);
+  font-size: clamp(22px, 3vw, 28px);
   font-weight: 700;
   margin-bottom: var(--space-2);
-  letter-spacing: -0.022em;
+  letter-spacing: -0.028em;
   line-height: 1.15;
   color: var(--text);
 }
@@ -252,7 +273,6 @@ button:focus-visible, a:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-5);
-  box-shadow: var(--shadow-sm);
   transition: box-shadow 160ms, border-color 160ms;
 }
 a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
@@ -345,12 +365,12 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 10px 18px;
+  padding: 9px 16px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
+  border-radius: 10px;
+  font-weight: 500;
   font-size: 14px;
-  transition: background 120ms, border-color 120ms, transform 60ms, box-shadow 120ms;
+  transition: background 120ms, border-color 120ms, color 120ms, transform 60ms;
   background: var(--surface);
   color: var(--text);
   border-color: var(--border-strong);
@@ -358,16 +378,28 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.btn:hover { background: var(--surface-muted); border-color: var(--text-faint); }
+.btn:hover { background: var(--surface-muted); border-color: var(--border-strong); }
 .btn:active { transform: translateY(1px); box-shadow: none; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+/* Primary reads as the accent colour, the way the reference dashboards do —
+   the near-black variant is kept for destructive-adjacent emphasis only. */
 .btn--primary {
-  background: var(--brand);
-  border-color: var(--brand);
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
+  font-weight: 600;
 }
-.btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.btn--primary:hover { background: #2560d4; border-color: #2560d4; }
+/* Selected-filter look: tinted rather than filled, so a row of them doesn't
+   turn into a wall of blue. */
+.btn--soft {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+.btn--soft:hover { background: #e2ecff; border-color: transparent; }
 .btn--ghost { border-color: transparent; }
 .btn--ghost:hover { background: var(--surface-muted); }
 .btn--danger {
@@ -376,7 +408,7 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   border-color: #fecaca;
 }
 .btn--danger:hover { background: #fef2f2; }
-.btn--sm { padding: 6px 12px; min-height: 32px; font-size: 13px; }
+.btn--sm { padding: 6px 12px; min-height: 34px; font-size: 13px; border-radius: 9px; }
 
 .tabs {
   display: flex;
@@ -441,7 +473,7 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   background: var(--surface);
   color: var(--text);
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
 }
 
 /* Callout that turns a metric into money: what this is worth if acted on. */
@@ -462,18 +494,19 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
 .insight__chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: var(--space-3); }
 .insight__chip {
   font-size: 12px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   background: var(--surface-muted);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
 }
-.insight__chip b { color: var(--success); }
+.insight__chip b { color: var(--success); font-family: var(--font-num); }
 .insight__total { text-align: right; min-width: 140px; margin-left: auto; }
 .insight__amount {
+  font-family: var(--font-num);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--success);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 .insight__caption { font-size: 11px; color: var(--text-muted); }
 @media (pointer: coarse) {
@@ -575,19 +608,21 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   color: inherit;
 }
 .cat-tile:hover {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
 }
+.cat-tile:hover .cat-tile__icon { background: var(--accent-soft); }
 .cat-tile:active { transform: translateY(1px); }
 .cat-tile__icon {
-  font-size: 28px;
-  width: 48px;
-  height: 48px;
+  font-size: 26px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   background: var(--surface-muted);
-  border-radius: 12px;
+  border-radius: 11px;
   flex-shrink: 0;
+  transition: background 140ms;
 }
 .cat-tile__body { flex: 1; min-width: 0; }
 .cat-tile__title {
@@ -694,21 +729,24 @@ tr[data-today="true"] td:first-child {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5);
 }
 .stat-card__label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .stat-card__value {
-  font-size: clamp(18px, 4vw, 26px);
-  font-weight: 700;
-  margin-top: 6px;
+  /* Monospaced figures so digits line up column-to-column across cards. */
+  font-family: var(--font-num);
+  font-size: clamp(19px, 4vw, 25px);
+  font-weight: 600;
+  margin-top: 8px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   line-height: 1.15;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -756,7 +794,11 @@ tr[data-today="true"] td:first-child {
     --brand: #0b1120;
     --brand-hover: #111827;
     --accent: #60a5fa;
+    /* Tints have to be re-derived for dark mode: the light ones would render as
+       bright blocks instead of a subtle wash. */
+    --accent-soft: rgba(96, 165, 250, 0.14);
     --success: #4ade80;
+    --success-soft: rgba(74, 222, 128, 0.12);
     --danger: #f87171;
     --warning: #fbbf24;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -771,6 +813,9 @@ tr[data-today="true"] td:first-child {
   .card tbody tr[data-today="true"]:hover td { background: rgba(250, 204, 21, 0.14); }
   .btn--danger { background: var(--surface); border-color: rgba(248, 113, 113, 0.4); }
   .btn--danger:hover { background: rgba(248, 113, 113, 0.08); }
+  .btn--primary:hover { background: #4f95f7; border-color: #4f95f7; }
+  .btn--soft:hover { background: rgba(96, 165, 250, 0.22); }
+  .app-sidebar__mark { background: var(--accent); }
 }
 
 /* ---------------- Print-friendly styles ---------------- */

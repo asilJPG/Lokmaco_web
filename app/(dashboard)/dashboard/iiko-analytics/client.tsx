@@ -107,9 +107,9 @@ export function IikoAnalyticsClient({ from, to, isAdmin }: { from: string; to: s
               <div className="stat-card"><div className="stat-card__label">💰 Выручка</div><div className="stat-card__value" style={{ color: 'var(--success)' }}>{fmt(Math.round(pl.revenue))}</div></div>
               <div className="stat-card"><div className="stat-card__label">🛒 Себестоимость</div><div className="stat-card__value">{fmt(Math.round(pl.cogs))}</div></div>
               <div className="stat-card"><div className="stat-card__label">🏦 Операционные расходы</div><div className="stat-card__value">{fmt(Math.round(pl.expensesSum))}</div></div>
-              <div className="stat-card" style={{ background: pl.netProfit >= 0 ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', borderColor: pl.netProfit >= 0 ? '#86efac' : '#fca5a5', gridColumn: 'span 2' }}>
-                <div className="stat-card__label" style={{ color: pl.netProfit >= 0 ? '#166534' : '#b91c1c' }}>📈 Чистая прибыль · маржа {pl.margin.toFixed(1)}%</div>
-                <div className="stat-card__value" style={{ color: pl.netProfit >= 0 ? '#064e3b' : '#7f1d1d' }}>{fmt(Math.round(pl.netProfit))}</div>
+              <div className="stat-card" style={{ gridColumn: 'span 2' }}>
+                <div className="stat-card__label">📈 Чистая прибыль · маржа {pl.margin.toFixed(1)}%</div>
+                <div className="stat-card__value" style={{ color: pl.netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmt(Math.round(pl.netProfit))}</div>
               </div>
             </div>
             <section className="card">

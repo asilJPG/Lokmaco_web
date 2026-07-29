@@ -182,7 +182,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
       <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Целевой food cost:</span>
         {[20, 25, 30, 35].map((v) => (
-          <button key={v} type="button" className={`btn btn--sm ${targetFc === v ? 'btn--primary' : ''}`} onClick={() => setTargetFc(v)}>{v}%</button>
+          <button key={v} type="button" className={`btn btn--sm ${targetFc === v ? 'btn--soft' : ''}`} onClick={() => setTargetFc(v)}>{v}%</button>
         ))}
         <div style={{ display: 'flex', gap: 12, marginLeft: 'auto', flexWrap: 'wrap' }}>
           {data.severityBuckets.filter((b) => b.count > 0).map((b) => (
@@ -208,7 +208,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
               <button
                 key={c}
                 type="button"
-                className={`btn btn--sm ${abcFilter === c ? 'btn--primary' : ''}`}
+                className={`btn btn--sm ${abcFilter === c ? 'btn--soft' : ''}`}
                 onClick={() => setAbcFilter(c)}
                 title={c === 'all' ? 'Все блюда' : ABC_HINT[c]}
               >
@@ -226,7 +226,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
               ['potential', 'Потенциал'],
               ['amount', 'Кол-во'],
             ] as [SortKey, string][]).map(([k, label]) => (
-              <button key={k} type="button" className={`btn btn--sm ${sort === k ? 'btn--primary' : ''}`} onClick={() => setSort(k)}>
+              <button key={k} type="button" className={`btn btn--sm ${sort === k ? 'btn--soft' : ''}`} onClick={() => setSort(k)}>
                 {label}
               </button>
             ))}

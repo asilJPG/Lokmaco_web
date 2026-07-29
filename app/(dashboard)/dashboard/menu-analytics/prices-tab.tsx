@@ -204,7 +204,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>последняя закупка против обычной цены</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
             {[10, 20, 30].map((t) => (
-              <button key={t} type="button" className={`btn btn--sm ${threshold === t ? 'btn--primary' : ''}`} onClick={() => setThreshold(t)}>
+              <button key={t} type="button" className={`btn btn--sm ${threshold === t ? 'btn--soft' : ''}`} onClick={() => setThreshold(t)}>
                 ≥ {t}%
               </button>
             ))}
