@@ -13,6 +13,9 @@ type OlapRow = {
 
 export type AbcClass = 'A' | 'B' | 'C';
 
+/** How far a dish's food cost sits above the target. */
+export type FcSeverity = 'ok' | 'above' | 'critical' | 'urgent';
+
 export type MenuDish = {
   category: string;
   name: string;
@@ -28,12 +31,27 @@ export type MenuDish = {
   markupPercent: number;
   /** Доля блюда в общей выручке, %. */
   revenueShare: number;
+  /** ABC по выручке. */
   abc: AbcClass;
+  /** ABC по количеству проданных порций. */
+  abcAmount: AbcClass;
+  /** ABC по прибыли. */
+  abcProfit: AbcClass;
+  severity: FcSeverity;
+  /** Сколько денег вернётся, если довести food cost до целевого. */
+  potential: number;
 };
 
 export type MenuAnalytics = {
   dishes: MenuDish[];
   totals: { revenue: number; cost: number; profit: number; fcPercent: number; dishCount: number };
+  /** Целевой food cost, от которого считается потенциал. */
+  targetFc: number;
+  /** Суммарный потенциал по всем блюдам выше цели. */
+  totalPotential: number;
+  /** Топ-5 блюд по потенциалу — с них начинать. */
+  topPotential: MenuDish[];
+  severityBuckets: { severity: FcSeverity; count: number; revenue: number }[];
 };
 
 function num(v: unknown): number {
@@ -41,7 +59,32 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function getMenuAnalytics(filialId: number, from: string, to: string): Promise<MenuAnalytics> {
+/**
+ * Assigns A/B/C by cumulative share of `pick`, Pareto-style: A covers the top
+ * 80%, B the next 15%, C the tail.
+ */
+function classifyAbc(dishes: MenuDish[], pick: (d: MenuDish) => number, assign: (d: MenuDish, c: AbcClass) => void): void {
+  const total = dishes.reduce((s, d) => s + Math.max(0, pick(d)), 0);
+  if (total <= 0) {
+    for (const d of dishes) assign(d, 'C');
+    return;
+  }
+  let cumulative = 0;
+  for (const d of [...dishes].sort((a, b) => pick(b) - pick(a))) {
+    cumulative += (Math.max(0, pick(d)) / total) * 100;
+    assign(d, cumulative <= 80 ? 'A' : cumulative <= 95 ? 'B' : 'C');
+  }
+}
+
+function severityOf(fcPercent: number, targetFc: number): FcSeverity {
+  const over = fcPercent - targetFc;
+  if (over <= 0) return 'ok';
+  if (over <= 5) return 'above';
+  if (over <= 15) return 'critical';
+  return 'urgent';
+}
+
+export async function getMenuAnalytics(filialId: number, from: string, to: string, targetFc = 25): Promise<MenuAnalytics> {
   const { xml: creds } = await resolveIikoCreds(filialId);
 
   // iiko treats the range end as exclusive when includeHigh is false; shifting
@@ -95,6 +138,10 @@ export async function getMenuAnalytics(filialId: number, from: string, to: strin
         markupPercent: cost > 0 ? (profit / cost) * 100 : 0,
         revenueShare: 0,
         abc: 'C',
+        abcAmount: 'C',
+        abcProfit: 'C',
+        severity: 'ok',
+        potential: 0,
       });
     }
 
@@ -103,14 +150,25 @@ export async function getMenuAnalytics(filialId: number, from: string, to: strin
     const totalRevenue = dishes.reduce((s, d) => s + d.revenue, 0);
     const totalCost = dishes.reduce((s, d) => s + d.cost, 0);
 
-    // ABC: dishes are already sorted by revenue, so walking the cumulative share
-    // once assigns A to the top 80% of revenue, B to the next 15%.
-    let cumulative = 0;
     for (const d of dishes) {
       d.revenueShare = totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0;
-      cumulative += d.revenueShare;
-      d.abc = cumulative <= 80 ? 'A' : cumulative <= 95 ? 'B' : 'C';
+      d.severity = severityOf(d.fcPercent, targetFc);
+      // Money that comes back if this dish is brought down to the target food
+      // cost — the share of its revenue currently eaten by the excess.
+      d.potential = d.fcPercent > targetFc ? d.revenue * ((d.fcPercent - targetFc) / 100) : 0;
     }
+
+    // A dish can be a bestseller by count yet a laggard by profit, so all three
+    // rankings are reported rather than revenue alone.
+    classifyAbc(dishes, (d) => d.revenue, (d, c) => { d.abc = c; });
+    classifyAbc(dishes, (d) => d.amount, (d, c) => { d.abcAmount = c; });
+    classifyAbc(dishes, (d) => d.profit, (d, c) => { d.abcProfit = c; });
+
+    const severities: FcSeverity[] = ['urgent', 'critical', 'above', 'ok'];
+    const severityBuckets = severities.map((severity) => {
+      const rows = dishes.filter((d) => d.severity === severity);
+      return { severity, count: rows.length, revenue: rows.reduce((s, d) => s + d.revenue, 0) };
+    });
 
     return {
       dishes,
@@ -121,6 +179,10 @@ export async function getMenuAnalytics(filialId: number, from: string, to: strin
         fcPercent: totalRevenue > 0 ? (totalCost / totalRevenue) * 100 : 0,
         dishCount: dishes.length,
       },
+      targetFc,
+      totalPotential: dishes.reduce((s, d) => s + d.potential, 0),
+      topPotential: [...dishes].sort((a, b) => b.potential - a.potential).filter((d) => d.potential > 0).slice(0, 5),
+      severityBuckets,
     };
   }, creds);
 }

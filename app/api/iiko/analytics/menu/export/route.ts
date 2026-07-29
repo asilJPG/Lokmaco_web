@@ -24,14 +24,17 @@ export async function GET(req: Request) {
   const to = sp.get('to') || '';
   if (ids.length === 0 || !from || !to) return new Response('', { status: 200 });
 
-  const data = await getMenuAnalytics(ids[0], from, to);
+  const targetFc = Number(sp.get('targetFc')) || 25;
+  const data = await getMenuAnalytics(ids[0], from, to, targetFc);
 
-  const lines = ['Блюдо;Категория;ABC;Количество;Выручка;Себестоимость;Себест. порции;Food cost %;Наценка %;Прибыль;Доля выручки %'];
+  const lines = ['Блюдо;Категория;ABC шт;ABC выручка;ABC прибыль;Количество;Выручка;Себестоимость;Себест. порции;Food cost %;Наценка %;Прибыль;Доля выручки %;Потенциал'];
   for (const d of data.dishes) {
     lines.push([
       d.name,
       d.category,
+      d.abcAmount,
       d.abc,
+      d.abcProfit,
       round(d.amount),
       round(d.revenue),
       round(d.cost),
@@ -40,6 +43,7 @@ export async function GET(req: Request) {
       d.markupPercent.toFixed(1),
       round(d.profit),
       d.revenueShare.toFixed(2),
+      round(d.potential),
     ].map(csvCell).join(';'));
   }
 

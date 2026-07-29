@@ -17,8 +17,10 @@ export async function GET(req: Request) {
   const to = sp.get('to');
   if (!from || !to) return Response.json({ error: 'from, to required' }, { status: 400 });
 
+  const targetFc = Number(sp.get('targetFc')) || 25;
+
   try {
-    const data = await getMenuAnalytics(ids[0], from, to);
+    const data = await getMenuAnalytics(ids[0], from, to, targetFc);
     return Response.json({ data });
   } catch (e) {
     return Response.json({ data: null, error: e instanceof Error ? e.message : 'iiko failed' });

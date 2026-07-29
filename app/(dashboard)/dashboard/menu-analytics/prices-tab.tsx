@@ -30,7 +30,20 @@ type Alert = {
   impact: number;
 };
 
-type Data = { ingredients: Ingredient[]; alerts: Alert[]; suspicious: Alert[]; topSpend: Ingredient[] };
+type Supplier = { supplierId: string; name: string; total: number; share: number; invoices: number; avgInvoice: number };
+type Saving = { productId: string; name: string; unit: string; bestPrice: number; avgPrice: number; amount: number; saving: number };
+type Summary = { total: number; invoices: number; suppliers: number; avgInvoice: number };
+
+type Data = {
+  summary: Summary;
+  supplierSpend: Supplier[];
+  savings: Saving[];
+  totalSaving: number;
+  ingredients: Ingredient[];
+  alerts: Alert[];
+  suspicious: Alert[];
+  topSpend: Ingredient[];
+};
 
 function fmt(n: number) {
   return Math.round(n).toLocaleString('ru-RU');
@@ -112,6 +125,82 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
   return (
     <div className="grid">
       {error && <div className="banner banner--warn">{error}</div>}
+
+      <div className="stat-grid">
+        <div className="stat-card">
+          <div className="stat-card__label">🧾 Сумма закупок</div>
+          <div className="stat-card__value">{fmt(data.summary.total)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card__label">📄 Накладных</div>
+          <div className="stat-card__value">{data.summary.invoices}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card__label">🏭 Поставщиков</div>
+          <div className="stat-card__value">{data.summary.suppliers}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card__label">📊 Средняя накладная</div>
+          <div className="stat-card__value">{fmt(data.summary.avgInvoice)}</div>
+        </div>
+      </div>
+
+      {data.totalSaving > 0 && (
+        <section className="card" style={{ borderLeft: '3px solid var(--success)' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ flex: '1 1 280px' }}>
+              <b style={{ fontSize: 14 }}>💡 Потенциальный эффект: закупать по лучшей своей цене</b>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                По {data.savings.length} товарам цена за период гуляла. Если бы весь объём брали по самой низкой из уже полученных вами цен —
+                переговоры, другой поставщик, объём — вот верхняя оценка экономии.
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                {data.savings.slice(0, 5).map((s) => (
+                  <span key={s.productId} style={{ fontSize: 12, padding: '4px 8px', background: 'var(--surface-muted)', borderRadius: 6 }}>
+                    {s.name} <b style={{ color: 'var(--success)' }}>−{fmt(s.saving)}</b>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', minWidth: 140 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>−{fmt(data.totalSaving)}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>за период</div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {data.supplierSpend.length > 0 && (
+        <section className="card" style={{ padding: 0 }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+            <b style={{ fontSize: 14 }}>🏭 Структура по поставщикам</b>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Поставщик</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Сумма</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Доля</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Накладных</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Ср. накладная</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.supplierSpend.slice(0, 15).map((s) => (
+                  <tr key={s.supplierId}>
+                    <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{s.name}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmt(s.total)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{s.share.toFixed(1)}%</td>
+                    <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{s.invoices}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmt(s.avgInvoice)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="card" style={{ padding: 0 }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

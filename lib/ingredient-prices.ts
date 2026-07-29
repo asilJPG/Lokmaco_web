@@ -42,7 +42,39 @@ export type PriceAlert = {
   impact: number;
 };
 
+export type SupplierSpend = {
+  supplierId: string;
+  name: string;
+  total: number;
+  share: number;
+  invoices: number;
+  avgInvoice: number;
+};
+
+/** What overpaying relative to your own best price costs on one ingredient. */
+export type SavingOpportunity = {
+  productId: string;
+  name: string;
+  unit: string;
+  bestPrice: number;
+  avgPrice: number;
+  amount: number;
+  /** Money back if the whole volume had been bought at the best own price. */
+  saving: number;
+};
+
+export type PurchaseSummary = {
+  total: number;
+  invoices: number;
+  suppliers: number;
+  avgInvoice: number;
+};
+
 export type PricesReport = {
+  summary: PurchaseSummary;
+  supplierSpend: SupplierSpend[];
+  savings: SavingOpportunity[];
+  totalSaving: number;
   ingredients: IngredientPrice[];
   /** Plausible price movements, ranked by money at stake. */
   alerts: PriceAlert[];
@@ -79,6 +111,7 @@ type RawDoc = {
   incomingDate?: string[];
   documentNumber?: string[];
   status?: string[];
+  supplier?: string[];
   items?: { item?: RawItem[] }[];
 };
 
@@ -106,9 +139,10 @@ export async function getIngredientPrices(
   const { xml: creds } = await resolveIikoCreds(filialId);
 
   return withIikoSession(async (token) => {
-    const [xml, products] = await Promise.all([
+    const [xml, products, supplierXml] = await Promise.all([
       iikoGetText(`documents/export/incomingInvoice?from=${from}&to=${to}`, token, creds),
       iikoGet<IikoProduct[]>('v2/entities/products/list', token, creds),
+      iikoGetText('suppliers', token, creds),
     ]);
     if (!xml) throw new Error('iiko вернул пустой список накладных');
 
@@ -117,16 +151,51 @@ export async function getIngredientPrices(
       names.set(p.id, { name: p.name, unit: p.mainUnit ? UNIT_MAP[p.mainUnit] || 'шт' : 'шт' });
     }
 
+    const supplierNames = new Map<string, string>();
+    if (supplierXml) {
+      try {
+        const parsedSuppliers = await parseStringPromise(supplierXml);
+        const collect = (node: unknown): void => {
+          if (Array.isArray(node)) return node.forEach(collect);
+          if (!node || typeof node !== 'object') return;
+          const o = node as Record<string, unknown>;
+          const id = first(o.id as string[] | undefined);
+          const name = first(o.name as string[] | undefined);
+          if (id && name) supplierNames.set(id, name);
+          Object.values(o).forEach(collect);
+        };
+        collect(parsedSuppliers);
+      } catch {
+        // Supplier names are a nicety — the report still works with raw ids.
+      }
+    }
+
     const parsed = await parseStringPromise(xml);
     const docs: RawDoc[] = parsed?.incomingInvoiceDtoes?.document || [];
 
     const byProduct = new Map<string, PricePoint[]>();
+    const bySupplier = new Map<string, { total: number; invoices: number }>();
+    let purchaseTotal = 0;
+    let invoiceCount = 0;
+
     for (const doc of docs) {
       // Draft/deleted invoices carry prices that were never actually paid.
       if (first(doc.status) !== 'PROCESSED') continue;
       const date = first(doc.incomingDate);
       const documentNumber = first(doc.documentNumber);
+      const supplierId = first(doc.supplier);
       const items = doc.items?.[0]?.item || [];
+
+      invoiceCount++;
+      // The invoice total includes delivery lines: it is what was actually paid,
+      // even though those lines are excluded from per-ingredient pricing below.
+      const docTotal = items.reduce((s, it) => s + num(first(it.sum)), 0);
+      purchaseTotal += docTotal;
+      const sup = bySupplier.get(supplierId) || { total: 0, invoices: 0 };
+      sup.total += docTotal;
+      sup.invoices++;
+      bySupplier.set(supplierId, sup);
+
       for (const it of items) {
         const productId = first(it.product);
         if (!productId) continue;
@@ -214,6 +283,53 @@ export async function getIngredientPrices(
     const real = alerts.filter((a) => Math.abs(a.changePercent) <= UNIT_ERROR_PERCENT).sort(byImpact);
     const suspicious = alerts.filter((a) => Math.abs(a.changePercent) > UNIT_ERROR_PERCENT).sort(byImpact);
 
-    return { ingredients, alerts: real, suspicious, topSpend: ingredients.slice(0, 5) };
+    const supplierSpend: SupplierSpend[] = [...bySupplier.entries()]
+      .map(([supplierId, s]) => ({
+        supplierId,
+        name: supplierNames.get(supplierId) || 'Без поставщика',
+        total: s.total,
+        share: purchaseTotal > 0 ? (s.total / purchaseTotal) * 100 : 0,
+        invoices: s.invoices,
+        avgInvoice: s.invoices > 0 ? s.total / s.invoices : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    // What the same volume would have cost at the cheapest price already paid
+    // for that ingredient — an upper bound on what better buying could save.
+    // Prices far above the norm are unit-entry errors, not real overpayment, so
+    // they are left out to keep the figure honest.
+    const savings: SavingOpportunity[] = ingredients
+      .filter((g) => g.purchases >= 2 && g.minPrice > 0 && g.maxPrice / g.minPrice <= 1 + UNIT_ERROR_PERCENT / 100)
+      .map((g) => {
+        const amount = g.points.reduce((s, p) => s + p.amount, 0);
+        const saving = g.points.reduce((s, p) => s + (p.price - g.minPrice) * p.amount, 0);
+        return {
+          productId: g.productId,
+          name: g.name,
+          unit: g.unit,
+          bestPrice: g.minPrice,
+          avgPrice: amount > 0 ? g.totalSpend / amount : 0,
+          amount,
+          saving,
+        };
+      })
+      .filter((s) => s.saving > 0)
+      .sort((a, b) => b.saving - a.saving);
+
+    return {
+      summary: {
+        total: purchaseTotal,
+        invoices: invoiceCount,
+        suppliers: bySupplier.size,
+        avgInvoice: invoiceCount > 0 ? purchaseTotal / invoiceCount : 0,
+      },
+      supplierSpend,
+      savings,
+      totalSaving: savings.reduce((s, x) => s + x.saving, 0),
+      ingredients,
+      alerts: real,
+      suspicious,
+      topSpend: ingredients.slice(0, 5),
+    };
   }, creds);
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PricesTab } from './prices-tab';
 
 type AbcClass = 'A' | 'B' | 'C';
+type Severity = 'ok' | 'above' | 'critical' | 'urgent';
 
 type Dish = {
   category: string;
@@ -17,12 +18,38 @@ type Dish = {
   markupPercent: number;
   revenueShare: number;
   abc: AbcClass;
+  abcAmount: AbcClass;
+  abcProfit: AbcClass;
+  severity: Severity;
+  potential: number;
 };
 
 type Totals = { revenue: number; cost: number; profit: number; fcPercent: number; dishCount: number };
-type Data = { dishes: Dish[]; totals: Totals };
+type Bucket = { severity: Severity; count: number; revenue: number };
+type Data = {
+  dishes: Dish[];
+  totals: Totals;
+  targetFc: number;
+  totalPotential: number;
+  topPotential: Dish[];
+  severityBuckets: Bucket[];
+};
 
-type SortKey = 'revenue' | 'fcPercent' | 'costPerItem' | 'amount' | 'profit';
+const SEVERITY_LABEL: Record<Severity, string> = {
+  urgent: 'срочно',
+  critical: 'критично',
+  above: 'выше цели',
+  ok: 'в норме',
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  urgent: 'var(--danger)',
+  critical: 'var(--danger)',
+  above: 'var(--warning)',
+  ok: 'var(--success)',
+};
+
+type SortKey = 'revenue' | 'fcPercent' | 'costPerItem' | 'amount' | 'profit' | 'potential';
 
 function fmt(n: number) {
   return Math.round(n).toLocaleString('ru-RU');
@@ -32,11 +59,10 @@ function pct(n: number) {
   return `${n.toFixed(1)}%`;
 }
 
-// Industry rule of thumb for food service: under 25% is healthy, 25–35% needs
-// watching, above 35% eats the margin.
-function fcColor(fc: number): string {
-  if (fc >= 35) return 'var(--danger)';
-  if (fc >= 25) return 'var(--warning)';
+function fcColor(fc: number, target: number): string {
+  const over = fc - target;
+  if (over > 5) return 'var(--danger)';
+  if (over > 0) return 'var(--warning)';
   return 'var(--success)';
 }
 
@@ -60,6 +86,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
   const [sort, setSort] = useState<SortKey>('revenue');
   const [abcFilter, setAbcFilter] = useState<AbcClass | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [targetFc, setTargetFc] = useState(25);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +94,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/iiko/analytics/menu?from=${from}&to=${to}`);
+        const res = await fetch(`/api/iiko/analytics/menu?from=${from}&to=${to}&targetFc=${targetFc}`);
         const json = await res.json();
         if (cancelled) return;
         setData(json.data || null);
@@ -79,7 +106,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
       }
     })();
     return () => { cancelled = true; };
-  }, [from, to]);
+  }, [from, to, targetFc]);
 
   const visible = useMemo(() => {
     if (!data) return [];
@@ -105,7 +132,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
   if (!data) return <div className="grid">{tabs}<div className="banner banner--error">{error || 'Нет данных'}</div></div>;
 
   const t = data.totals;
-  const problem = data.dishes.filter((d) => d.fcPercent >= 35).length;
+  const overTarget = data.dishes.filter((d) => d.potential > 0).length;
 
   return (
     <div className="grid">
@@ -127,15 +154,49 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
         </div>
         <div className="stat-card">
           <div className="stat-card__label">🍳 Food cost</div>
-          <div className="stat-card__value" style={{ color: fcColor(t.fcPercent) }}>{pct(t.fcPercent)}</div>
+          <div className="stat-card__value" style={{ color: fcColor(t.fcPercent, data.targetFc) }}>{pct(t.fcPercent)}</div>
         </div>
       </div>
 
-      {problem > 0 && (
-        <div className="banner banner--warn">
-          ⚠️ {problem} {problem === 1 ? 'блюдо' : 'блюд'} с food cost выше 35% — съедают маржу. Отсортируй по «Food cost», чтобы увидеть их сверху.
-        </div>
+      {data.totalPotential > 0 && (
+        <section className="card" style={{ borderLeft: '3px solid var(--success)' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ flex: '1 1 280px' }}>
+              <b style={{ fontSize: 14 }}>📈 Потенциальный эффект: снизить food cost</b>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                У {overTarget} {overTarget === 1 ? 'позиции' : 'позиций'} food cost выше целевых {data.targetFc}%. Вот сколько вернётся, если довести их до цели —
+                через цену, порцию или замену поставщика.
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                {data.topPotential.map((d) => (
+                  <span key={d.name} style={{ fontSize: 12, padding: '4px 8px', background: 'var(--surface-muted)', borderRadius: 6 }}>
+                    {d.name} <b style={{ color: 'var(--success)' }}>+{fmt(d.potential)}</b>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', minWidth: 140 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>+{fmt(data.totalPotential)}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>за период</div>
+            </div>
+          </div>
+        </section>
       )}
+
+      <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Целевой food cost:</span>
+        {[20, 25, 30, 35].map((v) => (
+          <button key={v} type="button" className={`btn btn--sm ${targetFc === v ? 'btn--primary' : ''}`} onClick={() => setTargetFc(v)}>{v}%</button>
+        ))}
+        <div style={{ display: 'flex', gap: 12, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {data.severityBuckets.filter((b) => b.count > 0).map((b) => (
+            <span key={b.severity} style={{ fontSize: 12 }}>
+              <b style={{ color: SEVERITY_COLOR[b.severity] }}>{SEVERITY_LABEL[b.severity]}</b>
+              <span style={{ color: 'var(--text-muted)' }}> — {b.count} · {fmt(b.revenue)}</span>
+            </span>
+          ))}
+        </div>
+      </div>
 
       <div className="card" style={{ padding: 0 }}>
         <div style={{ padding: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
@@ -166,6 +227,7 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
               ['fcPercent', 'Food cost'],
               ['costPerItem', 'Себест. порции'],
               ['profit', 'Прибыль'],
+              ['potential', 'Потенциал'],
               ['amount', 'Кол-во'],
             ] as [SortKey, string][]).map(([k, label]) => (
               <button key={k} type="button" className={`btn btn--sm ${sort === k ? 'btn--primary' : ''}`} onClick={() => setSort(k)}>
@@ -181,13 +243,14 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
             <thead>
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
                 <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Блюдо</th>
-                <th style={{ padding: '10px 8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>ABC</th>
+                <th style={{ padding: '10px 8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }} title="ABC по количеству / выручке / прибыли">ABC<div style={{ fontSize: 9, fontWeight: 400, textTransform: 'none' }}>шт·₽·приб</div></th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Кол-во</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Выручка</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Себест. порции</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Food cost</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Наценка</th>
                 <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Прибыль</th>
+                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Потенциал</th>
               </tr>
             </thead>
             <tbody>
@@ -197,19 +260,26 @@ export function MenuAnalyticsClient({ from, to }: { from: string; to: string }) 
                     <div style={{ fontWeight: 600 }}>{d.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{d.category} · {d.revenueShare.toFixed(1)}% выручки</div>
                   </td>
-                  <td style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
-                    <span title={ABC_HINT[d.abc]} style={{ fontWeight: 700, color: ABC_COLOR[d.abc] }}>{d.abc}</span>
+                  <td style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                    <span title={`По количеству: ${ABC_HINT[d.abcAmount]}`} style={{ fontWeight: 700, color: ABC_COLOR[d.abcAmount] }}>{d.abcAmount}</span>
+                    <span style={{ color: 'var(--text-faint)' }}>·</span>
+                    <span title={`По выручке: ${ABC_HINT[d.abc]}`} style={{ fontWeight: 700, color: ABC_COLOR[d.abc] }}>{d.abc}</span>
+                    <span style={{ color: 'var(--text-faint)' }}>·</span>
+                    <span title={`По прибыли: ${ABC_HINT[d.abcProfit]}`} style={{ fontWeight: 700, color: ABC_COLOR[d.abcProfit] }}>{d.abcProfit}</span>
                   </td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.amount)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.revenue)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.costPerItem)}</td>
-                  <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: fcColor(d.fcPercent) }}>{pct(d.fcPercent)}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: fcColor(d.fcPercent, data.targetFc) }} title={SEVERITY_LABEL[d.severity]}>{pct(d.fcPercent)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{pct(d.markupPercent)}</td>
                   <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmt(d.profit)}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: d.potential > 0 ? 'var(--success)' : 'var(--text-faint)' }}>
+                    {d.potential > 0 ? `+${fmt(d.potential)}` : '—'}
+                  </td>
                 </tr>
               ))}
               {visible.length === 0 && (
-                <tr><td colSpan={8}><div className="empty-state">Ничего не найдено</div></td></tr>
+                <tr><td colSpan={9}><div className="empty-state">Ничего не найдено</div></td></tr>
               )}
             </tbody>
           </table>
