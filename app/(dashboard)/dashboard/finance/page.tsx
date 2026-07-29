@@ -6,7 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function FinancePage() {
   const session = await getSession();
-  const isAdmin = (session?.role || '').split(':')[0] === 'admin';
+  const baseRole = (session?.role || '').split(':')[0];
+  const isAdmin = baseRole === 'admin';
+  const canTax = baseRole === 'admin' || baseRole === 'director';
   return (
     <div>
       <h1 className="page-title">Финансы</h1>
@@ -15,6 +17,7 @@ export default async function FinancePage() {
         { href: '/dashboard/safe', icon: '💰', title: 'Сейф', desc: 'Остаток наличных, движение по дням, расходы из сейфа' },
         { href: '/dashboard/wages', icon: '👥', title: 'Зарплаты', desc: 'Итоги за период, разбивка по дням и сотрудникам' },
         { href: '/dashboard/pnl', icon: '📈', title: 'P&L', desc: 'Прибыль и убытки по данным кассы' },
+        ...(canTax ? [{ href: '/dashboard/tax-report', icon: '🧾', title: 'Налоговый отчёт', desc: 'Реализация, расход сырья, списания — выгрузка для 1С' }] : []),
         ...(isAdmin ? [{ href: '/dashboard/reconciliation', icon: '🧮', title: 'Отчёты кассы', desc: 'Месячная сводка: типы оплат, продажи iiko, расхождения' }] : []),
       ]} />
     </div>

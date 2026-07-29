@@ -69,6 +69,7 @@ const GROUPS: Group[] = [
       { href: '/dashboard/wages', label: 'Зарплаты', icon: '👥' },
       { href: '/dashboard/pnl', label: 'P&L', icon: '📈' },
       { href: '/dashboard/reconciliation', label: 'Отчёты кассы', icon: '🧮', adminOnly: true },
+      { href: '/dashboard/tax-report', label: 'Налоговый отчёт', icon: '🧾', roles: ['admin', 'director'] },
     ],
   },
   {
