@@ -24,7 +24,10 @@ const IIKO_ROLES = ['admin', 'director', 'manager'];
  */
 const GROUPS: Group[] = [
   {
-    items: [{ href: '/dashboard', label: 'Главная', icon: '🏠' }],
+    items: [
+      { href: '/dashboard', label: 'Главная', icon: '🏠' },
+      { href: '/dashboard/assistant', label: 'Ассистент', icon: '✨', adminOnly: true },
+    ],
   },
   {
     title: 'Смена',
@@ -79,6 +82,7 @@ const GROUPS: Group[] = [
  */
 const MOBILE_ITEMS: Item[] = [
   { href: '/dashboard', label: 'Главная', icon: '🏠' },
+  { href: '/dashboard/assistant', label: 'Ассистент', icon: '✨', adminOnly: true },
   { href: '/dashboard/operations', label: 'Смена', icon: '🧾', badgeKey: 'inbox' },
   { href: '/dashboard/warehouse', label: 'Склад', icon: '📦' },
   { href: '/dashboard/analytics', label: 'Аналитика', icon: '📊', roles: IIKO_ROLES },

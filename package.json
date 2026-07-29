@@ -13,6 +13,7 @@
     "db:migrate-from-supabase": "tsx scripts/migrate-from-supabase.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^11.0.0",
     "@types/xml2js": "^0.4.14",
