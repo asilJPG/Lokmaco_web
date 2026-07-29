@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { DonutChart } from '@/components/charts';
 
 type PricePoint = { date: string; price: number; amount: number; documentNumber: string };
 
@@ -170,6 +171,9 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
         <section className="card" style={{ padding: 0 }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
             <b style={{ fontSize: 14 }}>🏭 Структура по поставщикам</b>
+          </div>
+          <div style={{ padding: '16px 16px 4px' }}>
+            <DonutChart items={data.supplierSpend.map((s) => ({ name: s.name, value: s.total, share: s.share }))} />
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

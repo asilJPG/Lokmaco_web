@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LineChart, ShareBars, Heatmap, KpiCard, type SeriesPoint } from '@/components/charts';
+import { LineChart, BarChart, DonutChart, Heatmap, KpiCard, type SeriesPoint } from '@/components/charts';
 
 type DayPoint = { date: string; revenue: number; guests: number; orders: number };
 type SharePoint = { name: string; value: number; share: number };
@@ -79,6 +79,14 @@ export function OverviewTab({ from, to }: { from: string; to: string }) {
   const compare: SeriesPoint[] = data.prevDays.map((d) => ({ label: dayLabel(d.date), value: d[metric] }));
   const activeMetric = METRICS.find((m) => m.key === metric)!;
 
+  // The heatmap already carries weekday x hour totals, so the hourly profile is
+  // a fold of it — no extra request needed.
+  const hourTotals = new Map<number, number>();
+  for (const c of data.heatmap) hourTotals.set(c.hour, (hourTotals.get(c.hour) || 0) + c.value);
+  const byHour: SeriesPoint[] = [...hourTotals.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([h, v]) => ({ label: `${h}:00`, value: v }));
+
   return (
     <div className="grid">
       {error && <div className="banner banner--warn">{error}</div>}
@@ -126,15 +134,7 @@ export function OverviewTab({ from, to }: { from: string; to: string }) {
             ))}
           </div>
         </div>
-        <LineChart points={series} compare={compare} valueLabel={activeMetric.unit} />
-        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 14, height: 2, background: 'var(--accent)', display: 'inline-block' }} /> Факт
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 14, height: 0, borderTop: '2px dashed var(--text-faint)', display: 'inline-block' }} /> Пред. период
-          </span>
-        </div>
+        <LineChart points={series} compare={compare} unit={activeMetric.unit} />
       </section>
 
       <div className="grid grid--2">
@@ -147,21 +147,33 @@ export function OverviewTab({ from, to }: { from: string; to: string }) {
               <button type="button" role="tab" aria-selected={structure === 'stores'} className="segmented__item" onClick={() => setStructure('stores')}>Цеха</button>
             </div>
           </div>
-          <ShareBars items={data[structure]} />
+          <DonutChart items={data[structure]} />
         </section>
 
         <section className="card">
           <div className="card__title">
-            <span className="card__title-text">🔥 Загрузка: день недели × час</span>
+            <span className="card__title-text">⏰ Блюд по часам</span>
             {data.peak && (
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Пик: {WEEKDAY_SHORT[data.peak.weekday]} {data.peak.hour}:00 · {fmt(data.peak.value)} блюд
+                Пик: {WEEKDAY_SHORT[data.peak.weekday]} {data.peak.hour}:00
               </span>
             )}
           </div>
-          <Heatmap cells={data.heatmap} />
+          <BarChart points={byHour} unit="блюд" height={220} />
         </section>
       </div>
+
+      <section className="card">
+        <div className="card__title">
+          <span className="card__title-text">🔥 Тепловая карта: день недели × час</span>
+          {data.peak && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Пик: {WEEKDAY_SHORT[data.peak.weekday]} {data.peak.hour}:00 · {fmt(data.peak.value)} блюд
+            </span>
+          )}
+        </div>
+        <Heatmap cells={data.heatmap} />
+      </section>
     </div>
   );
 }

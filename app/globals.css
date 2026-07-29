@@ -476,6 +476,83 @@ a.card:hover, button.card:hover { border-color: var(--border-strong); box-shadow
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
 }
 
+/* ---------------- Chart furniture ---------------- */
+
+.legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+.legend-pill__dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; display: inline-block; }
+
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 8px 10px;
+  font-size: 12px;
+  min-width: 150px;
+  z-index: 2;
+}
+.chart-tooltip__title { font-weight: 600; margin-bottom: 5px; }
+.chart-tooltip__row { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.chart-tooltip__row b {
+  margin-left: auto;
+  color: var(--text);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Progress track shared by share bars and status breakdowns. */
+.track {
+  height: 6px;
+  background: var(--surface-muted);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+}
+.track--tall { height: 9px; }
+.track__fill { height: 100%; border-radius: 999px; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge--success { background: var(--success-soft); color: var(--success); }
+.badge--warning { background: #fef4e6; color: var(--warning); }
+.badge--danger { background: #fdeceb; color: var(--danger); }
+.badge--neutral { background: var(--surface-muted); color: var(--text-muted); }
+
+.heatmap { border-collapse: separate; border-spacing: 3px; font-size: 10px; }
+.heatmap th { color: var(--text-faint); font-weight: 500; padding: 0 1px; }
+.heatmap__label { color: var(--text-muted); padding-right: 6px; white-space: nowrap; }
+.heatmap__cell { padding: 0; }
+.heatmap__cell span { display: block; width: 100%; min-width: 26px; height: 22px; border-radius: 5px; }
+.heatmap__scale {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+  justify-content: flex-end;
+}
+.heatmap__swatch { width: 20px; height: 10px; border-radius: 3px; }
+
 /* Callout that turns a metric into money: what this is worth if acted on. */
 .insight {
   display: flex;
@@ -805,6 +882,8 @@ tr[data-today="true"] td:first-child {
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
   }
+  .badge--warning { background: rgba(251, 191, 36, 0.14); color: var(--warning); }
+  .badge--danger { background: rgba(248, 113, 113, 0.14); color: var(--danger); }
   .banner--info { background: rgba(37, 99, 235, 0.14); color: #93c5fd; border-color: rgba(37, 99, 235, 0.35); }
   .banner--warn { background: rgba(217, 119, 6, 0.12); color: #fcd34d; border-color: rgba(217, 119, 6, 0.35); }
   .banner--error { background: rgba(220, 38, 38, 0.12); color: #fca5a5; border-color: rgba(220, 38, 38, 0.35); }
