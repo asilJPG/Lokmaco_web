@@ -13,6 +13,7 @@ const ITEMS: Item[] = [
   { href: '/dashboard/wages', label: 'Зарплаты', icon: '👥', group: 'Аналитика' },
   { href: '/dashboard/pnl', label: 'P&L', icon: '📈', group: 'Аналитика' },
   { href: '/dashboard/iiko-analytics', label: 'Аналитика iiko', icon: '📊', group: 'Аналитика' },
+  { href: '/dashboard/menu-analytics', label: 'Аналитика меню', icon: '🍳', group: 'Аналитика' },
   { href: '/dashboard/reconciliation', label: 'Сверка iiko vs касса', icon: '🧮', group: 'Аналитика' },
   { href: '/dashboard/balances', label: 'Остатки', icon: '📦', group: 'Склад' },
   { href: '/dashboard/transfer', label: 'Перемещение', icon: '🔄', group: 'Склад' },

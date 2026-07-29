@@ -18,6 +18,7 @@ export default async function AnalyticsPage() {
   ];
   if (canSeeIiko) {
     tiles.push({ href: '/dashboard/iiko-analytics', icon: '📊', title: 'Аналитика iiko', desc: isAdmin ? 'P&L, топ блюд, KPI официантов и явки сотрудников из iiko' : 'P&L, топ блюд, KPI официантов из iiko' });
+    tiles.push({ href: '/dashboard/menu-analytics', icon: '🍳', title: 'Аналитика меню', desc: 'Food cost и наценка по каждому блюду, ABC-анализ, поиск убыточных позиций' });
   }
   if (isAdmin) {
     tiles.push({ href: '/dashboard/reconciliation', icon: '🧮', title: 'Сверка iiko vs касса', desc: 'Сверка по типам оплаты за смену: iiko против того, что сдал кассир' });
