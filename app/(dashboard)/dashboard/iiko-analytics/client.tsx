@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import { OverviewTab } from './overview-tab';
 
 type Dish = { name: string; amount: number; revenue: number };
 type Category = { name: string; totalRevenue: number; totalAmount: number; dishes: Dish[] };
@@ -22,7 +23,7 @@ function fmtDateTime(iso: string) {
 }
 
 export function IikoAnalyticsClient({ from, to, isAdmin }: { from: string; to: string; isAdmin: boolean }) {
-  const [tab, setTab] = useState<'pl' | 'sales' | 'waiters' | 'attendance'>('pl');
+  const [tab, setTab] = useState<'overview' | 'pl' | 'sales' | 'waiters' | 'attendance'>('overview');
   const [pl, setPl] = useState<PnL | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [waiters, setWaiters] = useState<Waiter[]>([]);
@@ -90,11 +91,14 @@ export function IikoAnalyticsClient({ from, to, isAdmin }: { from: string; to: s
   return (
     <div className="grid">
       <div className="segmented" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'overview'} className="segmented__item" onClick={() => setTab('overview')}>📊 Обзор</button>
         <button type="button" role="tab" aria-selected={tab === 'pl'} className="segmented__item" onClick={() => setTab('pl')}>📈 P&L iiko</button>
         <button type="button" role="tab" aria-selected={tab === 'sales'} className="segmented__item" onClick={() => setTab('sales')}>🍽 Топ блюд</button>
         <button type="button" role="tab" aria-selected={tab === 'waiters'} className="segmented__item" onClick={() => setTab('waiters')}>👨‍🍳 Официанты</button>
         {isAdmin && <button type="button" role="tab" aria-selected={tab === 'attendance'} className="segmented__item" onClick={() => setTab('attendance')}>🕒 Явки</button>}
       </div>
+
+      {tab === 'overview' && <OverviewTab from={from} to={to} />}
 
       {!loading && tab === 'pl' && (
         pl ? (
@@ -171,7 +175,7 @@ export function IikoAnalyticsClient({ from, to, isAdmin }: { from: string; to: s
       )}
 
       {error && <div className="banner banner--warn">iiko: {error}</div>}
-      {loading && <div className="card"><div className="empty-state">Загрузка из iiko…</div></div>}
+      {loading && tab !== 'overview' && <div className="card"><div className="empty-state">Загрузка из iiko…</div></div>}
 
       {!loading && tab === 'sales' && (
         <div className="grid">
