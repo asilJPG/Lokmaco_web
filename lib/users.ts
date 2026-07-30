@@ -40,8 +40,18 @@ export async function getUserPasskeys(userId: number) {
   return db.select().from(schema.userPasskeys).where(eq(schema.userPasskeys.userId, userId));
 }
 
-export async function savePasskey(userId: number, credentialId: string, publicKey: string, counter: number) {
-  await db.insert(schema.userPasskeys).values({ userId, credentialId, publicKey, counter });
+export async function savePasskey(userId: number, credentialId: string, publicKey: string, counter: number, rpId?: string) {
+  await db.insert(schema.userPasskeys).values({ userId, credentialId, publicKey, counter, rpId });
+}
+
+/**
+ * Ключи, которыми пользователь реально может войти на этом домене.
+ * Ключ, заведённый на старом сайте, физически не сработает на новом, поэтому
+ * блокировать из-за него вход по коду нельзя — иначе аккаунт запирается.
+ */
+export async function getUsablePasskeys(userId: number, rpId: string) {
+  const all = await getUserPasskeys(userId);
+  return all.filter((p) => p.rpId === rpId);
 }
 
 export async function deletePasskey(userId: number, id: string) {

@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { getSession } from '@/lib/auth-session';
 import { getUserById, getUserPasskeys } from '@/lib/users';
 import { ProfileClient } from './profile-client';
@@ -22,7 +23,17 @@ const LOGIN_LABEL: Record<string, string> = {
 export default async function ProfilePage() {
   const session = await getSession();
   if (!session) return null;
-  const [user, passkeys] = await Promise.all([getUserById(session.id), getUserPasskeys(session.id)]);
+  const [user, allPasskeys] = await Promise.all([getUserById(session.id), getUserPasskeys(session.id)]);
+  // Ключи со старого сайта здесь физически не сработают — помечаем их, чтобы
+  // человек не гадал, почему Face ID не появляется.
+  const h = headers();
+  const rpId = (h.get('x-forwarded-host') || h.get('host') || 'localhost').split(':')[0];
+  const passkeys = allPasskeys.map((p) => ({
+    id: p.id,
+    createdAt: p.createdAt,
+    worksHere: p.rpId === rpId,
+    rpId: p.rpId,
+  }));
   const baseRole = session.role.split(':')[0];
   const roleStyle = ROLE_COLORS[baseRole] || { bg: 'var(--surface-muted)', fg: 'var(--text-muted)' };
 
@@ -43,7 +54,7 @@ export default async function ProfilePage() {
         </div>
       )}
       <ProfileClient
-        passkeys={passkeys.map((k) => ({ id: k.id, createdAt: k.createdAt.toISOString() }))}
+        passkeys={passkeys.map((k) => ({ ...k, createdAt: k.createdAt.toISOString() }))}
       />
     </div>
   );

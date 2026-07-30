@@ -30,7 +30,8 @@ export async function POST(req: Request) {
     session.id,
     credential.id,
     Buffer.from(credential.publicKey).toString('base64'),
-    credential.counter
+    credential.counter,
+    rpID
   );
 
   cookies().delete('reg_challenge');

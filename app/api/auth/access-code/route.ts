@@ -1,6 +1,6 @@
 import { rateLimit } from '@/lib/rate-limit';
 import { setSessionCookie } from '@/lib/auth-session';
-import { getUserByAccessCode, getUserPasskeys, getUserFilials, updateLastLogin } from '@/lib/users';
+import { getUserByAccessCode, getUsablePasskeys, getUserFilials, updateLastLogin } from '@/lib/users';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,9 +26,13 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Пользователь не найден' }, { status: 401 });
   }
 
+  // Директора обязаны входить по Face ID / Touch ID — но только если ключ
+  // заведён именно на этом домене. Ключи со старого сайта на новом не работают
+  // (WebAuthn привязан к домену), и блокировка по ним заперла бы аккаунт совсем.
   const [baseRole] = (user.role || '').split(':');
   if (baseRole === 'director') {
-    const passkeys = await getUserPasskeys(user.id);
+    const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost';
+    const passkeys = await getUsablePasskeys(user.id, host.split(':')[0]);
     if (passkeys.length > 0) {
       limit.increment();
       return Response.json({ error: 'Используйте Face ID / Touch ID' }, { status: 403 });

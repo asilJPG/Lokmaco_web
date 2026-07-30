@@ -39,6 +39,9 @@ export const userPasskeys = pgTable('user_passkeys', {
   credentialId: text('credential_id').notNull().unique(),
   publicKey: text('public_key').notNull(),
   counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+  // Домен, на котором ключ зарегистрирован. WebAuthn-ключ работает только на
+  // своём домене, а таблица общая с легаси-сайтом; у легаси-ключей здесь NULL.
+  rpId: text('rp_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byUser: index('passkeys_user_idx').on(t.userId),

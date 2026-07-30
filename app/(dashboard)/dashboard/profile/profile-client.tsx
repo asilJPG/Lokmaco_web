@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { startRegistration } from '@simplewebauthn/browser';
 
-type Passkey = { id: string; createdAt: string };
+type Passkey = { id: string; createdAt: string | Date; worksHere: boolean; rpId: string | null };
 
 export function ProfileClient({ passkeys }: { passkeys: Passkey[] }) {
   const router = useRouter();
@@ -72,6 +72,7 @@ export function ProfileClient({ passkeys }: { passkeys: Passkey[] }) {
             <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
               <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>ID</th>
               <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Привязано</th>
+              <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Работает здесь</th>
               <th style={{ padding: '8px', width: 40, borderBottom: '1px solid var(--border)' }}></th>
             </tr>
           </thead>
@@ -80,6 +81,9 @@ export function ProfileClient({ passkeys }: { passkeys: Passkey[] }) {
               <tr key={p.id}>
                 <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: 12 }}>{p.id.slice(0, 8)}…</td>
                 <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>{new Date(p.createdAt).toLocaleString('ru-RU')}</td>
+                <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', color: p.worksHere ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {p.worksHere ? 'да' : p.rpId ? `нет · ${p.rpId}` : 'нет · старый сайт'}
+                </td>
                 <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
                   <button type="button" className="btn btn--danger btn--icon" onClick={() => remove(p.id)} disabled={busy}>×</button>
                 </td>
