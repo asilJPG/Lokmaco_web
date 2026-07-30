@@ -12,26 +12,32 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const filials = session.filialIds.length > 0
-    ? await db.select({ id: schema.filials.id, name: schema.filials.name })
-        .from(schema.filials)
-        .where(inArray(schema.filials.id, session.filialIds))
-    : [];
-  const current = await getCurrentFilialId();
   const baseRole = session.role.split(':')[0];
   const allowAll = baseRole === 'admin' || baseRole === 'director';
 
-  const inboxCount = session.filialIds.length === 0 ? 0 : Number((await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(schema.pendingTransfers)
-    .where(and(
-      inArray(schema.pendingTransfers.filialId, session.filialIds),
-      or(
-        eq(schema.pendingTransfers.status, 'pending_receiver'),
-        eq(schema.pendingTransfers.status, 'pending_sender'),
-        eq(schema.pendingTransfers.status, 'pending_creator')
-      )!
-    )))[0]?.c || 0);
+  // Оба запроса шли последовательно, а до пулера каждый круг ~200 мс — на
+  // загрузке любой страницы это лишние полсекунды. Ходим за ними разом.
+  const [filials, inboxRows, current] = await Promise.all([
+    session.filialIds.length > 0
+      ? db.select({ id: schema.filials.id, name: schema.filials.name })
+          .from(schema.filials)
+          .where(inArray(schema.filials.id, session.filialIds))
+      : Promise.resolve([]),
+    session.filialIds.length === 0
+      ? Promise.resolve([{ c: 0 }])
+      : db.select({ c: sql<number>`count(*)::int` })
+          .from(schema.pendingTransfers)
+          .where(and(
+            inArray(schema.pendingTransfers.filialId, session.filialIds),
+            or(
+              eq(schema.pendingTransfers.status, 'pending_receiver'),
+              eq(schema.pendingTransfers.status, 'pending_sender'),
+              eq(schema.pendingTransfers.status, 'pending_creator')
+            )!
+          )),
+    getCurrentFilialId(),
+  ]);
+  const inboxCount = Number(inboxRows[0]?.c || 0);
 
   return (
     <div className="app-shell">

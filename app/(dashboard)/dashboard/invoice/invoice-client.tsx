@@ -92,12 +92,13 @@ export function InvoiceClient() {
     setFixQuery((prev) => ({ ...prev, [i]: '' }));
   }
 
+  // Один товар намеренно можно добавить несколько раз: в накладной он часто
+  // идёт разными строками по разной цене или из разных партий.
   const addResults = useMemo(() => {
     const q = addQuery.trim().toLowerCase();
     if (!q) return [];
-    const taken = new Set(items.map((i) => i.product_id));
-    return products.filter((p) => !taken.has(p.id) && p.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [addQuery, products, items]);
+    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [addQuery, products]);
 
   async function submit() {
     setBusy(true);

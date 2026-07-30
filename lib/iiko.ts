@@ -50,7 +50,10 @@ export async function iikoGet<T = unknown>(endpoint: string, token: string, cred
   const res = await rawFetch(`${creds.server}/resto/api/${endpoint}`, {
     headers: { Cookie: `key=${token}` },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    noteAuthFailure(res.status, creds);
+    return null;
+  }
   return (await res.json()) as T;
 }
 
@@ -58,18 +61,62 @@ export async function iikoGetText(endpoint: string, token: string, creds: IikoCr
   const res = await rawFetch(`${creds.server}/resto/api/${endpoint}`, {
     headers: { Cookie: `key=${token}` },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    noteAuthFailure(res.status, creds);
+    return null;
+  }
   return res.text();
 }
 
+// Раньше каждый вызов делал auth + logout вокруг одного запроса: три обращения
+// к серверу iiko вместо одного, ~60 мс лишних на круг, а вкладка аналитики
+// дёргает три роута сразу. Держим один токен на филиал и переиспользуем его.
+// TTL намеренно короче реального времени жизни сессии iiko, поэтому протухший
+// токен в работу не попадает; logout для живого токена не зовём — он бы его и
+// убил. Одновременных сессий при этом не больше, чем было: одна на филиал.
+const TOKEN_TTL = 5 * 60_000;
+const tokens = new Map<string, { token: string; at: number }>();
+const inflight = new Map<string, Promise<string>>();
+
+function credsKey(c: IikoCreds): string {
+  return `${c.server}|${c.login}`;
+}
+
+export function invalidateIikoToken(creds: IikoCreds = getDefaultCreds()): void {
+  tokens.delete(credsKey(creds));
+}
+
+async function getToken(creds: IikoCreds): Promise<string> {
+  const key = credsKey(creds);
+  const hit = tokens.get(key);
+  if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.token;
+
+  // Параллельные запросы (три вкладки аналитики разом) не должны логиниться
+  // каждый по разу — второй ждёт результат первого.
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  const p = (async () => {
+    const token = await iikoAuth(creds);
+    if (!token) throw new Error('iiko auth failed');
+    tokens.set(key, { token, at: Date.now() });
+    return token;
+  })().finally(() => inflight.delete(key));
+
+  inflight.set(key, p);
+  return p;
+}
+
 export async function withIikoSession<T>(fn: (token: string) => Promise<T>, creds: IikoCreds = getDefaultCreds()): Promise<T> {
-  const token = await iikoAuth(creds);
-  if (!token) throw new Error('iiko auth failed');
-  try {
-    return await fn(token);
-  } finally {
-    await iikoLogout(token, creds);
-  }
+  // Повторять fn при ошибке нельзя: на создании документа это провело бы в
+  // iiko второй такой же. Протухший токен лечится иначе — 401 сбрасывает кэш
+  // (см. noteAuthFailure), и следующий запрос логинится заново.
+  return fn(await getToken(creds));
+}
+
+/** Вызывать при 401/403 от iiko: следующий запрос возьмёт свежий токен. */
+export function noteAuthFailure(status: number, creds: IikoCreds = getDefaultCreds()): void {
+  if (status === 401 || status === 403) invalidateIikoToken(creds);
 }
 
 export function escapeXml(s: string): string {

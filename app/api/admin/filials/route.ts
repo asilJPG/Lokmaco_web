@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { requireSession } from '@/lib/auth-session';
 import { db, schema } from '@/db/client';
 import { encrypt } from '@/lib/crypto';
+import { invalidateFilialCreds } from '@/lib/filial-iiko';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,7 @@ export async function PATCH(req: Request) {
   if (b.timezone !== undefined) update.timezone = b.timezone;
   if (Object.keys(update).length > 0) {
     await db.update(schema.filials).set(update).where(eq(schema.filials.id, id));
+    invalidateFilialCreds(id);
   }
   return Response.json({ success: true });
 }
@@ -56,5 +58,6 @@ export async function DELETE(req: Request) {
   const id = Number(new URL(req.url).searchParams.get('id'));
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
   await db.delete(schema.filials).where(eq(schema.filials.id, id));
+  invalidateFilialCreds(id);
   return Response.json({ success: true });
 }
