@@ -16141,9 +16141,12 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
                 {data.days.map((r, i) => {
                   const isWeekend = r.weekday === "суббота" || r.weekday === "воскресенье";
                   const rowBg = isWeekend ? "rgba(245, 158, 11, 0.08)" : "transparent";
+                  // diff = факт по кассе − продажи iiko.
+                  // Минус = денег сдали меньше, чем продали → недостача, красный.
+                  // Плюс = сдали больше → излишек, зелёный.
                   const diffColor = !r.hasCash ? "var(--text-muted)"
                     : Math.abs(r.diff) < 0.5 ? "var(--text-muted)"
-                    : r.diff > 0 ? "#ef4444" : "#10b981";
+                    : r.diff < 0 ? "#ef4444" : "#10b981";
                   return (
                     <tr key={r.date} style={{ background: rowBg }}>
                       <td style={{ ...tdLeft, color: "var(--text-muted)", fontWeight: 600 }}>{i + 1}</td>
@@ -16181,7 +16184,7 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
                   <td style={{ ...td, fontWeight: 800 }}>{fmt(data.totals.yandex)}</td>
                   <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)" }}>{fmt(data.totals.total)}</td>
                   <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)" }}>{fmt(data.totals.iikoRevenue)}</td>
-                  <td style={{ ...td, fontWeight: 800, color: Math.abs(data.totals.diff) < 0.5 ? "var(--text-muted)" : data.totals.diff > 0 ? "#ef4444" : "#10b981" }}>
+                  <td style={{ ...td, fontWeight: 800, color: Math.abs(data.totals.diff) < 0.5 ? "var(--text-muted)" : data.totals.diff < 0 ? "#ef4444" : "#10b981" }}>
                     {fmt(data.totals.diff)}
                   </td>
                 </tr>
@@ -16192,7 +16195,9 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
       </div>
 
       <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
-        «Наличные -» = сдача кассира + его расходы из кассы. «Общая Сумма» = наличные − валом + все безналичные типы. «Разница» = Общая − iiko продажи. Красным помечены дни, где мы посчитали больше, чем показывает iiko.
+        «Наличные -» = фискальные наличные + инкассация + расходы кассира из кассы. «Общая Сумма» = наличные валом + все безналичные типы. «Разница» = Общая − продажи iiko.
+        <span style={{ color: "#ef4444", fontWeight: 600 }}> Красный — недостача</span> (сдали меньше, чем продали),
+        <span style={{ color: "#10b981", fontWeight: 600 }}> зелёный — излишек</span> (сдали больше).
       </div>
     </div>
   );
