@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { withIikoSession } from '@/lib/iiko';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -5,12 +6,18 @@ import { resolveIikoCreds } from '@/lib/filial-iiko';
 
 export const dynamic = 'force-dynamic';
 
-type OlapRow = { DishCategory?: string; DishName?: string; DishAmountInt?: string | number; DishDiscountSumInt?: string | number };
+type OlapRow = {
+  'DishGroup.TopParent'?: string;
+  DishGroup?: string;
+  DishName?: string;
+  DishAmountInt?: string | number;
+  DishDiscountSumInt?: string | number;
+};
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['admin', 'director', 'manager'].includes(session.role.split(':')[0])) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccess(session.role, 'analytics.sales')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
   const ids = await getCurrentFilialIds();
   if (ids.length === 0) return Response.json({ data: [] });
@@ -39,7 +46,10 @@ export async function GET(req: Request) {
         body: JSON.stringify({
           reportType: 'SALES',
           buildSummary: 'true',
-          groupByRowFields: ['DishCategory', 'DishName'],
+          // Не DishCategory: бухкатегории в этом аккаунте не заполнены, и OLAP
+          // отдаёт одну строку с null на весь оборот. Реальное дерево меню —
+          // DishGroup, как и в легаси (analytics/categories).
+          groupByRowFields: ['DishGroup.TopParent', 'DishGroup', 'DishName'],
           groupByColFields: [],
           aggregateFields: ['DishAmountInt', 'DishDiscountSumInt'],
           filters: {
@@ -52,7 +62,7 @@ export async function GET(req: Request) {
       const json = await res.json();
       const map = new Map<string, { name: string; amount: number; revenue: number }[]>();
       for (const row of (json.data ?? []) as OlapRow[]) {
-        const cat = row.DishCategory || 'Без категории';
+        const cat = row['DishGroup.TopParent'] || row.DishGroup || 'Без группы';
         const amount = parseFloat(String(row.DishAmountInt ?? 0));
         const revenue = parseFloat(String(row.DishDiscountSumInt ?? 0));
         if (amount > 0) {

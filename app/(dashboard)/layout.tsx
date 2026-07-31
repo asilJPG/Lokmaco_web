@@ -64,7 +64,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </aside>
       <main className="app-main">{children}</main>
-      <CommandPalette isAdmin={baseRole === 'admin'} />
+      <CommandPalette role={session.role} />
     </div>
   );
 }

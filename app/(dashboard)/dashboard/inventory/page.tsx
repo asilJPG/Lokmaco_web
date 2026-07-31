@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { InventoryClient } from './inventory-client';
 
 export const metadata = { title: 'Инвентаризация' };
 export const dynamic = 'force-dynamic';
 
-export default function InventoryPage() {
+export default async function InventoryPage() {
+  requireAccess((await getSession())?.role, 'inventory', '/dashboard/warehouse');
+
   return (
     <div className="grid">
       <div>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { canAccess, sectionForHref } from '@/lib/access';
 
 export type CategoryTile = {
   href: string;
@@ -8,10 +9,20 @@ export type CategoryTile = {
   badge?: number | string;
 };
 
-export function CategoryGrid({ tiles }: { tiles: CategoryTile[] }) {
+/**
+ * Плитки лендингов (мобильная навигация) фильтруются той же матрицей, что и
+ * меню: иначе роль видит вход в раздел, который тут же её развернёт.
+ */
+export function CategoryGrid({ tiles, role }: { tiles: CategoryTile[]; role?: string }) {
+  const visible = role === undefined
+    ? tiles
+    : tiles.filter((t) => {
+        const section = sectionForHref(t.href);
+        return section ? canAccess(role, section) : true;
+      });
   return (
     <div className="cat-grid">
-      {tiles.map((t) => (
+      {visible.map((t) => (
         <Link key={t.href} href={t.href} className="cat-tile">
           <div className="cat-tile__icon">{t.icon}</div>
           <div className="cat-tile__body">

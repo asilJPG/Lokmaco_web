@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { getMenuAnalytics } from '@/lib/menu-analytics';
@@ -15,8 +16,8 @@ function round(n: number): string {
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['admin', 'director', 'manager'].includes(session.role.split(':')[0])) {
-    return new Response('Forbidden', { status: 403 });
+  if (!canAccess(session.role, 'analytics.abc')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
   const ids = await getCurrentFilialIds();
   const sp = new URL(req.url).searchParams;

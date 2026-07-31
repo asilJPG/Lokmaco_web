@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
@@ -8,8 +9,8 @@ export const maxDuration = 60;
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['admin', 'director'].includes(session.role.split(':')[0])) {
-    return Response.json({ error: 'Доступ запрещен' }, { status: 403 });
+  if (!canAccess(session.role, 'taxReport')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
 
   const sp = new URL(req.url).searchParams;

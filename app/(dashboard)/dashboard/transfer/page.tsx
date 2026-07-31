@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { TransferClient } from './transfer-client';
 
 export const metadata = { title: 'Перемещение' };
 export const dynamic = 'force-dynamic';
 
-export default function TransferPage() {
+export default async function TransferPage() {
+  requireAccess((await getSession())?.role, 'transfer', '/dashboard/warehouse');
+
   return (
     <div className="grid">
       <div>

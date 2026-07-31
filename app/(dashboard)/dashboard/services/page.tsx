@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { ServicesClient } from './services-client';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function ServicesPage() {
   const session = await getSession();
   const [baseRole, storeId] = (session?.role || '').split(':');
-  if (!['admin', 'director', 'supplier'].includes(baseRole)) redirect('/dashboard/warehouse');
+  requireAccess(session?.role, 'services', '/dashboard/warehouse');
 
   return (
     <div className="grid">

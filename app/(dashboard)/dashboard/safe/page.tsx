@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { getSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { toURLSearchParams } from '@/lib/search-params';
@@ -11,6 +12,7 @@ export const metadata = { title: 'Сейф' };
 export const dynamic = 'force-dynamic';
 
 export default async function SafePage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
+  requireAccess((await getSession())?.role, 'safe', '/dashboard');
   const session = await getSession();
   const filialIds = await getCurrentFilialIds();
   const sp = toURLSearchParams(searchParams);

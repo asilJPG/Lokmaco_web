@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { getSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { toURLSearchParams } from '@/lib/search-params';
@@ -9,6 +10,7 @@ export const metadata = { title: 'P&L' };
 export const dynamic = 'force-dynamic';
 
 export default async function PnLPage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
+  requireAccess((await getSession())?.role, 'pnl', '/dashboard');
   const session = await getSession();
   const filialIds = await getCurrentFilialIds();
   const sp = toURLSearchParams(searchParams);

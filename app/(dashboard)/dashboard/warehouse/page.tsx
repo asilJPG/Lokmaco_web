@@ -1,13 +1,15 @@
+import { getSession } from '@/lib/auth-session';
 import { CategoryGrid } from '@/components/category-grid';
 
 export const metadata = { title: 'Склад' };
 
-export default function WarehousePage() {
+export default async function WarehousePage() {
+  const session = await getSession();
   return (
     <div>
       <h1 className="page-title">Склад</h1>
       <p className="page-subtitle">Остатки, перемещения, инвентаризация, документы iiko.</p>
-      <CategoryGrid tiles={[
+      <CategoryGrid role={session?.role || ''} tiles={[
         { href: '/dashboard/balances', icon: '📦', title: 'Остатки', desc: 'Текущие запасы iiko с поиском и экспортом' },
         { href: '/dashboard/transfer', icon: '🔄', title: 'Перемещение', desc: 'Между складами · сразу в iiko или через подтверждение' },
         { href: '/dashboard/invoice', icon: '🚚', title: 'Приход накладной', desc: 'Текст накладной → AI-распознавание → документ в iiko' },

@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { WriteoffClient } from './writeoff-client';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function WriteoffPage() {
   const session = await getSession();
   const [baseRole, storeId] = (session?.role || '').split(':');
-  if (!['admin', 'bar'].includes(baseRole)) redirect('/dashboard/warehouse');
+  requireAccess(session?.role, 'writeoff', '/dashboard/warehouse');
 
   return (
     <div className="grid">

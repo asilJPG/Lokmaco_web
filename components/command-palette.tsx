@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { canAccess, sectionForHref, type Section } from '@/lib/access';
 
-type Item = { href: string; label: string; icon: string; group: string; adminOnly?: boolean };
+type Item = { href: string; label: string; icon: string; group: string; section?: Section };
 
 const ITEMS: Item[] = [
   { href: '/dashboard', label: 'Главная', icon: '🏠', group: 'Навигация' },
-  { href: '/dashboard/assistant', label: 'Ассистент', icon: '✨', group: 'Навигация', adminOnly: true },
+  { href: '/dashboard/assistant', label: 'Ассистент', icon: '✨', group: 'Навигация' },
   { href: '/dashboard/cashier', label: 'Закрыть смену', icon: '🧾', group: 'Смена' },
   { href: '/dashboard/inbox', label: 'Подтверждения', icon: '📨', group: 'Смена' },
   { href: '/dashboard/history', label: 'История смен', icon: '🗂️', group: 'Смена' },
@@ -18,20 +19,24 @@ const ITEMS: Item[] = [
   { href: '/dashboard/production', label: 'Приготовление', icon: '🍳', group: 'Склад' },
   { href: '/dashboard/documents', label: 'Документы iiko', icon: '📑', group: 'Склад' },
   { href: '/dashboard/analytics', label: 'Обзор', icon: '📊', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=pl', label: 'ОПиУ', icon: '📈', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=abc', label: 'ABC-анализ блюд', icon: '🍽', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=liquidity', label: 'Ликвидность', icon: '🧊', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=sales', label: 'Продажи по группам', icon: '🥗', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=purchases', label: 'Закупки', icon: '🏷', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=waiters', label: 'Официанты', icon: '👨‍🍳', group: 'Аналитика' },
-  { href: '/dashboard/analytics?tab=attendance', label: 'Явки', icon: '🕒', group: 'Аналитика', adminOnly: true },
-  { href: '/dashboard/analytics?tab=reconciliation', label: 'Сверка', icon: '🧮', group: 'Аналитика', adminOnly: true },
+  { href: '/dashboard/analytics?tab=pl', label: 'ОПиУ', icon: '📈', group: 'Аналитика', section: 'analytics.pl' },
+  { href: '/dashboard/analytics?tab=abc', label: 'ABC-анализ блюд', icon: '🍽', group: 'Аналитика', section: 'analytics.abc' },
+  { href: '/dashboard/analytics?tab=liquidity', label: 'Ликвидность', icon: '🧊', group: 'Аналитика', section: 'analytics.liquidity' },
+  { href: '/dashboard/analytics?tab=sales', label: 'Продажи по группам', icon: '🥗', group: 'Аналитика', section: 'analytics.sales' },
+  { href: '/dashboard/analytics?tab=purchases', label: 'Закупки', icon: '🏷', group: 'Аналитика', section: 'analytics.purchases' },
+  { href: '/dashboard/analytics?tab=waiters', label: 'Официанты', icon: '👨‍🍳', group: 'Аналитика', section: 'analytics.waiters' },
+  { href: '/dashboard/attendance', label: 'Явки', icon: '🕒', group: 'Смена' },
   { href: '/dashboard/safe', label: 'Сейф', icon: '💰', group: 'Финансы' },
   { href: '/dashboard/wages', label: 'Зарплаты', icon: '👥', group: 'Финансы' },
   { href: '/dashboard/pnl', label: 'P&L', icon: '📈', group: 'Финансы' },
   { href: '/dashboard/profile', label: 'Профиль', icon: '🙂', group: 'Настройки' },
-  { href: '/dashboard/admin/users', label: 'Пользователи', icon: '👤', group: 'Настройки', adminOnly: true },
-  { href: '/dashboard/admin/filials', label: 'Филиалы', icon: '🏢', group: 'Настройки', adminOnly: true },
+  { href: '/dashboard/admin/users', label: 'Пользователи', icon: '👤', group: 'Настройки' },
+  { href: '/dashboard/admin/filials', label: 'Филиалы', icon: '🏢', group: 'Настройки' },
+  { href: '/dashboard/writeoff', label: 'Списание', icon: '🗑', group: 'Склад' },
+  { href: '/dashboard/services', label: 'Услуги', icon: '🧾', group: 'Склад' },
+  { href: '/dashboard/assets', label: 'Опись ОС', icon: '🏛', group: 'Склад' },
+  { href: '/dashboard/reconciliation', label: 'Отчёты кассы', icon: '🧮', group: 'Финансы' },
+  { href: '/dashboard/tax-report', label: 'Налоговый отчёт', icon: '🧾', group: 'Финансы' },
 ];
 
 function fuzzyMatch(haystack: string, needle: string): boolean {
@@ -48,7 +53,7 @@ function fuzzyMatch(haystack: string, needle: string): boolean {
   return false;
 }
 
-export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
+export function CommandPalette({ role }: { role: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -88,8 +93,13 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
   }, [open]);
 
   const filtered = useMemo(() => {
-    return ITEMS.filter((it) => (!it.adminOnly || isAdmin) && fuzzyMatch(it.label + ' ' + it.group, query));
-  }, [query, isAdmin]);
+    // Роли — из той же матрицы, что и меню: палитра не должна предлагать то,
+    // куда роль всё равно не пустят.
+    return ITEMS.filter((it) => {
+      const section = it.section ?? sectionForHref(it.href);
+      return (!section || canAccess(role, section)) && fuzzyMatch(it.label + ' ' + it.group, query);
+    });
+  }, [query, role]);
 
   useEffect(() => {
     if (active >= filtered.length) setActive(0);

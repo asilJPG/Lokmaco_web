@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { BalancesClient } from './balances-client';
 
 export const metadata = { title: 'Остатки' };
 export const dynamic = 'force-dynamic';
 
-export default function BalancesPage() {
+export default async function BalancesPage() {
+  requireAccess((await getSession())?.role, 'balances', '/dashboard');
+
   return (
     <div className="grid">
       <div>

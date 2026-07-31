@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { toURLSearchParams } from '@/lib/search-params';
 import { parsePeriod } from '@/lib/period';
 import { PeriodPicker } from '@/components/period-picker';
@@ -10,8 +10,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
   const session = await getSession();
-  const baseRole = (session?.role || '').split(':')[0];
-  if (!['admin', 'director', 'manager'].includes(baseRole)) redirect('/dashboard/finance');
+  requireAccess(session?.role, 'analytics', '/dashboard/finance');
 
   const sp = toURLSearchParams(searchParams);
   const period = parsePeriod(sp);
@@ -23,7 +22,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: { 
         <p className="page-subtitle">Продажи, меню, склад и закупки — всё из iiko за выбранный период.</p>
       </div>
       <PeriodPicker from={period.from} to={period.to} activePreset={sp.get('preset') || 'this_month'} />
-      <AnalyticsHub from={period.from} to={period.to} />
+      <AnalyticsHub from={period.from} to={period.to} role={session?.role || ''} />
     </div>
   );
 }

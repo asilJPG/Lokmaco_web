@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { getIngredientPrices } from '@/lib/ingredient-prices';
@@ -6,8 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['admin', 'director', 'manager'].includes(session.role.split(':')[0])) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccess(session.role, 'analytics.purchases')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
   const ids = await getCurrentFilialIds();
   if (ids.length === 0) return Response.json({ data: null });

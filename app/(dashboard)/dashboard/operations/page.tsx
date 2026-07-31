@@ -26,11 +26,14 @@ export default async function OperationsPage() {
     <div>
       <h1 className="page-title">Смена</h1>
       <p className="page-subtitle">Ежедневные действия кассы и история отчётов.</p>
-      <CategoryGrid tiles={[
+      <CategoryGrid role={session?.role || ''} tiles={[
         { href: '/dashboard/cashier', icon: '🧾', title: 'Закрыть смену', desc: 'Внести оплаты, расходы и зарплаты за день' },
         { href: '/dashboard/inbox', icon: '📨', title: 'Подтверждения', desc: 'Перемещения, ожидающие твоей реакции', badge: inbox },
         { href: '/dashboard/history', icon: '🗂️', title: 'История смен', desc: 'Все кассовые отчёты, экспорт в CSV, копирование номеров' },
-        ...((session?.role || '').split(':')[0] === 'admin' ? [{ href: '/dashboard/attendance', icon: '🕒', title: 'Явки', desc: 'Приходы и уходы сотрудников из iiko' }] : []),
+        // Роль фильтрует сам CategoryGrid по матрице — своей проверки здесь
+        // быть не должно, иначе она разъедется с меню (так и вышло: у «Явок»
+        // тут стоял admin, а в матрице — admin + director).
+        { href: '/dashboard/attendance', icon: '🕒', title: 'Явки', desc: 'Приходы и уходы сотрудников из iiko' },
       ]} />
     </div>
   );

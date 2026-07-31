@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { AssistantChat } from './chat';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AssistantPage() {
   const session = await getSession();
-  if ((session?.role || '').split(':')[0] !== 'admin') redirect('/dashboard');
+  requireAccess(session?.role, 'assistant', '/dashboard');
 
   return (
     <div className="grid">

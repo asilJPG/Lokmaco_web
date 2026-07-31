@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { toURLSearchParams } from '@/lib/search-params';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function TaxReportPage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
   const session = await getSession();
-  if (!['admin', 'director'].includes((session?.role || '').split(':')[0])) redirect('/dashboard/finance');
+  requireAccess(session?.role, 'taxReport', '/dashboard/finance');
 
   const sp = toURLSearchParams(searchParams);
   const period = parsePeriod(sp);

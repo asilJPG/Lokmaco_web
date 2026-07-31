@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { toURLSearchParams } from '@/lib/search-params';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AttendancePage({ searchParams }: { searchParams: { [k: string]: string | string[] | undefined } }) {
   const session = await getSession();
-  if ((session?.role || '').split(':')[0] !== 'admin') redirect('/dashboard/operations');
+  requireAccess(session?.role, 'attendance', '/dashboard/operations');
 
   const sp = toURLSearchParams(searchParams);
   const period = parsePeriod(sp);

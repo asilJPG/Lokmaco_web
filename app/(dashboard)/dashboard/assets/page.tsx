@@ -1,3 +1,4 @@
+import { requireAccess } from '@/lib/access';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
 import { AssetsClient } from './assets-client';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AssetsPage() {
   const session = await getSession();
-  if (!['admin', 'manager'].includes((session?.role || '').split(':')[0])) redirect('/dashboard/warehouse');
+  requireAccess(session?.role, 'assets', '/dashboard/warehouse');
 
   return (
     <div className="grid">

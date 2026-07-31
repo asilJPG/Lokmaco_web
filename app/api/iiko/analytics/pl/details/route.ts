@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { withIikoSession } from '@/lib/iiko';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -19,8 +20,8 @@ type DetailRow = { date: string; document: string; description: string; amount: 
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!['admin', 'director'].includes(session.role.split(':')[0])) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canAccess(session.role, 'analytics.pl')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
 
   const ids = await getCurrentFilialIds();

@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { InvoiceClient } from './invoice-client';
 
 export const metadata = { title: 'Приход накладной' };
 export const dynamic = 'force-dynamic';
 
-export default function InvoicePage() {
+export default async function InvoicePage() {
+  requireAccess((await getSession())?.role, 'invoice', '/dashboard/warehouse');
+
   return (
     <div className="grid">
       <div>

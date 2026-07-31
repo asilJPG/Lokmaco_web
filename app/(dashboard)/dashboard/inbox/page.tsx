@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { InboxClient } from './inbox-client';
 
 export const metadata = { title: 'Подтверждения' };
 export const dynamic = 'force-dynamic';
 
-export default function InboxPage() {
+export default async function InboxPage() {
+  requireAccess((await getSession())?.role, 'inbox', '/dashboard');
+
   return (
     <div className="grid">
       <div>

@@ -1,9 +1,13 @@
+import { getSession } from '@/lib/auth-session';
+import { requireAccess } from '@/lib/access';
 import { DocumentsClient } from './documents-client';
 
 export const metadata = { title: 'Документы' };
 export const dynamic = 'force-dynamic';
 
-export default function DocumentsPage() {
+export default async function DocumentsPage() {
+  requireAccess((await getSession())?.role, 'documents', '/dashboard/warehouse');
+
   return (
     <div className="grid">
       <div>

@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { parseStringPromise } from 'xml2js';
 import { withIikoSession, iikoGetText } from '@/lib/iiko';
 import { requireSession } from '@/lib/auth-session';
@@ -23,8 +24,8 @@ export type AttendanceEmployee = {
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (session.role.split(':')[0] !== 'admin') {
-    return Response.json({ error: 'Доступ запрещен' }, { status: 403 });
+  if (!canAccess(session.role, 'attendance')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
 
   const sp = new URL(req.url).searchParams;

@@ -1,3 +1,4 @@
+import { canAccess } from '@/lib/access';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { withIikoSession } from '@/lib/iiko';
@@ -44,8 +45,8 @@ type CashRow = {
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (session.role.split(':')[0] !== 'admin') {
-    return Response.json({ error: 'Доступ только для администратора' }, { status: 403 });
+  if (!canAccess(session.role, 'reconciliation')) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
 
   const monthParam = new URL(req.url).searchParams.get('month') || '';
