@@ -20,18 +20,40 @@ type Doc = {
 type DocItem = {
   product?: { name?: string } | string;
   productName?: string;
+  productCode?: string;
   name?: string;
   amount?: number;
   amountUnit?: string;
+  unitName?: string;
+  /** Нормализовано сервером: читаемая единица и суммы для любого типа документа. */
+  unitLabel?: string;
+  priceValue?: number | null;
+  sumValue?: number | null;
   price?: number;
   sum?: number;
   cost?: number;
 };
 
+/**
+ * `product` в документах iikoWeb — это UUID, а не объект. Раньше он и попадал
+ * в таблицу: вместо позиций был столбец идентификаторов. Название подставляет
+ * сервер (`productName`), UUID остаётся лишь как последний фолбэк.
+ */
 function itemName(it: DocItem): string {
-  if (typeof it.product === 'string') return it.product;
+  if (it.productName) return it.productName;
+  if (it.name) return it.name;
   if (it.product && typeof it.product === 'object' && it.product.name) return it.product.name;
-  return it.productName || it.name || '—';
+  if (typeof it.product === 'string') return `Товар ${it.product.slice(0, 8)}…`;
+  return '—';
+}
+
+/** Единицу нормализует сервер: в сырых данных там бывает UUID контейнера. */
+function itemUnit(it: DocItem): string {
+  return it.unitLabel || it.amountUnit || '';
+}
+
+function fmtNum(v: number | null | undefined): string {
+  return v == null ? '—' : v.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
 function extractItems(data: unknown): DocItem[] {
@@ -48,13 +70,21 @@ function today(offset = 0) {
   return new Date(Date.now() + 5 * 3600_000 + offset * 86400_000).toISOString().slice(0, 10);
 }
 
+// Названия — как их показывает сам iiko (`typeName` в /api/documents/list).
+// WRITEOFF_DOCUMENT, INCOMING_SERVICE, SALES_DOCUMENT и INCOMING_INVENTORY
+// реально встречаются в этом аккаунте, но их тут не было — и в фильтре с
+// таблицей висели сырые коды вроде «WRITEOFF_DOCUMENT».
 const TYPE_LABEL: Record<string, string> = {
   INTERNAL_TRANSFER: '🔄 Перемещение',
-  INCOMING_INVOICE: '📥 Приход',
-  OUTGOING_INVOICE: '📤 Расход',
+  INCOMING_INVOICE: '📥 Приходная накладная',
+  OUTGOING_INVOICE: '📤 Расходная накладная',
   INVENTORY: '📋 Инвентаризация',
-  PRODUCTION_DOCUMENT: '🍳 Производство',
+  INCOMING_INVENTORY: '📋 Инвентаризация',
+  PRODUCTION_DOCUMENT: '🍳 Акт приготовления',
+  WRITEOFF_DOCUMENT: '🗑 Акт списания',
   WASTE_DOCUMENT: '🗑 Списание',
+  INCOMING_SERVICE: '🧾 Акт приема услуг',
+  SALES_DOCUMENT: '💰 Акт реализации',
   RETURNED_INVOICE: '↩️ Возврат',
 };
 
@@ -223,9 +253,9 @@ export function DocumentsClient() {
                                     {detail.map((it, idx) => (
                                       <tr key={idx} style={{ borderTop: '1px solid var(--border)' }}>
                                         <td style={{ padding: '6px 8px' }}>{itemName(it)}</td>
-                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.amount != null ? it.amount.toLocaleString('ru-RU') : '—'}{it.amountUnit ? ` ${it.amountUnit}` : ''}</td>
-                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.price != null ? it.price.toLocaleString('ru-RU') : '—'}</td>
-                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{(it.sum ?? it.cost) != null ? ((it.sum ?? it.cost) as number).toLocaleString('ru-RU') : '—'}</td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.amount != null ? it.amount.toLocaleString('ru-RU') : '—'}{itemUnit(it) ? ` ${itemUnit(it)}` : ''}</td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(it.priceValue ?? it.price)}</td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtNum(it.sumValue ?? it.sum ?? it.cost)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
