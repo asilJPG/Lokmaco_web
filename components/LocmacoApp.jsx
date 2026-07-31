@@ -8828,6 +8828,373 @@ function CashView({
           />
         </div>
       )}
+
+      {loggedInUser.baseRole === "admin" && (
+        <CashShiftsAdmin showToast={showToast} loggedInUser={loggedInUser} />
+      )}
+    </div>
+  );
+}
+
+const PAY_FIELDS = [
+  { key: "cash", label: "💵 Наличные (фискал)" },
+  { key: "encashment", label: "💰 Инкассация" },
+  { key: "uzcard", label: "💳 Uzcard" },
+  { key: "humo", label: "💳 Humo" },
+  { key: "rahmat", label: "💳 Rahmat" },
+  { key: "uzum", label: "💳 Uzum" },
+  { key: "online", label: "📱 Click / Payme" },
+  { key: "yandex", label: "🛵 Яндекс Еда" },
+];
+
+function CashShiftsAdmin({ showToast, loggedInUser }) {
+  const now = new Date();
+  const [month, setMonth] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  );
+  const [shifts, setShifts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+
+  const headers = {
+    "x-user-id": loggedInUser?.id || "admin",
+    "x-user-role": loggedInUser?.baseRole || "admin",
+  };
+
+  const load = async (m) => {
+    setLoading(true);
+    try {
+      const [y, mo] = m.split("-");
+      const from = `${y}-${mo}-01`;
+      const last = new Date(Number(y), Number(mo), 0).getDate();
+      const to = `${y}-${mo}-${String(last).padStart(2, "0")}`;
+      const res = await fetch(`/api/iiko/cash?from=${from}&to=${to}`, { headers });
+      const json = await res.json();
+      if (json.success) {
+        setShifts(json.shifts.sort((a, b) => (a.date || "").localeCompare(b.date || "")));
+      } else {
+        showToast?.(json.error || "Ошибка загрузки смен", "error");
+        setShifts([]);
+      }
+    } catch (e) {
+      console.error("[cash-admin]", e);
+      showToast?.("Ошибка загрузки смен", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(month); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month]);
+
+  const fmtSum = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(Number(n) || 0));
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const [y, m, d] = iso.split("-");
+    return `${d}.${m}.${y}`;
+  };
+
+  const th = { padding: "10px 12px", background: "var(--bg-pill)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)" };
+  const thL = { ...th, textAlign: "left" };
+  const td = { padding: "9px 12px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)", fontVariantNumeric: "tabular-nums" };
+  const tdL = { ...td, textAlign: "left" };
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>
+            🗂 Сданные смены — правка
+          </h3>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            Исправление ошибок кассира. Каждая правка логируется.
+          </div>
+        </div>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer" }}
+        />
+      </div>
+
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden" }}>
+        {loading ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            ⏳ Загрузка смен…
+          </div>
+        ) : shifts.length === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+            За этот месяц сданных смен нет
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={thL}>Дата</th>
+                  <th style={thL}>Кассир</th>
+                  <th style={th}>Наличные</th>
+                  <th style={th}>Инкасса</th>
+                  <th style={th}>Карты</th>
+                  <th style={th}>Расходы</th>
+                  <th style={th}>Итого</th>
+                  <th style={{ ...th, textAlign: "center" }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shifts.map((s) => {
+                  const p = s.details?.payments || {};
+                  const cards =
+                    (Number(p.uzcard) || 0) + (Number(p.humo) || 0) + (Number(p.rahmat) || 0) +
+                    (Number(p.uzum) || 0) + (Number(p.online) || 0) + (Number(p.yandex) || 0);
+                  const suspicious = !Number(p.cash) && Number(p.encashment) > 0;
+                  return (
+                    <tr key={s.id} style={{ background: suspicious ? "rgba(239,68,68,0.06)" : "transparent" }}>
+                      <td style={tdL}>
+                        {fmtDate(s.date)}
+                        {s.edited && (
+                          <span title="Смена редактировалась" style={{ marginLeft: 6, fontSize: 11, color: "#f59e0b" }}>✎</span>
+                        )}
+                        {suspicious && (
+                          <span title="Фискальные наличные = 0 при ненулевой инкассации" style={{ marginLeft: 6, fontSize: 11 }}>⚠️</span>
+                        )}
+                      </td>
+                      <td style={tdL}>{s.cashier}</td>
+                      <td style={td}>{fmtSum(p.cash)}</td>
+                      <td style={td}>{fmtSum(p.encashment)}</td>
+                      <td style={td}>{fmtSum(cards)}</td>
+                      <td style={td}>{fmtSum(s.details?.total_expenses)}</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{fmtSum(s.details?.total_sales)}</td>
+                      <td style={{ ...td, textAlign: "center" }}>
+                        <button
+                          onClick={() => setEditing(s)}
+                          style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Изменить
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <CashShiftEditModal
+          shift={editing}
+          headers={headers}
+          onClose={() => setEditing(null)}
+          onSaved={async () => { setEditing(null); await load(month); }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+function CashShiftEditModal({ shift, headers, onClose, onSaved, showToast }) {
+  const d = shift.details || {};
+  const [pay, setPay] = useState(() => {
+    const p = d.payments || {};
+    const init = {};
+    PAY_FIELDS.forEach(({ key }) => { init[key] = String(Number(p[key]) || 0); });
+    return init;
+  });
+  const [expenses, setExpenses] = useState(() =>
+    (d.expenses || []).map((e) => ({ name: e.name || "", amount: String(Number(e.amount) || 0) }))
+  );
+  const [surplus, setSurplus] = useState(String(Number(d.surplus) || 0));
+  const [shortage, setShortage] = useState(String(Number(d.shortage) || 0));
+  const [comment, setComment] = useState(d.comment || "");
+  const [date, setDate] = useState(d.selected_date || shift.date || "");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const n = (v) => parseFloat(v) || 0;
+  const totalSales = PAY_FIELDS.reduce((s, f) => s + n(pay[f.key]), 0);
+  const totalExpenses = expenses.reduce((s, e) => s + n(e.amount), 0);
+  const fmtSum = (v) => new Intl.NumberFormat("ru-RU").format(Math.round(v));
+
+  const inp = {
+    width: "100%", padding: "9px 11px", borderRadius: 8,
+    border: "1px solid var(--border-color)", background: "var(--bg-pill)",
+    color: "var(--text-main)", fontSize: 14, outline: "none", fontFamily: "inherit",
+  };
+  const lbl = { fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" };
+
+  const save = async () => {
+    if (!reason.trim()) {
+      showToast?.("Укажи причину правки", "warn");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payments = {};
+      PAY_FIELDS.forEach(({ key }) => { payments[key] = n(pay[key]); });
+      const res = await fetch("/api/iiko/cash", {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: shift.id,
+          payments,
+          expenses: expenses.map((e) => ({ name: e.name, amount: n(e.amount) })),
+          surplus: n(surplus),
+          shortage: n(shortage),
+          comment,
+          date,
+          edit_reason: reason,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast?.(json.unchanged ? "Изменений не было" : `Смена обновлена (${json.changed} полей)`, "success");
+        await onSaved();
+      } else {
+        showToast?.(json.error || "Ошибка сохранения", "error");
+      }
+    } catch (e) {
+      console.error("[cash-edit]", e);
+      showToast?.("Ошибка сохранения", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border-color)", width: "100%", maxWidth: 620, maxHeight: "92vh", overflowY: "auto", padding: 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Правка смены</h3>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+              Кассир: {shift.cashier}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: 14, maxWidth: 200 }}>
+          <label style={lbl}>Отчётная дата</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inp} />
+        </div>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>ВЫРУЧКА ПО ТИПАМ ОПЛАТ</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
+          {PAY_FIELDS.map(({ key, label }) => (
+            <div key={key}>
+              <label style={lbl}>{label}</label>
+              <input
+                type="number"
+                value={pay[key]}
+                onChange={(e) => setPay((p) => ({ ...p, [key]: e.target.value }))}
+                style={inp}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>РАСХОДЫ ИЗ КАССЫ</div>
+          <button
+            onClick={() => setExpenses((x) => [...x, { name: "", amount: "0" }])}
+            style={{ background: "none", border: "none", color: "var(--color-primary, #6366f1)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+          >
+            + добавить
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {expenses.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Расходов нет</div>
+          )}
+          {expenses.map((e, i) => (
+            <div key={i} style={{ display: "flex", gap: 8 }}>
+              <input
+                placeholder="Назначение"
+                value={e.name}
+                onChange={(ev) => setExpenses((x) => x.map((it, j) => j === i ? { ...it, name: ev.target.value } : it))}
+                style={{ ...inp, flex: 1 }}
+              />
+              <input
+                type="number"
+                value={e.amount}
+                onChange={(ev) => setExpenses((x) => x.map((it, j) => j === i ? { ...it, amount: ev.target.value } : it))}
+                style={{ ...inp, width: 130 }}
+              />
+              <button
+                onClick={() => setExpenses((x) => x.filter((_, j) => j !== i))}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#ef4444", padding: "0 4px" }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={lbl}>Излишек</label>
+            <input type="number" value={surplus} onChange={(e) => setSurplus(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Недостача</label>
+            <input type="number" value={shortage} onChange={(e) => setShortage(e.target.value)} style={inp} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Комментарий кассира</label>
+          <input value={comment} onChange={(e) => setComment(e.target.value)} style={inp} />
+        </div>
+
+        <div style={{ background: "var(--bg-pill)", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ color: "var(--text-muted)" }}>Итого выручка</span>
+            <b>{fmtSum(totalSales)} сум</b>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--text-muted)" }}>Итого расходы</span>
+            <b>{fmtSum(totalExpenses)} сум</b>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Причина правки (обязательно)</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Напр.: кассир не заполнил фискальные наличные"
+            style={inp}
+          />
+        </div>
+
+        {Array.isArray(d.edit_history) && d.edit_history.length > 0 && (
+          <div style={{ marginBottom: 16, fontSize: 12, color: "var(--text-muted)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>История правок</div>
+            {d.edit_history.slice(-3).reverse().map((h, i) => (
+              <div key={i} style={{ marginBottom: 4 }}>
+                {new Date(h.edited_at).toLocaleString("ru-RU")} — {h.edited_by}
+                {h.reason ? `: ${h.reason}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={saving} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontWeight: 600, cursor: "pointer" }}>
+            Отмена
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: saving ? "#9ca3af" : "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}
+          >
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
