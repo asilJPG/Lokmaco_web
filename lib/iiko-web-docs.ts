@@ -1,18 +1,12 @@
 import { withIikoWebSession, iikoWebFetch, type IikoWebCreds } from './iiko-web';
+import { tashkentStamps } from './tashkent';
 
 const STORE_NUM = process.env.IIKO_STORE_NUM || '170243';
 const CONCEPTION_ID = process.env.IIKO_CONCEPTION_ID || '2609b25f-2180-bf98-5c1c-967664eea837';
 const CONTAINER_ID = process.env.IIKO_CONTAINER_ID || '7ba81c3a-8de5-8f9d-fb9f-e39efcbc57cc';
 const KITCHEN_PREP_STORE = process.env.IIKO_KITCHEN_PREP_STORE || '2e9688bb-5130-4188-94a5-7a850e1d9f55';
 
-function pad(n: number) { return String(n).padStart(2, '0'); }
-function nowDates() {
-  const d = new Date();
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  const tz = '+05:00';
-  return { dateIncoming: `${date}T${time}${tz}`, dateIncomingMs: `${date}T${time}.000${tz}` };
-}
+const nowDates = tashkentStamps;
 
 export type DocItem = { product_id: string; product_name?: string; quantity: number; price?: number };
 

@@ -28,7 +28,16 @@ export type Http1Init = {
   body?: string;
   /** Defaults to the IIKO_REJECT_UNAUTHORIZED env flag, like the XML client. */
   rejectUnauthorized?: boolean;
+  /** Мс до обрыва запроса. По умолчанию 30 с. */
+  timeoutMs?: number;
 };
+
+/**
+ * Без явного таймаута повисший сокет не обрывается никогда: node:https сам по
+ * себе его не закрывает, и функция на Vercel висит до платформенного лимита.
+ * iiko-сервер ресторана уходит в такое состояние при перезагрузке.
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function http1Fetch(urlStr: string, init: Http1Init = {}): Promise<Http1Response> {
   return new Promise((resolve, reject) => {
@@ -74,6 +83,11 @@ export function http1Fetch(urlStr: string, init: Http1Init = {}): Promise<Http1R
         });
       }
     );
+
+    const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`Таймаут ${timeoutMs} мс: ${parsed.host} не ответил`));
+    });
 
     req.on('error', reject);
     if (init.body != null) req.write(init.body);

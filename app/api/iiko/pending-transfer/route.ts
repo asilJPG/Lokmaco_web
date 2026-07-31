@@ -2,14 +2,21 @@ import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { submitDocument } from '@/lib/iiko-web-docs';
-import { db, schema } from '@/db/client';
+import { logAction as logBotAction } from '@/lib/log-action';
 import {
+  claimPendingTransfer,
   createPendingTransfer,
   getPendingTransferById,
   listPendingTransfers,
+  releasePendingTransfer,
   updatePendingTransfer,
   type TransferItem,
 } from '@/lib/pending-transfer';
+
+const logAction = (input: {
+  filialId: number; tgId: number | null; userName: string;
+  documentNumber?: string | null; details: Record<string, unknown>;
+}) => logBotAction({ ...input, actionType: 'transfer' });
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +54,15 @@ export async function POST(req: Request) {
   }
 }
 
+// Тот же список, что и в легаси на /api/iiko/transfer: там оба сценария
+// (создание и согласование) жили в одном роуте с одной проверкой.
+const ALLOWED_ROLES = ['admin', 'director', 'supplier', 'kitchen', 'prep_chef', 'bar', 'hall'];
+
 async function handlePost(req: Request) {
   const session = await requireSession();
+  if (!ALLOWED_ROLES.includes(session.role.split(':')[0])) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
+  }
   const filialIds = await getCurrentFilialIds();
   if (filialIds.length === 0) return Response.json({ error: 'no filial' }, { status: 400 });
   const filialId = filialIds[0];
@@ -111,6 +125,11 @@ async function handlePost(req: Request) {
     }
   }
   if (['approve_by_creator', 'reject_by_creator'].includes(action)) {
+    // Статус проверяем до отправки в iiko: без этого повторный запрос по уже
+    // принятому перемещению создал бы в iiko второй такой же документ.
+    if (doc.status !== 'pending_creator') {
+      return Response.json({ error: 'Неверный статус' }, { status: 400 });
+    }
     if (!isAdmin && String(doc.creatorTgId) !== String(session.tgId)) return Response.json({ error: 'Не создатель' }, { status: 403 });
   }
 
@@ -118,20 +137,32 @@ async function handlePost(req: Request) {
   const receiverComment: string | undefined = b.receiver_comment;
 
   if (action === 'approve_by_receiver') {
+    if (!(await claimPendingTransfer(id, doc.status))) {
+      return Response.json({ error: 'Документ уже обработан' }, { status: 409 });
+    }
     const { web: creds } = await resolveIikoCreds(doc.filialId);
     const finalComment = `Принял: ${session.name}${b.comment ? ` | ${b.comment}` : ''}`;
-    const result = await submitDocument({
-      type: 'INTERNAL_TRANSFER',
-      storeFrom: doc.storeFrom!,
-      storeTo: doc.storeTo!,
-      items: items.map((it) => ({ product_id: it.product_id, product_name: it.product_name, quantity: it.quantity })),
-      comment: finalComment,
-    }, creds);
-    if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    let result;
+    try {
+      result = await submitDocument({
+        type: 'INTERNAL_TRANSFER',
+        storeFrom: doc.storeFrom!,
+        storeTo: doc.storeTo!,
+        items: items.map((it) => ({ product_id: it.product_id, product_name: it.product_name, quantity: it.quantity })),
+        comment: finalComment,
+      }, creds);
+    } catch (e) {
+      await releasePendingTransfer(id, doc.status);
+      throw e;
+    }
+    if (!result.success) {
+      await releasePendingTransfer(id, doc.status);
+      return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    }
     await updatePendingTransfer(id, 'accepted');
-    await db.insert(schema.botActions).values({
+    await logAction({
       filialId: doc.filialId, tgId: session.tgId, userName: session.name,
-      actionType: 'transfer', documentNumber: result.documentNumber,
+      documentNumber: result.documentNumber,
       details: { store_from_name: doc.storeFromName, store_to_name: doc.storeToName, items, comment: finalComment },
     });
     return Response.json({ success: true, documentNumber: result.documentNumber });
@@ -148,6 +179,9 @@ async function handlePost(req: Request) {
   }
 
   if (action === 'approve_by_creator') {
+    if (!(await claimPendingTransfer(id, doc.status))) {
+      return Response.json({ error: 'Документ уже обработан' }, { status: 409 });
+    }
     const { web: creds } = await resolveIikoCreds(doc.filialId);
     const prepared = items
       .map((it) => ({
@@ -157,18 +191,27 @@ async function handlePost(req: Request) {
       }))
       .filter((it) => it.quantity > 0);
     const finalComment = `Принял: ${session.name}${doc.receiverComment ? ` | ${doc.receiverComment}` : ''}`;
-    const result = await submitDocument({
-      type: 'INTERNAL_TRANSFER',
-      storeFrom: doc.storeFrom!,
-      storeTo: doc.storeTo!,
-      items: prepared,
-      comment: finalComment,
-    }, creds);
-    if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    let result;
+    try {
+      result = await submitDocument({
+        type: 'INTERNAL_TRANSFER',
+        storeFrom: doc.storeFrom!,
+        storeTo: doc.storeTo!,
+        items: prepared,
+        comment: finalComment,
+      }, creds);
+    } catch (e) {
+      await releasePendingTransfer(id, doc.status);
+      throw e;
+    }
+    if (!result.success) {
+      await releasePendingTransfer(id, doc.status);
+      return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
+    }
     await updatePendingTransfer(id, 'accepted');
-    await db.insert(schema.botActions).values({
+    await logAction({
       filialId: doc.filialId, tgId: session.tgId, userName: session.name,
-      actionType: 'transfer', documentNumber: result.documentNumber,
+      documentNumber: result.documentNumber,
       details: { store_from_name: doc.storeFromName, store_to_name: doc.storeToName, items: prepared, comment: finalComment, receiver_comment: doc.receiverComment },
     });
     return Response.json({ success: true, documentNumber: result.documentNumber });

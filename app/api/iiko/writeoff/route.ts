@@ -2,7 +2,7 @@ import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { createWriteoff, WRITEOFF_ACCOUNT_ID } from '@/lib/iiko';
-import { db, schema } from '@/db/client';
+import { logAction } from '@/lib/log-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     items, comment, store_id: storeId, store_name: b.store_name || '', account_id: accountId, account_name: b.account_name || '',
   };
 
-  await db.insert(schema.botActions).values({
+  await logAction({
     filialId,
     tgId: session.tgId,
     userName: session.name,

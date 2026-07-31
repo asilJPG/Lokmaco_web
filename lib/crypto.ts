@@ -18,13 +18,17 @@ export function encrypt(plain: string): string {
 
 export function decrypt(token: string | null | undefined): string | null {
   if (!token) return null;
+  // getKey() зовём вне try: «ключ не задан» — это ошибка конфигурации, и
+  // глотать её нельзя. Иначе забытый IIKO_CRED_KEY молча превращает креды
+  // филиала в null, и сайт уходит работать на глобальные env-креды.
+  const key = getKey();
   try {
     const buf = Buffer.from(token, 'base64');
     if (buf.length < 12 + 16 + 1) return null;
     const iv = buf.subarray(0, 12);
     const tag = buf.subarray(12, 28);
     const enc = buf.subarray(28);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), iv);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
   } catch {

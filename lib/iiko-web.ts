@@ -67,7 +67,16 @@ export async function withIikoWebSession<T>(fn: (cookies: string, url: string) =
   const cacheKey = `${creds.url}|${creds.login}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < TTL) {
-    try { return await fn(cached.cookies, creds.url); } catch { cache.delete(cacheKey); }
+    // Ошибку внутри fn наружу отдаём как есть и НЕ повторяем: submitDocument —
+    // это цепочка create → get → save, и падение на середине при повторе
+    // создало бы в iiko второй документ. Куку на всякий случай сбрасываем,
+    // чтобы следующий запрос (уже осознанный, от пользователя) взял свежую.
+    try {
+      return await fn(cached.cookies, creds.url);
+    } catch (e) {
+      cache.delete(cacheKey);
+      throw e;
+    }
   }
   const cookies = await login(creds);
   cache.set(cacheKey, { cookies, at: Date.now() });

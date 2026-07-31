@@ -2,7 +2,7 @@ import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { withIikoSession, iikoPostXml, escapeXml } from '@/lib/iiko';
-import { db, schema } from '@/db/client';
+import { logAction } from '@/lib/log-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     sum, comment,
   };
 
-  await db.insert(schema.botActions).values({
+  await logAction({
     filialId,
     tgId: session.tgId,
     userName: session.name,

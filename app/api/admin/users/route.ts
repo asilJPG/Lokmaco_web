@@ -3,15 +3,16 @@ import { createUser, deleteUser, updateUser } from '@/lib/admin-users';
 
 export const dynamic = 'force-dynamic';
 
-function requireAdmin(role: string) {
-  if (role.split(':')[0] !== 'admin') {
-    throw new Response(JSON.stringify({ error: 'Admin only' }), { status: 403 });
-  }
+// Возвращаем ответ, а не бросаем: Next 14 не перехватывает throw new Response
+// (это паттерн Remix), и наружу вместо 403 уходил бы 500.
+function requireAdmin(role: string): Response | null {
+  return role.split(':')[0] === 'admin' ? null : Response.json({ error: 'Admin only' }, { status: 403 });
 }
 
 export async function POST(req: Request) {
   const s = await requireSession();
-  requireAdmin(s.role);
+  const denied = requireAdmin(s.role);
+  if (denied) return denied;
   const b = await req.json();
   if (!b.name || !b.role) return Response.json({ error: 'name, role required' }, { status: 400 });
   const filialIds: number[] = Array.isArray(b.filialIds) ? b.filialIds.map(Number).filter(Boolean) : [];
@@ -27,7 +28,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const s = await requireSession();
-  requireAdmin(s.role);
+  const denied = requireAdmin(s.role);
+  if (denied) return denied;
   const b = await req.json();
   const id = Number(b.id);
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
@@ -43,7 +45,8 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const s = await requireSession();
-  requireAdmin(s.role);
+  const denied = requireAdmin(s.role);
+  if (denied) return denied;
   const id = Number(new URL(req.url).searchParams.get('id'));
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
   if (id === s.id) return Response.json({ error: 'Нельзя удалить себя' }, { status: 400 });

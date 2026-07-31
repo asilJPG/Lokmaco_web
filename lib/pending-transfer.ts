@@ -100,6 +100,31 @@ export async function createPendingTransfer(input: {
   return row;
 }
 
+/**
+ * Атомарно занять перемещение перед отправкой в iiko.
+ *
+ * Проверять статус в коде и потом отправлять документ мало: два одновременных
+ * запроса (двойной клик, повтор с телефона) оба увидят «pending» и создадут в
+ * iiko два одинаковых перемещения. Условный UPDATE пропускает только первый.
+ * Вернёт false, если статус уже не тот — значит документ уже кто-то обработал.
+ */
+export async function claimPendingTransfer(id: string, expectedStatus: string): Promise<boolean> {
+  const rows = await db
+    .update(schema.pendingTransfers)
+    .set({ status: 'processing', updatedAt: new Date() })
+    .where(and(eq(schema.pendingTransfers.id, id), eq(schema.pendingTransfers.status, expectedStatus)))
+    .returning({ id: schema.pendingTransfers.id });
+  return rows.length > 0;
+}
+
+/** Вернуть статус, если iiko документ не принял. */
+export async function releasePendingTransfer(id: string, backTo: string): Promise<void> {
+  await db
+    .update(schema.pendingTransfers)
+    .set({ status: backTo, updatedAt: new Date() })
+    .where(and(eq(schema.pendingTransfers.id, id), eq(schema.pendingTransfers.status, 'processing')));
+}
+
 export async function updatePendingTransfer(id: string, status: string, patch?: { items?: TransferItem[]; receiverComment?: string }) {
   const update: Record<string, unknown> = { status, updatedAt: new Date() };
   if (patch?.items) update.items = patch.items;

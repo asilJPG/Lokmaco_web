@@ -2,8 +2,11 @@ export type Period = { from: string; to: string };
 
 function pad(n: number): string { return String(n).padStart(2, '0'); }
 
+// Вся арифметика ниже — строго в UTC поверх сдвинутой на +5 эпохи. Локальные
+// геттеры здесь использовать нельзя: на сервере (UTC) и на маке они дают
+// разные ответы, и «сегодня» разъезжается с ташкентским календарём.
 function ymd(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 export function todayTashkent(): string {
@@ -18,32 +21,27 @@ export function yesterdayTashkent(): string {
 
 export function presetPeriod(preset: string): Period {
   const today = new Date(Date.now() + 5 * 3600_000);
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
+  const shift = (days: number) => {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d;
+  };
   const to = ymd(today);
   if (preset === 'today') return { from: to, to };
   if (preset === 'yesterday') {
-    const y = new Date(today);
-    y.setDate(y.getDate() - 1);
-    const yd = ymd(y);
+    const yd = ymd(shift(-1));
     return { from: yd, to: yd };
   }
-  if (preset === '7d') {
-    const f = new Date(today);
-    f.setDate(f.getDate() - 6);
-    return { from: ymd(f), to };
-  }
-  if (preset === '30d') {
-    const f = new Date(today);
-    f.setDate(f.getDate() - 29);
-    return { from: ymd(f), to };
-  }
+  if (preset === '7d') return { from: ymd(shift(-6)), to };
+  if (preset === '30d') return { from: ymd(shift(-29)), to };
   if (preset === 'this_month') {
-    const f = new Date(today.getFullYear(), today.getMonth(), 1);
+    const f = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
     return { from: ymd(f), to };
   }
   if (preset === 'last_month') {
-    const f = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const t = new Date(today.getFullYear(), today.getMonth(), 0);
+    const f = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    const t = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
     return { from: ymd(f), to: ymd(t) };
   }
   return { from: to, to };

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { tashkentStampNaive } from './tashkent';
 
 export type IikoCreds = {
   server: string;
@@ -24,9 +25,15 @@ function sha1(text: string): string {
 
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// Без таймаута повисший iiko-сервер держит функцию до платформенного лимита
+// Vercel — и это оплаченное время простоя на каждом запросе. OLAP-отчёты за
+// месяц считаются долго, поэтому окно щедрое.
+const REQUEST_TIMEOUT_MS = 45_000;
+
 async function rawFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, {
     ...init,
+    signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'User-Agent': BROWSER_UA,
       ...(init?.headers || {}),
@@ -168,9 +175,7 @@ export async function createWriteoff(
 ): Promise<{ success: boolean; documentNumber?: string; error?: string }> {
   return withIikoSession(async (token) => {
     // iiko ждёт локальное ташкентское время без зоны.
-    const t = new Date(Date.now() + 5 * 60 * 60 * 1000);
-    const p = (n: number) => String(n).padStart(2, '0');
-    const dateIncoming = `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())}T${p(t.getUTCHours())}:${p(t.getUTCMinutes())}:${p(t.getUTCSeconds())}`;
+    const dateIncoming = tashkentStampNaive();
 
     const res = await rawFetch(`${creds.server}/resto/api/v2/documents/writeoff`, {
       method: 'POST',

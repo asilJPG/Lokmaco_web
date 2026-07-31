@@ -116,6 +116,16 @@ export const assets = pgTable('assets', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * Счётчик неудачных входов, общий для всех инстансов (см. lib/rate-limit.ts).
+ * Таблица наша, легаси о ней не знает — своих вставок туда нет.
+ */
+export const loginAttempts = pgTable('login_attempts', {
+  key: text('key').primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
+});
+
 export type Asset = typeof assets.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;

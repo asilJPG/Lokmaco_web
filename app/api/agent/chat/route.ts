@@ -8,7 +8,10 @@ import { TOOLS, TOOL_LABELS, runTool } from '@/lib/agent/tools';
 import { buildSystemPrompt } from '@/lib/agent/prompt';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+// 60 с — потолок бесплатного плана Vercel. Больше указывать нельзя: сборка
+// падает с «maxDuration must be between 1 and 60». Если перейдёте на Pro,
+// здесь можно поднять до 300.
+export const maxDuration = 60;
 
 const MODEL = 'claude-opus-5';
 const MAX_ITERATIONS = 12;

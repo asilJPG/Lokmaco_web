@@ -2,12 +2,20 @@ import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { submitDocument } from '@/lib/iiko-web-docs';
-import { db, schema } from '@/db/client';
+import { logAction } from '@/lib/log-action';
 
 export const dynamic = 'force-dynamic';
 
+// Роли — дословно из легаси (app/api/iiko/production/route.js). Склад у акта
+// приготовления берётся из роли, отдельной проверки store_id там нет.
+const ALLOWED_ROLES = ['admin', 'prep_chef', 'bar'];
+
 export async function POST(req: Request) {
   const session = await requireSession();
+  if (!ALLOWED_ROLES.includes(session.role.split(':')[0])) {
+    return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
+  }
+
   const filialIds = await getCurrentFilialIds();
   if (filialIds.length === 0) return Response.json({ error: 'no filial' }, { status: 400 });
   const filialId = filialIds[0];
@@ -26,7 +34,7 @@ export async function POST(req: Request) {
 
   if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
 
-  await db.insert(schema.botActions).values({
+  await logAction({
     filialId,
     tgId: session.tgId,
     userName: session.name,
