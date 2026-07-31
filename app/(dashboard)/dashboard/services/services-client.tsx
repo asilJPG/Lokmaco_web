@@ -21,6 +21,8 @@ export function ServicesClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
   const [comment, setComment] = useState('');
   const [accounts, setAccounts] = useState<Account[]>(COMMON_ACCOUNTS);
   const [accountId, setAccountId] = useState(COMMON_ACCOUNTS[0].id);
+  const [services, setServices] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [productId, setProductId] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierId, setSupplierId] = useState(SUPPLIER_DEFAULT.id);
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,16 @@ export function ServicesClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
     if (!isAdmin) return;
     (async () => {
       try {
-        const [accRes, supRes] = await Promise.all([fetch('/api/iiko/accounts'), fetch('/api/iiko/suppliers')]);
+        const [accRes, supRes, svcRes] = await Promise.all([
+          fetch('/api/iiko/accounts'),
+          fetch('/api/iiko/suppliers'),
+          fetch('/api/iiko/services/products'),
+        ]);
+        const svcJson = await svcRes.json().catch(() => ({ data: [] }));
+        if (Array.isArray(svcJson.data) && svcJson.data.length > 0) {
+          setServices(svcJson.data);
+          setProductId((cur) => cur || svcJson.data[0].id);
+        }
         const acc = await accRes.json();
         const sup = await supRes.json();
         if (Array.isArray(acc.data) && acc.data.length > 0) setAccounts(acc.data);
@@ -40,8 +51,9 @@ export function ServicesClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
   }, [isAdmin]);
 
   const sumVal = parseFloat(sum) || 0;
-  const canSend = !!storeId && !!accountId && sumVal > 0;
+  const canSend = !!storeId && !!accountId && !!productId && sumVal > 0;
   const accountName = accounts.find((a) => a.id === accountId)?.name || '';
+  const productName = services.find((p) => p.id === productId)?.name || '';
   const supplierName = suppliers.find((s) => s.id === supplierId)?.name || SUPPLIER_DEFAULT.name;
 
   async function submit() {
@@ -55,6 +67,7 @@ export function ServicesClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
           store_id: storeId, store_name: storeName,
           supplier_id: supplierId, supplier_name: supplierName,
           account_id: accountId, account_name: accountName,
+          product_id: productId, product_name: productName,
           sum: sumVal, comment,
         }),
       });
@@ -81,6 +94,14 @@ export function ServicesClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
 
       <section className="card">
         <div className="card__title"><span className="card__title-text">🧾 Услуга</span></div>
+        <div className="field">
+          <label className="field__label">Услуга</label>
+          <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
+            {services.length === 0 && <option value="">Загрузка…</option>}
+            {services.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+
         <div className="field">
           <label className="field__label">Счёт затрат</label>
           <select className="select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>

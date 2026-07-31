@@ -1,19 +1,18 @@
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
-import { withIikoSession, iikoPostXml, escapeXml } from '@/lib/iiko';
+import { submitServiceAct } from '@/lib/iiko-web-docs';
 import { logAction } from '@/lib/log-action';
 
 export const dynamic = 'force-dynamic';
 
-// Услуга проводится как приходная накладная с единственной строкой: контрагент
-// «Представительские», товар «Транспорт расходы», количество 1, цена = сумма.
-// Счёт затрат iiko этим документом не задаётся, поэтому он уходит в комментарий —
-// так сделано в легаси и так эти документы потом ищут в iiko.
+// Услуга проводится настоящим «Актом приема услуг» (INCOMING_SERVICE), а не
+// приходной накладной, как раньше. Настоящий акт несёт счёт затрат сам
+// (revenueAccount + account в строке), поэтому в комментарий его больше не
+// дублируем. Товар-услуга выбирается пользователем из номенклатуры типа
+// SERVICE; «Транспорт расходы» остался дефолтом для обратной совместимости.
 const SUPPLIER_DEFAULT = 'f94a2411-4e2a-4d0a-a3c5-f5a4d4e0042d'; // Представительские
 const SERVICE_PRODUCT = '69aab99f-deeb-4bf1-804b-0b13373910a0'; // Транспорт расходы
-
-function pad(n: number) { return String(n).padStart(2, '0'); }
 
 export async function POST(req: Request) {
   const session = await requireSession();
@@ -41,20 +40,24 @@ export async function POST(req: Request) {
   const supplierId = baseRole === 'supplier' ? SUPPLIER_DEFAULT : (b.supplier_id || SUPPLIER_DEFAULT);
   const supplierName = baseRole === 'supplier' ? 'Представительские' : (b.supplier_name || 'Представительские');
 
-  const t = new Date(Date.now() + 5 * 60 * 60 * 1000);
-  const dateStr = `${pad(t.getUTCDate())}.${pad(t.getUTCMonth() + 1)}.${t.getUTCFullYear()} ${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())}`;
+  const productId: string = b.product_id || SERVICE_PRODUCT;
+  const comment = `${b.comment || ''} (Создал: ${session.name}) (Сгенерировано через сайт)`.trim();
 
-  const comment = `[Счет: ${b.account_name}] ${b.comment || ''} (Создал: ${session.name}) (Сгенерировано через сайт)`.trim();
-  const itemXml = `<item><num>1</num><product>${escapeXml(SERVICE_PRODUCT)}</product><amount>1</amount><price>${escapeXml(String(sum))}</price><sum>${escapeXml(String(sum))}</sum><store>${escapeXml(storeId)}</store></item>`;
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><document><dateIncoming>${dateStr}</dateIncoming><useDefaultDocumentTime>false</useDefaultDocumentTime><defaultStore>${escapeXml(storeId)}</defaultStore><supplier>${escapeXml(supplierId)}</supplier><comment>${escapeXml(comment)}</comment><items>${itemXml}</items></document>`;
-
-  const { xml: creds } = await resolveIikoCreds(filialId);
-  const ok = await withIikoSession((token) => iikoPostXml('documents/import/incomingInvoice', xml, token, creds), creds);
+  const { web: creds } = await resolveIikoCreds(filialId);
+  const result = await submitServiceAct({
+    supplier: supplierId,
+    accountId: b.account_id,
+    productId,
+    productName: b.product_name || '',
+    sum,
+    comment,
+  }, creds);
 
   const details = {
     supplier_id: supplierId, supplier_name: supplierName,
     store_id: storeId, store_name: b.store_name || '',
     account_id: b.account_id, account_name: b.account_name || '',
+    product_id: productId, product_name: b.product_name || '',
     sum, comment,
   };
 
@@ -63,10 +66,12 @@ export async function POST(req: Request) {
     tgId: session.tgId,
     userName: session.name,
     actionType: 'services',
-    documentNumber: ok ? 'Автоматический' : 'СБОЙ',
+    documentNumber: result.success ? (result.documentNumber || 'Автоматический') : 'СБОЙ',
     details,
   });
 
-  if (!ok) return Response.json({ error: 'iiko отклонил документ' }, { status: 502 });
-  return Response.json({ success: true, documentNumber: 'Автоматический' });
+  if (!result.success) {
+    return Response.json({ error: result.error || 'iiko отклонил документ' }, { status: 502 });
+  }
+  return Response.json({ success: true, documentNumber: result.documentNumber });
 }
