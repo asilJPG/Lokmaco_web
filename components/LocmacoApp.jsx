@@ -12617,43 +12617,35 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
 
           {categoriesData && categoriesData.length > 0 ? (
             (() => {
-              // Group and aggregate data into Kitchen and Bar
-              const mainGroups = {
-                "Кухня": {
-                  name: "Кухня",
-                  emoji: "🍳",
-                  total: 0,
-                  subs: {},
-                },
-                "Бар": {
-                  name: "Бар",
-                  emoji: "🍹",
-                  total: 0,
-                  subs: {},
-                },
+              // Категории показываем так, как их ведёт iiko (DishGroup.TopParent).
+              // Раньше всё, кроме «Бара», склеивалось в искусственную «Кухню» —
+              // из-за этого десерты 1-этажа и основные блюда подвала выглядели
+              // одним направлением, хотя это разные производства.
+              const emojiFor = (name) => {
+                const n = name.toLowerCase();
+                if (n.includes("бар")) return "🍹";
+                if (n.includes("десерт")) return "🍰";
+                if (n.includes("подвал") || n.includes("основные")) return "🍳";
+                if (n.includes("допы") || n.includes("сироп")) return "➕";
+                if (n.includes("мяс")) return "🥩";
+                return "🍽";
               };
+
+              const mainGroups = {};
               let grandTotal = 0;
-              
+
               categoriesData.forEach((row) => {
                 const top = row["DishGroup.TopParent"] || "Без категории";
                 const sub = row["DishGroup"] || "Без подгруппы";
                 const amount = Math.abs(parseFloat(row["DishDiscountSumInt"] || 0));
-                
+
                 grandTotal += amount;
-                
-                if (top === "Бар") {
-                  mainGroups["Бар"].total += amount;
-                  if (!mainGroups["Бар"].subs[sub]) {
-                    mainGroups["Бар"].subs[sub] = 0;
-                  }
-                  mainGroups["Бар"].subs[sub] += amount;
-                } else {
-                  mainGroups["Кухня"].total += amount;
-                  if (!mainGroups["Кухня"].subs[top]) {
-                    mainGroups["Кухня"].subs[top] = 0;
-                  }
-                  mainGroups["Кухня"].subs[top] += amount;
+
+                if (!mainGroups[top]) {
+                  mainGroups[top] = { name: top, emoji: emojiFor(top), total: 0, subs: {} };
                 }
+                mainGroups[top].total += amount;
+                mainGroups[top].subs[sub] = (mainGroups[top].subs[sub] || 0) + amount;
               });
 
               const sortedGroups = Object.values(mainGroups)
@@ -12679,7 +12671,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                       {fmtPrice(grandTotal)}
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                      Разделено на {sortedGroups.length} основные группы меню
+                      Категорий меню: {sortedGroups.length} — как заведено в iiko
                     </div>
                   </div>
 
@@ -12719,7 +12711,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                               <span style={{ fontSize: 20 }}>
-                                {group.name === "Бар" ? "🍹" : "🍳"}
+                                {group.emoji}
                               </span>
                               <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)" }}>
                                 {group.name}
