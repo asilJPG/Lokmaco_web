@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -15957,12 +15957,200 @@ function AgentChatView({ showToast, loggedInUser }) {
   );
 }
 
+function CashierExpensesReport({ showToast, loggedInUser }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/iiko/reports/cashier-expenses", {
+          headers: {
+            "x-user-id": loggedInUser?.id || "admin",
+            "x-user-role": loggedInUser?.baseRole || "admin",
+          },
+        });
+        const json = await res.json();
+        if (json.success) setData(json);
+        else showToast?.(json.error || "Ошибка загрузки расходов", "error");
+      } catch (e) {
+        console.error("[cashier-expenses]", e);
+        showToast?.("Ошибка загрузки расходов", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fmt = (n) => (n ? new Intl.NumberFormat("ru-RU").format(Math.round(n)) : "");
+  const monthTitle = (m) => {
+    const names = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+    const [y, mo] = m.split("-");
+    return `${names[parseInt(mo, 10) - 1]}.${y.slice(2)}`;
+  };
+
+  const exportCsv = () => {
+    if (!data) return;
+    const head = ["Назначение", ...data.months.map(monthTitle), "ИТОГО"];
+    const rows = [head];
+    data.items.forEach((it) => {
+      rows.push([
+        it.name,
+        ...data.months.map((m) => it.byMonth[m] || ""),
+        it.total,
+      ]);
+    });
+    rows.push(["ИТОГО", ...data.months.map((m) => data.month_totals[m] || 0), data.grand_total]);
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = "﻿" + rows.map((r) => r.map(esc).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "расходы-кассира-по-месяцам.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast?.("CSV скачан", "success");
+  };
+
+  const th = { padding: "10px 12px", background: "var(--bg-pill)", fontSize: 12, fontWeight: 700, color: "var(--text-main)", textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)" };
+  const thL = { ...th, textAlign: "left" };
+  const td = { padding: "8px 12px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)", fontVariantNumeric: "tabular-nums", color: "var(--text-main)" };
+  const tdL = { ...td, textAlign: "left" };
+
+  if (loading) {
+    return (
+      <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+        ⏳ Собираю расходы кассира…
+      </div>
+    );
+  }
+  if (!data || data.items.length === 0) {
+    return (
+      <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+        Расходов из кассы не найдено
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 14, marginBottom: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+            💸 Расходы кассира по месяцам
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+            Наличные, потраченные из кассы до сдачи смены. {data.entries_count} операций, {data.distinct_names} назначений.
+          </p>
+        </div>
+        <button
+          onClick={exportCsv}
+          style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+        >
+          📊 Экспорт CSV
+        </button>
+      </div>
+
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...thL, minWidth: 220 }}>Назначение</th>
+                {data.months.map((m) => (
+                  <th key={m} style={th}>{monthTitle(m)}</th>
+                ))}
+                <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>ИТОГО</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((it, i) => {
+                const isOpen = expanded === i;
+                return (
+                  <Fragment key={i}>
+                    <tr
+                      onClick={() => setExpanded(isOpen ? null : i)}
+                      style={{ cursor: "pointer", background: isOpen ? "var(--bg-pill)" : "transparent" }}
+                    >
+                      <td style={tdL}>
+                        <span style={{ color: "var(--text-muted)", marginRight: 6, fontSize: 11 }}>
+                          {isOpen ? "▾" : "▸"}
+                        </span>
+                        {it.name}
+                      </td>
+                      {data.months.map((m) => (
+                        <td key={m} style={td}>{fmt(it.byMonth[m])}</td>
+                      ))}
+                      <td style={{ ...td, fontWeight: 700, borderLeft: "2px solid var(--border-color)" }}>
+                        {fmt(it.total)}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={data.months.length + 2} style={{ padding: "10px 16px 14px 30px", background: "var(--bg-pill)", borderBottom: "1px solid var(--border-color)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+                            Операции ({it.entries.length}):
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 200, overflowY: "auto" }}>
+                            {it.entries
+                              .slice()
+                              .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                              .map((e, j) => {
+                                const [y, mo, d] = (e.date || "").split("-");
+                                return (
+                                  <div key={j} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, maxWidth: 420 }}>
+                                    <span style={{ color: "var(--text-muted)" }}>
+                                      {d}.{mo}.{y}{e.cashier ? ` · ${e.cashier}` : ""}
+                                    </span>
+                                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(e.amount)}</b>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: "var(--bg-pill)" }}>
+                <td style={{ ...tdL, fontWeight: 800 }}>ИТОГО</td>
+                {data.months.map((m) => (
+                  <td key={m} style={{ ...td, fontWeight: 800 }}>{fmt(data.month_totals[m])}</td>
+                ))}
+                <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)" }}>
+                  {fmt(data.grand_total)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+        Назначение расхода кассир вписывает вручную, поэтому одна и та же трата может встречаться под разными
+        названиями (например «БОЗОР», «БАЗАР» и «БОЗО» — это базар). Клик по строке разворачивает операции по датам.
+      </div>
+    </div>
+  );
+}
+
 function MonthlyReportsView({ showToast, loggedInUser }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [view, setView] = useState("cash"); // cash | expenses
 
   const load = async (m) => {
     setLoading(true);
@@ -16047,8 +16235,36 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
   const td = { padding: "8px 12px", fontSize: 13, color: "var(--text-main)", textAlign: "right", borderBottom: "1px solid var(--border-color)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
   const tdLeft = { ...td, textAlign: "left" };
 
+  const tabBtn = (active) => ({
+    padding: "8px 16px",
+    borderRadius: 9,
+    border: "1px solid var(--border-color)",
+    background: active ? "var(--color-primary, #6366f1)" : "var(--bg-pill)",
+    color: active ? "#fff" : "var(--text-main)",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  });
+
+  if (view === "expenses") {
+    return (
+      <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+          <button style={tabBtn(false)} onClick={() => setView("cash")}>📊 Касса по дням</button>
+          <button style={tabBtn(true)} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
+        </div>
+        <CashierExpensesReport showToast={showToast} loggedInUser={loggedInUser} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        <button style={tabBtn(true)} onClick={() => setView("cash")}>📊 Касса по дням</button>
+        <button style={tabBtn(false)} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-main)", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
