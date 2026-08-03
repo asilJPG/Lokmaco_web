@@ -24,7 +24,7 @@ export function FilialSwitcher({ filials, current, allowAll }: { filials: Filial
   }
 
   return (
-    <div style={{ padding: '0 var(--space-3) var(--space-3)' }}>
+    <div className="filial-switcher" style={{ padding: '0 var(--space-3) var(--space-3)' }}>
       <label style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Филиал</label>
       <select
         value={String(current)}

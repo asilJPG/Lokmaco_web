@@ -5,6 +5,7 @@ import { SidebarNav } from '@/components/nav';
 import { FilialSwitcher } from '@/components/filial-switcher';
 import { LogoutButton } from '@/components/logout-button';
 import { CommandPalette } from '@/components/command-palette';
+import { MobileTabBar, MobileTopBar } from '@/components/mobile-chrome';
 import { and, inArray, or, eq, sql } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 
@@ -63,7 +64,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <LogoutButton />
         </div>
       </aside>
+      <MobileTopBar filials={filials} current={current} allowAll={allowAll} userName={session.name} />
       <main className="app-main">{children}</main>
+      <MobileTabBar role={session.role} badges={{ inbox: inboxCount }} />
       <CommandPalette role={session.role} />
     </div>
   );

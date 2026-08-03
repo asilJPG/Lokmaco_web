@@ -253,7 +253,7 @@ export default function CashierForm({ defaultDate }: { defaultDate: string }) {
           </div>
         )}
         <button type="button" onClick={submit} disabled={submitting || totalSales === 0} className="btn btn--primary action-bar__btn" title={totalSales === 0 ? 'Заполни хотя бы одну сумму оплат' : 'Ctrl/⌘ + Enter'}>
-          {submitting ? 'Сохранение…' : <>Сохранить отчёт <kbd style={{ marginLeft: 8 }}>⌘↵</kbd></>}
+          {submitting ? 'Сохранение…' : <>Сохранить отчёт <kbd className="kbd-hint" style={{ marginLeft: 8 }}>⌘↵</kbd></>}
         </button>
       </div>
     </div>

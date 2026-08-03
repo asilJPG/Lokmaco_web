@@ -208,51 +208,204 @@ button:focus-visible, a:focus-visible {
 
 .app-main { padding: var(--space-6); min-width: 0; }
 
+/* ---------------- Мобильная оболочка ----------------
+   Сайтом пользуются в основном с телефона, поэтому на мобильном это не
+   «сжатый десктоп», а своя раскладка: панель разделов снизу под большой палец,
+   тонкая шапка с филиалом сверху и шторки вместо выпадающих списков. */
+
+.mobile-topbar, .mobile-tabbar { display: none; }
+
 @media (max-width: 768px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    grid-template-rows: 1fr;
   }
-  .app-sidebar {
+  /* Боковое меню — только для десктопа. На телефоне навигацию рисует
+     components/mobile-chrome.tsx. */
+  .app-sidebar { display: none; }
+
+  .app-main {
+    padding: var(--space-4);
+    padding-top: calc(52px + env(safe-area-inset-top, 0px) + var(--space-3));
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px) + var(--space-4));
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    height: auto;
-    flex-direction: row;
-    padding: 0 0 env(safe-area-inset-bottom, 0);
-    z-index: 10;
-    border-top: 1px solid var(--border);
-    border-right: none;
-    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+    top: 0; left: 0; right: 0;
+    z-index: 12;
+    height: calc(52px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) var(--space-3) 0;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: saturate(180%) blur(10px);
   }
-  .app-sidebar__brand, .app-sidebar__user, .cmdk-hint { display: none; }
-  .app-sidebar__nav {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: visible;
-    width: 100%;
-    gap: 0;
-  }
-  .app-sidebar__group { flex-direction: row; padding: 0; }
-  .app-sidebar__group + .app-sidebar__group { padding-top: 0; border-top: none; border-left: none; }
-  .app-sidebar__group-title { display: none; }
-  .app-sidebar__nav--desktop { display: none; }
-  .app-sidebar__nav--mobile { display: flex; }
-  .app-sidebar__link {
-    padding: 10px 14px;
-    border-radius: 0;
-    border-top: 3px solid transparent;
-    white-space: nowrap;
+  .mobile-topbar__mark {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--text);
+    color: var(--surface);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 14px;
     flex-shrink: 0;
   }
-  .app-sidebar__link[data-active="true"] {
-    background: transparent;
-    color: var(--accent);
-    border-top-color: var(--accent);
+  .mobile-topbar__filial {
+    display: flex; align-items: center; gap: 6px;
+    min-height: 36px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-muted);
+    color: var(--text);
+    font-size: 14px; font-weight: 600;
+    max-width: 60vw;
+    cursor: pointer;
   }
-  .app-main { padding: var(--space-4); padding-bottom: calc(88px + env(safe-area-inset-bottom, 0)); }
+  .mobile-topbar__filial--static { cursor: default; }
+  .mobile-topbar__filial-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-topbar__user {
+    margin-left: auto;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .mobile-tabbar {
+    display: grid;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 12;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: saturate(180%) blur(10px);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+  }
+  .mobile-tab {
+    /* 60px по высоте — комфортная цель для пальца, подпись при этом читается. */
+    min-height: 60px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
+    padding: 8px 2px;
+    border: none; background: none;
+    color: var(--text-muted);
+    font-size: 11px; font-weight: 500;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-tab__icon { font-size: 20px; line-height: 1; position: relative; }
+  .mobile-tab__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .mobile-tab[data-active="true"] { color: var(--accent); }
+  .mobile-tab[data-active="true"] .mobile-tab__icon { transform: translateY(-1px); }
+  .mobile-tab:active { background: var(--surface-muted); }
+  .mobile-tab__badge {
+    position: absolute;
+    top: -6px; left: 12px;
+    min-width: 16px; height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger, #dc2626);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: grid; place-items: center;
+  }
+
+  /* Форма отправляется кнопкой над панелью разделов, а не под ней. */
+  .action-bar { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+
+  /* iOS зумит страницу на фокусе, если шрифт поля меньше 16px. */
+  .input, .select, .textarea, input, select, textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .input--inline { min-height: 38px; }
+
+  /* Широкие таблицы прокручиваются внутри карточки, а не тянут всю страницу. */
+  .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Подсказки горячих клавиш на телефоне смысла не имеют. */
+  .kbd-hint { display: none; }
+
+  /* Плитки разделов — вход в раздел с телефона, их до девяти штук. В полный
+     рост они не помещались на экран, поэтому описание сжимаем в одну строку:
+     список остаётся обозримым, но подпись не пропадает совсем. */
+  .cat-tile { padding: var(--space-3); gap: var(--space-3); }
+  .cat-tile__icon { width: 40px; height: 40px; font-size: 22px; border-radius: 10px; }
+  .cat-tile__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* ---------------- Шторка снизу ---------------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  animation: sheet-fade 160ms ease-out;
+}
+.sheet {
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 8px var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  animation: sheet-up 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sheet__handle {
+  width: 38px; height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 4px auto 10px;
+}
+.sheet__title {
+  font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding-bottom: var(--space-2);
+}
+.sheet__body { overflow-y: auto; display: flex; flex-direction: column; }
+.sheet__row {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 4px;
+  border: none; background: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 16px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.sheet__row:last-child { border-bottom: none; }
+.sheet__row:active { background: var(--surface-muted); }
+.sheet__row[data-active="true"] { color: var(--accent); font-weight: 600; }
+.sheet__row-icon { font-size: 19px; width: 24px; text-align: center; }
+.sheet__row-check { margin-left: auto; font-weight: 700; }
+.sheet__close { margin-top: var(--space-3); width: 100%; min-height: 48px; }
+
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Выбор филиала в боковом меню — только на десктопе, на телефоне он в шапке. */
+@media (max-width: 768px) {
+  .filial-switcher { display: none; }
 }
 
 /* ---------------- UI primitives ---------------- */
@@ -842,10 +995,26 @@ tr[data-today="true"] td:first-child {
   animation: none;
 }
 
+/* Быстрые действия: на десктопе в строку, на телефоне — в две колонки во всю
+   ширину, чтобы попадать пальцем не глядя. */
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 768px) {
+  .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .quick-actions .btn { min-height: 48px; width: 100%; }
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-3);
+}
+/* На телефоне 180px превращались в одну колонку: четыре цифры занимали весь
+   экран, и до графиков надо было листать. Две колонки показывают сводку целиком. */
+@media (max-width: 768px) {
+  .stat-grid { grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .stat-card { padding: var(--space-3); }
+  .stat-card__value { font-size: 19px; }
+  .stat-card__label { font-size: 11px; }
 }
 .stat-card {
   background: var(--surface);

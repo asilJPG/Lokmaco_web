@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { db, schema } from '@/db/client';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getSession } from '@/lib/auth-session';
+import { canAccess, sectionForHref } from '@/lib/access';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { fmtMoney, todayTashkent, yesterdayTashkent } from '@/lib/period';
 import { RevenueSparkline, type SparkPoint } from '@/components/revenue-sparkline';
@@ -103,13 +104,24 @@ export default async function DashboardHome() {
       </div>
 
       <h2 style={{ marginTop: 24, marginBottom: 12, fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Быстрые действия</h2>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <Link href="/dashboard/cashier" className="btn btn--primary">🧾 Закрыть смену</Link>
-        <Link href="/dashboard/safe" className="btn">💰 Сейф</Link>
-        <Link href="/dashboard/balances" className="btn">📦 Остатки</Link>
-        <Link href="/dashboard/transfer" className="btn">🔄 Перемещение</Link>
-        <Link href="/dashboard/invoice" className="btn">🧾 Приход накладной</Link>
-        <Link href="/dashboard/history" className="btn">🗂️ История</Link>
+      {/* Кнопки фильтруются той же матрицей, что и меню: кассиру предлагалось
+          «Перемещение», куда его всё равно не пускают. */}
+      <div className="quick-actions">
+        {[
+          { href: '/dashboard/cashier', label: '🧾 Закрыть смену', primary: true },
+          { href: '/dashboard/safe', label: '💰 Сейф' },
+          { href: '/dashboard/balances', label: '📦 Остатки' },
+          { href: '/dashboard/transfer', label: '🔄 Перемещение' },
+          { href: '/dashboard/invoice', label: '🧾 Приход накладной' },
+          { href: '/dashboard/history', label: '🗂️ История' },
+        ]
+          .filter((a) => {
+            const section = sectionForHref(a.href);
+            return !section || canAccess(session?.role, section);
+          })
+          .map((a) => (
+            <Link key={a.href} href={a.href} className={`btn${a.primary ? ' btn--primary' : ''}`}>{a.label}</Link>
+          ))}
       </div>
     </div>
   );

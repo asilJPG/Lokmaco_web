@@ -81,22 +81,6 @@ const GROUPS: Group[] = [
   },
 ];
 
-/**
- * The bottom bar on mobile fits about six targets, so it links to the section
- * landing pages rather than a subset of leaves — that way every page stays
- * reachable on a phone.
- */
-const MOBILE_ITEMS: Item[] = [
-  { href: '/dashboard', label: 'Главная', icon: '🏠', section: 'home' },
-  { href: '/dashboard/assistant', label: 'Ассистент', icon: '✨', section: 'assistant' },
-  { href: '/dashboard/operations', label: 'Смена', icon: '🧾', badgeKey: 'inbox', section: 'home' },
-  { href: '/dashboard/warehouse', label: 'Склад', icon: '📦', section: 'home' },
-  { href: '/dashboard/analytics', label: 'Аналитика', icon: '📊', section: 'analytics' },
-  { href: '/dashboard/finance', label: 'Финансы', icon: '💰', section: 'home' },
-  { href: '/dashboard/profile', label: 'Профиль', icon: '🙂', section: 'profile' },
-  { href: '/dashboard/admin', label: 'Админ', icon: '⚙️', section: 'adminUsers' },
-];
-
 export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: number } }) {
   const path = usePathname();
   const sp = useSearchParams();
@@ -120,20 +104,6 @@ export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: 
   }
 
   return (
-    <>
-    <nav className="app-sidebar__nav app-sidebar__nav--mobile">
-      {MOBILE_ITEMS.filter(allowed).map((it) => {
-        const badge = it.badgeKey && badges?.[it.badgeKey];
-        const active = path === it.href || (it.href !== '/dashboard' && !!path?.startsWith(`${it.href}/`));
-        return (
-          <Link key={it.href} href={it.href} className="app-sidebar__link" data-active={active || undefined}>
-            <span className="app-sidebar__icon">{it.icon}</span>
-            <span style={{ flex: 1 }}>{it.label}</span>
-            {badge ? <span className="nav-badge">{badge}</span> : null}
-          </Link>
-        );
-      })}
-    </nav>
     <nav className="app-sidebar__nav app-sidebar__nav--desktop">
       {GROUPS.map((group, gi) => {
         const items = group.items.filter(allowed);
@@ -160,6 +130,5 @@ export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: 
         );
       })}
     </nav>
-    </>
   );
 }
