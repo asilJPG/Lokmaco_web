@@ -24,6 +24,17 @@ const dateFilter = (from, to) => ({
 });
 
 /**
+ * Какие места приготовления кормит каждый склад — база для процента.
+ * Склады, которых здесь нет (Основной склад, Заготовочный цех, Посуда, Зал,
+ * Хоз товары), обслуживают заведение целиком, поэтому считаются от всей выручки.
+ */
+const STORE_TO_PLACES = {
+  "Кухня главная": ["1.1 Кухня", "1.3 Мороженое", "1.4 Фрук", "1.6 Кухня + Фрукты"],
+  "Кухня подвал": ["1.7 Горячий цех", "1.8 Холодный цех", "1.9 Пицца"],
+  Бар: ["1.2 Бар"],
+};
+
+/**
  * История инвентаризаций с расхождениями.
  *
  * Проводки инвентаризации идут двойной записью, поэтому суммировать документ
@@ -45,7 +56,7 @@ export async function GET(request) {
     const to = searchParams.get("to") || new Date(Date.now() + 5 * 3600 * 1000).toISOString().split("T")[0];
 
     const data = await withIikoSession(async (token) => {
-      const [invRows, cogsRows] = await Promise.all([
+      const [invRows, salesRows] = await Promise.all([
         olap(token, {
           reportType: "TRANSACTIONS",
           buildSummary: "false",
@@ -60,23 +71,45 @@ export async function GET(request) {
             },
           },
         }),
+        // выручка по местам приготовления — база для процента
         olap(token, {
-          reportType: "TRANSACTIONS",
+          reportType: "SALES",
           buildSummary: "false",
-          groupByRowFields: ["DateTime.Typed", "Account.Type"],
-          aggregateFields: ["Sum.ResignedSum"],
+          groupByRowFields: ["CookingPlace", "OpenDate.Typed"],
+          aggregateFields: ["DishDiscountSumInt"],
           filters: {
-            "DateTime.Typed": dateFilter(from, to),
-            "Account.Type": { filterType: "IncludeValues", values: ["COST_OF_GOODS_SOLD"] },
+            "OpenDate.Typed": dateFilter(from, to),
+            DeletedWithWriteoff: {
+              filterType: "ExcludeValues",
+              values: ["DELETED_WITHOUT_WRITEOFF"],
+            },
           },
         }),
       ]);
 
-      const cogsByMonth = {};
-      for (const r of cogsRows) {
-        const m = String(r["DateTime.Typed"] || "").slice(0, 7);
-        if (m) cogsByMonth[m] = (cogsByMonth[m] || 0) + (parseFloat(r["Sum.ResignedSum"]) || 0);
+      // выручка: месяц -> место приготовления -> сумма, плюс общий итог месяца
+      const revByMonthPlace = {};
+      const revByMonthTotal = {};
+      for (const r of salesRows) {
+        const m = String(r["OpenDate.Typed"] || "").slice(0, 7);
+        if (!m) continue;
+        const place = r.CookingPlace || "(не указано)";
+        const v = Math.abs(parseFloat(r["DishDiscountSumInt"]) || 0);
+        revByMonthPlace[m] = revByMonthPlace[m] || {};
+        revByMonthPlace[m][place] = (revByMonthPlace[m][place] || 0) + v;
+        revByMonthTotal[m] = (revByMonthTotal[m] || 0) + v;
       }
+
+      /** База процента для склада за месяц: выручка его направления, иначе — вся. */
+      const baseFor = (store, month) => {
+        const places = STORE_TO_PLACES[store];
+        if (!places) {
+          return { revenue: revByMonthTotal[month] || 0, scope: "вся выручка" };
+        }
+        const byPlace = revByMonthPlace[month] || {};
+        const revenue = places.reduce((s, p) => s + (byPlace[p] || 0), 0);
+        return { revenue, scope: places.join(" + ") };
+      };
 
       const docs = {};
       for (const r of invRows) {
@@ -93,24 +126,28 @@ export async function GET(request) {
       const items = Object.values(docs)
         .map((d) => {
           const net = d.shortage - d.surplus;
-          const cogs = cogsByMonth[d.date.slice(0, 7)] || 0;
-          const turnover = d.surplus + d.shortage;
+          const month = d.date.slice(0, 7);
+          const { revenue, scope } = baseFor(d.store, month);
+          const spread = d.surplus + d.shortage;
           return {
             ...d,
             net, // >0 — недостача, <0 — излишек
-            net_pct_of_cogs: cogs ? (net / cogs) * 100 : null,
-            shortage_pct_of_cogs: cogs ? (d.shortage / cogs) * 100 : null,
+            base_revenue: revenue,
+            base_scope: scope,
+            net_pct: revenue ? (net / revenue) * 100 : null,
+            shortage_pct: revenue ? (d.shortage / revenue) * 100 : null,
             // доля недостачи среди всех расхождений — насколько «однобокий» пересчёт
-            shortage_share_pct: turnover ? (d.shortage / turnover) * 100 : null,
-            month_cogs: cogs,
+            shortage_share_pct: spread ? (d.shortage / spread) * 100 : null,
           };
         })
         .sort((a, b) => b.date.localeCompare(a.date) || a.store.localeCompare(b.store));
 
       const totalSurplus = items.reduce((s, i) => s + i.surplus, 0);
       const totalShortage = items.reduce((s, i) => s + i.shortage, 0);
-      const totalCogs = Object.values(cogsByMonth).reduce((s, v) => s + v, 0);
       const net = totalShortage - totalSurplus;
+      // Итоговый процент — против суммы баз, а не против общей выручки:
+      // склады пересчитываются в разные месяцы и разного объёма.
+      const totalBase = items.reduce((s, i) => s + i.base_revenue, 0);
 
       return {
         period: { from, to },
@@ -120,10 +157,9 @@ export async function GET(request) {
           surplus: totalSurplus,
           shortage: totalShortage,
           net,
-          cogs: totalCogs,
-          net_pct_of_cogs: totalCogs ? (net / totalCogs) * 100 : null,
+          base_revenue: totalBase,
+          net_pct: totalBase ? (net / totalBase) * 100 : null,
         },
-        cogs_by_month: cogsByMonth,
       };
     });
 

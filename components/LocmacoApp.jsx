@@ -16013,8 +16013,8 @@ function InventoriesReport({ showToast, loggedInUser }) {
           📦 Инвентаризации
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
-          Все проведённые пересчёты складов и расхождения по ним. Процент считается от себестоимости
-          продаж (COGS) за тот месяц.
+          Все проведённые пересчёты складов и расхождения по ним. Процент считается от выручки
+          того направления, которое кормит склад, за месяц пересчёта.
         </p>
       </div>
 
@@ -16037,7 +16037,7 @@ function InventoriesReport({ showToast, loggedInUser }) {
             {fmt(t.net)}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            {pct(t.net_pct_of_cogs)} от COGS
+            {pct(t.net_pct)} от выручки
           </div>
         </div>
       </div>
@@ -16053,20 +16053,21 @@ function InventoriesReport({ showToast, loggedInUser }) {
                 <th style={th}>Излишки</th>
                 <th style={th}>Недостача</th>
                 <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>Нетто</th>
-                <th style={th}>% от COGS</th>
+                <th style={th}>% от выручки</th>
+                <th style={th}>База (выручка)</th>
                 <th style={th}>Доля недостач</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((r, i) => {
-                const bad = r.net_pct_of_cogs !== null && r.net_pct_of_cogs >= 5;
+                const bad = r.net_pct !== null && r.net_pct >= 5;
                 return (
                   <tr key={i} style={{ background: bad ? "rgba(239,68,68,0.08)" : "transparent" }}>
                     <td style={tdL}>{fmtDate(r.date)}</td>
                     <td style={{ ...tdL, fontFamily: "monospace", color: "var(--text-muted)" }}>{r.document}</td>
                     <td style={tdL}>
                       {r.store}
-                      {bad && <span title="Расхождение больше 5% от себестоимости" style={{ marginLeft: 6 }}>⚠️</span>}
+                      {bad && <span title="Расхождение больше 5% от выручки направления" style={{ marginLeft: 6 }}>⚠️</span>}
                     </td>
                     <td style={{ ...td, color: "#10b981" }}>{fmt(r.surplus)}</td>
                     <td style={{ ...td, color: "#ef4444" }}>{fmt(r.shortage)}</td>
@@ -16074,7 +16075,10 @@ function InventoriesReport({ showToast, loggedInUser }) {
                       {fmt(r.net)}
                     </td>
                     <td style={{ ...td, fontWeight: 700, color: r.net > 0 ? "#ef4444" : "#10b981" }}>
-                      {pct(r.net_pct_of_cogs)}
+                      {pct(r.net_pct)}
+                    </td>
+                    <td style={{ ...td, color: "var(--text-muted)" }} title={r.base_scope}>
+                      {fmt(r.base_revenue)}
                     </td>
                     <td style={{ ...td, color: "var(--text-muted)" }}>
                       {r.shortage_share_pct === null ? "—" : `${r.shortage_share_pct.toFixed(0)}%`}
@@ -16089,7 +16093,8 @@ function InventoriesReport({ showToast, loggedInUser }) {
                 <td style={{ ...td, fontWeight: 800, color: "#10b981" }}>{fmt(t.surplus)}</td>
                 <td style={{ ...td, fontWeight: 800, color: "#ef4444" }}>{fmt(t.shortage)}</td>
                 <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)", color: t.net > 0 ? "#ef4444" : "#10b981" }}>{fmt(t.net)}</td>
-                <td style={{ ...td, fontWeight: 800, color: t.net > 0 ? "#ef4444" : "#10b981" }}>{pct(t.net_pct_of_cogs)}</td>
+                <td style={{ ...td, fontWeight: 800, color: t.net > 0 ? "#ef4444" : "#10b981" }}>{pct(t.net_pct)}</td>
+                <td style={{ ...td, fontWeight: 800 }}>{fmt(t.base_revenue)}</td>
                 <td style={td}></td>
               </tr>
             </tfoot>
@@ -16099,9 +16104,12 @@ function InventoriesReport({ showToast, loggedInUser }) {
 
       <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
         <b>Нетто</b> = недостача − излишки: плюс значит товара не хватило, минус — нашлось лишнее.
-        <b> % от COGS</b> — доля расхождения в себестоимости продаж за месяц; в общепите норма до 1–2%,
-        выше 5% подсвечено. <b>Доля недостач</b> показывает, насколько пересчёт однобокий: около 50%
-        это обычный пересорт, ближе к 100% — товар реально пропадает.
+        <b> % от выручки</b> — доля расхождения в выручке направления за месяц пересчёта. База: Кухня
+        главная — Кухня, Мороженое, Фрукты, Кухня+Фрукты; Кухня подвал — Горячий цех, Холодный цех,
+        Пицца; Бар — Бар; Основной склад и Заготовочный цех обслуживают заведение целиком, поэтому
+        считаются от всей выручки. Наведи на колонку «База», чтобы увидеть состав.
+        <b> Доля недостач</b> показывает, насколько пересчёт однобокий: около 50% это обычный пересорт,
+        ближе к 100% — товар реально пропадает.
       </div>
     </div>
   );
