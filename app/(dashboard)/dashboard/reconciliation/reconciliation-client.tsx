@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CashierExpensesReport } from './cashier-expenses';
 import type { MonthlyCashDay, MonthlyCashTotals } from '@/app/api/iiko/reports/monthly-cash/route';
 
 type Data = { month: string; days: MonthlyCashDay[]; totals: MonthlyCashTotals };
@@ -24,6 +25,8 @@ const tdLeft: React.CSSProperties = { ...td, textAlign: 'left' };
 const sep: React.CSSProperties = { borderLeft: '2px solid var(--border)' };
 
 export function ReconciliationClient({ initialMonth }: { initialMonth: string }) {
+  // Две вкладки, как в легаси: сверка по дням и расходы кассира сводкой.
+  const [view, setView] = useState<'cash' | 'expenses'>('cash');
   const [month, setMonth] = useState(initialMonth);
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +86,13 @@ export function ReconciliationClient({ initialMonth }: { initialMonth: string })
 
   return (
     <div className="grid">
+      <div className="segmented" role="tablist">
+        <button type="button" role="tab" aria-selected={view === 'cash'} className="segmented__item" onClick={() => setView('cash')}>💵 Касса по дням</button>
+        <button type="button" role="tab" aria-selected={view === 'expenses'} className="segmented__item" onClick={() => setView('expenses')}>💸 Расходы кассира</button>
+      </div>
+
+      {view === 'expenses' ? <CashierExpensesReport /> : (
+      <>
       <div className="action-bar" style={{ justifyContent: 'space-between' }}>
         <div style={{ fontWeight: 700, fontSize: 16 }}>{monthTitle}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -168,6 +178,8 @@ export function ReconciliationClient({ initialMonth }: { initialMonth: string })
         «Наличные -» = фискальный нал + инкассация + расходы кассира из ящика. «Общая Сумма» = «Наличные -» + все безналичные типы.
         «Разница» = Общая Сумма − продажи iiko. Красным помечены дни, где посчитали больше, чем показывает iiko.
       </p>
+    </>
+      )}
     </div>
   );
 }
