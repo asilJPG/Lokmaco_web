@@ -128,16 +128,13 @@ export async function GET(request) {
           const net = d.shortage - d.surplus;
           const month = d.date.slice(0, 7);
           const { revenue, scope } = baseFor(d.store, month);
-          const spread = d.surplus + d.shortage;
           return {
             ...d,
-            net, // >0 — недостача, <0 — излишек
+            net, // >0 — недостача, <0 — излишек (в UI не показывается)
             base_revenue: revenue,
             base_scope: scope,
-            net_pct: revenue ? (net / revenue) * 100 : null,
+            surplus_pct: revenue ? (d.surplus / revenue) * 100 : null,
             shortage_pct: revenue ? (d.shortage / revenue) * 100 : null,
-            // доля недостачи среди всех расхождений — насколько «однобокий» пересчёт
-            shortage_share_pct: spread ? (d.shortage / spread) * 100 : null,
           };
         })
         .sort((a, b) => b.date.localeCompare(a.date) || a.store.localeCompare(b.store));
@@ -158,7 +155,8 @@ export async function GET(request) {
           shortage: totalShortage,
           net,
           base_revenue: totalBase,
-          net_pct: totalBase ? (net / totalBase) * 100 : null,
+          surplus_pct: totalBase ? (totalSurplus / totalBase) * 100 : null,
+          shortage_pct: totalBase ? (totalShortage / totalBase) * 100 : null,
         },
       };
     });

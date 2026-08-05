@@ -16026,18 +16026,15 @@ function InventoriesReport({ showToast, loggedInUser }) {
         <div style={card}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Излишки</div>
           <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: "#10b981" }}>{fmt(t.surplus)}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {t.surplus_pct === null ? "—" : t.surplus_pct.toFixed(2) + "% от выручки"}
+          </div>
         </div>
         <div style={card}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Недостачи</div>
           <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: "#ef4444" }}>{fmt(t.shortage)}</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Чистая недостача</div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: t.net > 0 ? "#ef4444" : "#10b981" }}>
-            {fmt(t.net)}
-          </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            {pct(t.net_pct)} от выручки
+            {t.shortage_pct === null ? "—" : t.shortage_pct.toFixed(2) + "% от выручки"}
           </div>
         </div>
       </div>
@@ -16051,37 +16048,29 @@ function InventoriesReport({ showToast, loggedInUser }) {
                 <th style={thL}>Док</th>
                 <th style={thL}>Склад</th>
                 <th style={th}>Излишки</th>
-                <th style={th}>Недостача</th>
-                <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>Нетто</th>
-                <th style={th}>% от выручки</th>
-                <th style={th}>База (выручка)</th>
-                <th style={th}>Доля недостач</th>
+                <th style={th}>Излишки, %</th>
+                <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>Недостача</th>
+                <th style={th}>Недостача, %</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((r, i) => {
-                const bad = r.net_pct !== null && r.net_pct >= 5;
+                const bad = r.shortage_pct !== null && r.shortage_pct >= 5;
                 return (
                   <tr key={i} style={{ background: bad ? "rgba(239,68,68,0.08)" : "transparent" }}>
                     <td style={tdL}>{fmtDate(r.date)}</td>
                     <td style={{ ...tdL, fontFamily: "monospace", color: "var(--text-muted)" }}>{r.document}</td>
                     <td style={tdL}>
                       {r.store}
-                      {bad && <span title="Расхождение больше 5% от выручки направления" style={{ marginLeft: 6 }}>⚠️</span>}
+                      {bad && <span title="Недостача больше 5% от выручки направления" style={{ marginLeft: 6 }}>⚠️</span>}
                     </td>
                     <td style={{ ...td, color: "#10b981" }}>{fmt(r.surplus)}</td>
-                    <td style={{ ...td, color: "#ef4444" }}>{fmt(r.shortage)}</td>
-                    <td style={{ ...td, fontWeight: 700, borderLeft: "2px solid var(--border-color)", color: r.net > 0 ? "#ef4444" : "#10b981" }}>
-                      {fmt(r.net)}
+                    <td style={{ ...td, color: "#10b981", fontWeight: 700 }} title={r.base_scope}>
+                      {r.surplus_pct === null ? "—" : r.surplus_pct.toFixed(2) + "%"}
                     </td>
-                    <td style={{ ...td, fontWeight: 700, color: r.net > 0 ? "#ef4444" : "#10b981" }}>
-                      {pct(r.net_pct)}
-                    </td>
-                    <td style={{ ...td, color: "var(--text-muted)" }} title={r.base_scope}>
-                      {fmt(r.base_revenue)}
-                    </td>
-                    <td style={{ ...td, color: "var(--text-muted)" }}>
-                      {r.shortage_share_pct === null ? "—" : `${r.shortage_share_pct.toFixed(0)}%`}
+                    <td style={{ ...td, color: "#ef4444", borderLeft: "2px solid var(--border-color)" }}>{fmt(r.shortage)}</td>
+                    <td style={{ ...td, color: "#ef4444", fontWeight: 700 }} title={r.base_scope}>
+                      {r.shortage_pct === null ? "—" : r.shortage_pct.toFixed(2) + "%"}
                     </td>
                   </tr>
                 );
@@ -16091,11 +16080,13 @@ function InventoriesReport({ showToast, loggedInUser }) {
               <tr style={{ background: "var(--bg-pill)" }}>
                 <td style={{ ...tdL, fontWeight: 800 }} colSpan={3}>ИТОГО</td>
                 <td style={{ ...td, fontWeight: 800, color: "#10b981" }}>{fmt(t.surplus)}</td>
-                <td style={{ ...td, fontWeight: 800, color: "#ef4444" }}>{fmt(t.shortage)}</td>
-                <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)", color: t.net > 0 ? "#ef4444" : "#10b981" }}>{fmt(t.net)}</td>
-                <td style={{ ...td, fontWeight: 800, color: t.net > 0 ? "#ef4444" : "#10b981" }}>{pct(t.net_pct)}</td>
-                <td style={{ ...td, fontWeight: 800 }}>{fmt(t.base_revenue)}</td>
-                <td style={td}></td>
+                <td style={{ ...td, fontWeight: 800, color: "#10b981" }}>
+                  {t.surplus_pct === null ? "—" : t.surplus_pct.toFixed(2) + "%"}
+                </td>
+                <td style={{ ...td, fontWeight: 800, color: "#ef4444", borderLeft: "2px solid var(--border-color)" }}>{fmt(t.shortage)}</td>
+                <td style={{ ...td, fontWeight: 800, color: "#ef4444" }}>
+                  {t.shortage_pct === null ? "—" : t.shortage_pct.toFixed(2) + "%"}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -16103,13 +16094,11 @@ function InventoriesReport({ showToast, loggedInUser }) {
       </div>
 
       <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
-        <b>Нетто</b> = недостача − излишки: плюс значит товара не хватило, минус — нашлось лишнее.
-        <b> % от выручки</b> — доля расхождения в выручке направления за месяц пересчёта. База: Кухня
-        главная — Кухня, Мороженое, Фрукты, Кухня+Фрукты; Кухня подвал — Горячий цех, Холодный цех,
-        Пицца; Бар — Бар; Основной склад и Заготовочный цех обслуживают заведение целиком, поэтому
-        считаются от всей выручки. Наведи на колонку «База», чтобы увидеть состав.
-        <b> Доля недостач</b> показывает, насколько пересчёт однобокий: около 50% это обычный пересорт,
-        ближе к 100% — товар реально пропадает.
+        Проценты считаются от выручки направления, которое кормит склад, за месяц пересчёта:
+        Кухня главная — Кухня, Мороженое, Фрукты, Кухня+Фрукты; Кухня подвал — Горячий цех,
+        Холодный цех, Пицца; Бар — Бар; Основной склад и Заготовочный цех обслуживают заведение
+        целиком, поэтому считаются от всей выручки. Наведи на процент, чтобы увидеть состав базы.
+        Недостача выше 5% подсвечена.
       </div>
     </div>
   );
