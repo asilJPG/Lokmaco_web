@@ -5565,6 +5565,14 @@ function InventoryView({
                 grad: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
                 text: "#4338ca",
               },
+              ...(loggedInUser?.baseRole === "admin"
+                ? [{
+                    id: "discrepancies",
+                    label: "📊 Расхождения",
+                    grad: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
+                    text: "#b91c1c",
+                  }]
+                : []),
             ].map((sub) => (
               <button
                 key={sub.id}
@@ -5590,7 +5598,11 @@ function InventoryView({
             ))}
           </div>
 
-          {subTab === "iiko_history" ? (
+          {subTab === "discrepancies" ? (
+            <div style={{ marginTop: 4 }}>
+              <InventoriesReport showToast={showToast} loggedInUser={loggedInUser} />
+            </div>
+          ) : subTab === "iiko_history" ? (
             <div>
               <IikoHistoryList
                 type="INVENTORY"
@@ -16397,17 +16409,14 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
     <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
       <button style={tabBtn(view === "cash")} onClick={() => setView("cash")}>📊 Касса по дням</button>
       <button style={tabBtn(view === "expenses")} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
-      <button style={tabBtn(view === "inventories")} onClick={() => setView("inventories")}>📦 Инвентаризации</button>
     </div>
   );
 
-  if (view === "expenses" || view === "inventories") {
+  if (view === "expenses") {
     return (
       <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
         {tabs}
-        {view === "expenses"
-          ? <CashierExpensesReport showToast={showToast} loggedInUser={loggedInUser} />
-          : <InventoriesReport showToast={showToast} loggedInUser={loggedInUser} />}
+        <CashierExpensesReport showToast={showToast} loggedInUser={loggedInUser} />
       </div>
     );
   }
