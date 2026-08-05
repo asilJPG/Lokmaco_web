@@ -3,6 +3,7 @@ import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { submitDocument } from '@/lib/iiko-web-docs';
 import { logAction } from '@/lib/log-action';
+import { PHOTO_KINDS, type PhotoKind } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,16 @@ export async function POST(req: Request) {
 
   if (!result.success) return Response.json({ error: result.error || 'iiko failed' }, { status: 502 });
 
+  // Фото приходят уже загруженными (см. /api/uploads) — сюда попадают только
+  // пути в хранилище. Проверяем форму, чтобы в историю не уехал произвольный
+  // текст из тела запроса.
+  const photos = (Array.isArray(b.photos) ? b.photos : [])
+    .filter((p: unknown): p is { path: string; kind: PhotoKind } =>
+      !!p && typeof p === 'object'
+      && typeof (p as { path?: unknown }).path === 'string'
+      && PHOTO_KINDS.includes((p as { kind?: PhotoKind }).kind as PhotoKind))
+    .map((p: { path: string; kind: PhotoKind }) => ({ path: p.path, kind: p.kind }));
+
   await logAction({
     filialId,
     tgId: session.tgId,
@@ -54,6 +65,7 @@ export async function POST(req: Request) {
       store_name: b.store_name,
       items: b.items,
       comment: b.comment || '',
+      photos,
     },
   });
 

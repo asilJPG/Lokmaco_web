@@ -126,6 +126,27 @@ export const loginAttempts = pgTable('login_attempts', {
   resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
 });
 
+/**
+ * Общий кэш ответов iiko (см. lib/iiko-cache.ts).
+ *
+ * Раньше справочники кэшировались обычной Map в памяти процесса. На Vercel
+ * инстансов десятки и они постоянно поднимаются заново, поэтому такая Map почти
+ * всегда пустая: за каждый чих платили полный круг auth + запрос в iiko. Кэш в
+ * БД переживает холодный старт и общий для всех инстансов сразу.
+ *
+ * Таблица наша, легаси о ней не знает — своих вставок туда нет.
+ * Ключ составной: один и тот же справочник у разных филиалов свой (креды и
+ * сервер iiko у них разные).
+ */
+export const iikoCache = pgTable('iiko_cache', {
+  key: text('key').notNull(),
+  filialId: integer('filial_id').notNull(),
+  payload: jsonb('payload').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.key, t.filialId] }),
+}));
+
 export type Asset = typeof assets.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;

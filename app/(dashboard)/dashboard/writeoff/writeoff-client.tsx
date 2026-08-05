@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StoreSelect } from '@/components/store-select';
 import { ProductPicker, type PickedItem } from '@/components/product-picker';
+import { formatDraftTime, useDraft } from '@/lib/use-draft';
 
 type Account = { id: string; name: string; code: string };
+type Draft = { items: PickedItem[]; comment: string; accountId: string };
 
 const DEFAULT_ACCOUNT = { id: '6f983109-eb1f-4517-917b-9912d5eeda16', name: 'Пищевые потери и списания' };
 
@@ -30,6 +32,26 @@ export function WriteoffClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
     })();
   }, [isAdmin]);
 
+  // Ключ по складу: списания бара и кухни не должны затирать друг друга.
+  const draftValue = useMemo<Draft>(() => ({ items, comment, accountId }), [items, comment, accountId]);
+  const restoreDraft = useCallback((d: Draft) => {
+    setItems(Array.isArray(d.items) ? d.items : []);
+    setComment(d.comment || '');
+    if (d.accountId) setAccountId(d.accountId);
+  }, []);
+  const draft = useDraft<Draft>({
+    name: 'writeoff',
+    scope: storeId || null,
+    value: draftValue,
+    isEmpty: (v) => v.items.length === 0 && !v.comment,
+    onRestore: restoreDraft,
+  });
+
+  function resetForm() {
+    setItems([]);
+    setComment('');
+  }
+
   const canSend = !!storeId && items.length > 0 && items.every((it) => it.quantity > 0);
   const accountName = accounts.find((a) => a.id === accountId)?.name || DEFAULT_ACCOUNT.name;
 
@@ -46,8 +68,9 @@ export function WriteoffClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
       if (!res.ok) setMsg({ ok: false, text: data.error || 'Ошибка' });
       else {
         setMsg({ ok: true, text: `Списание проведено, документ ${data.documentNumber}` });
-        setItems([]);
-        setComment('');
+        // Только после успеха, иначе списание проведут дважды.
+        draft.clear();
+        resetForm();
       }
     } finally {
       setBusy(false);
@@ -56,6 +79,15 @@ export function WriteoffClient({ isAdmin, fixedStoreId }: { isAdmin: boolean; fi
 
   return (
     <div className="grid">
+      {draft.restoredAt !== null && (
+        <div className="banner banner--info draft-banner">
+          <span>Восстановлен черновик от {formatDraftTime(draft.restoredAt)}</span>
+          <button type="button" className="btn btn--sm" onClick={() => { draft.clear(); resetForm(); }}>
+            Очистить
+          </button>
+        </div>
+      )}
+
       {!fixedStoreId && (
         <section className="card">
           <div className="card__title"><span className="card__title-text">🏬 Склад</span></div>

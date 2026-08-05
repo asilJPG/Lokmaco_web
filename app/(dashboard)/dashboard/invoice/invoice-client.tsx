@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { VoiceInput } from './voice-input';
+import { PhotoInput, type Photo } from './photo-input';
 import { StoreSelect } from '@/components/store-select';
 import { SupplierSelect } from '@/components/supplier-select';
 
@@ -23,6 +25,9 @@ export function InvoiceClient() {
 
   const [addQuery, setAddQuery] = useState('');
   const [fixQuery, setFixQuery] = useState<Record<number, string>>({});
+
+  const [goodsPhoto, setGoodsPhoto] = useState<Photo | null>(null);
+  const [invoicePhoto, setInvoicePhoto] = useState<Photo | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -114,6 +119,7 @@ export function InvoiceClient() {
           store_name: storeName,
           items,
           comment,
+          photos: [goodsPhoto, invoicePhoto].filter(Boolean).map((p) => ({ path: p!.path, kind: p!.kind })),
         }),
       });
       const data = await res.json();
@@ -124,6 +130,8 @@ export function InvoiceClient() {
         setItems([]);
         setText('');
         setComment('');
+        setGoodsPhoto(null);
+        setInvoicePhoto(null);
       }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Ошибка сети' });
@@ -146,6 +154,10 @@ export function InvoiceClient() {
             placeholder={'помидоры 50кг 600000\nлук 30 кг 150000'}
           />
         </div>
+        <VoiceInput
+          disabled={parsing || busy}
+          onText={(t) => setText((cur) => (cur.trim() ? `${cur.trim()}\n${t}` : t))}
+        />
         {parseError && <div className="banner banner--error">{parseError}</div>}
         <div className="action-bar">
           <button type="button" className="btn btn--primary" onClick={parse} disabled={parsing || !text.trim()}>
@@ -282,6 +294,19 @@ export function InvoiceClient() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="card">
+        <div className="card__title"><span className="card__title-text">📷 Фото</span></div>
+        <div className="photo-grid">
+          <PhotoInput kind="goods" photo={goodsPhoto} onChange={setGoodsPhoto} disabled={busy} />
+          <PhotoInput kind="invoice" photo={invoicePhoto} onChange={setInvoicePhoto} disabled={busy} />
+        </div>
+        {(!goodsPhoto || !invoicePhoto) && (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '10px 0 0' }}>
+            Фото необязательны, но приход без них будет помечен в истории — по нему потом не проверишь, что привезли.
+          </p>
+        )}
       </section>
 
       <section className="card">

@@ -16,7 +16,7 @@ import { redirect } from 'next/navigation';
 export type Section =
   | 'home' | 'profile' | 'assistant'
   | 'cashier' | 'inbox' | 'history' | 'attendance'
-  | 'balances' | 'transfer' | 'invoice' | 'inventory' | 'production'
+  | 'balances' | 'transfer' | 'transferDirect' | 'invoice' | 'inventory' | 'production'
   | 'writeoff' | 'services' | 'documents' | 'assets'
   | 'analytics' | 'analytics.pl' | 'analytics.abc' | 'analytics.liquidity'
   | 'analytics.sales' | 'analytics.purchases' | 'analytics.waiters'
@@ -45,6 +45,11 @@ const ACCESS: Record<Section, readonly string[] | typeof ALL> = {
   // balances: `role !== "manager"`.
   balances: ['admin', 'director', 'supplier', 'kitchen', 'prep_chef', 'bar', 'cashier', 'hall'],
   transfer: ['admin', 'kitchen', 'prep_chef', 'bar', 'supplier', 'hall'],
+  // Отправка перемещения напрямую в iiko, минуя подтверждение получателем.
+  // Сужено до админа осознанно: остальные роли создают перемещение только
+  // через подтверждение, чтобы принимающий склад видел, что ему приехало.
+  // Раздел не страничный — в HREF_TO_SECTION его нет.
+  transferDirect: ['admin'],
   invoice: ['admin', 'supplier'],
   inventory: ['admin', 'kitchen', 'prep_chef', 'bar', 'supplier'],
   production: ['admin', 'prep_chef', 'bar'],

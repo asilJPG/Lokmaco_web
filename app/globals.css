@@ -1206,3 +1206,65 @@ tr[data-today="true"] td:first-child {
   tr { page-break-inside: avoid; }
   @page { margin: 14mm 12mm; }
 }
+
+/* Плашка восстановленного черновика форм склада (lib/use-draft.ts).
+   Кнопка «Очистить» прижата вправо и не переносится: на телефоне
+   текст занимает две строки, но действие должно оставаться на виду. */
+.draft-banner {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.draft-banner .btn {
+  flex-shrink: 0;
+}
+
+/* ---------------- Фото и запись голоса в приходе ---------------- */
+
+.photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+@media (max-width: 640px) {
+  /* На телефоне две колонки превращают превью в марки — снимок накладной
+     в них не прочитать, а прочитать его как раз и нужно. */
+  .photo-grid { grid-template-columns: 1fr; }
+}
+.photo-slot {
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+.photo-slot__head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.photo-slot__title { font-size: 13px; font-weight: 600; }
+.photo-slot__hint { font-size: 11px; color: var(--text-muted); }
+.photo-slot__btn { width: 100%; min-height: 48px; }
+.photo-slot__preview { display: flex; flex-direction: column; gap: 8px; }
+.photo-slot__preview img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+/* Мигающая точка записи: без неё непонятно, идёт запись или уже нет. */
+.rec-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--danger, #dc2626);
+  animation: rec-pulse 1.1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* Пометка прихода без фотографий — то, ради чего фото и заводили. */
+.no-photo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger, #dc2626);
+  background: color-mix(in srgb, var(--danger, #dc2626) 10%, transparent);
+}

@@ -1,4 +1,5 @@
 import { requireSession } from '@/lib/auth-session';
+import { canAccess } from '@/lib/access';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { submitDocument } from '@/lib/iiko-web-docs';
@@ -6,14 +7,13 @@ import { logAction } from '@/lib/log-action';
 
 export const dynamic = 'force-dynamic';
 
-// Роли и ограничение по складу — дословно из легаси
-// (app/api/iiko/transfer/route.js).
-const ALLOWED_ROLES = ['admin', 'director', 'supplier', 'kitchen', 'prep_chef', 'bar', 'hall'];
-
 export async function POST(req: Request) {
   const session = await requireSession();
-  const [baseRole, userStoreId] = session.role.split(':');
-  if (!ALLOWED_ROLES.includes(baseRole)) {
+  const [, userStoreId] = session.role.split(':');
+  // Прямая отправка минует подтверждение получателем, поэтому она только у
+  // админа (раздел `transferDirect` в матрице). Прятать кнопку мало: роут
+  // дёргается напрямую, значит запрет должен жить здесь.
+  if (!canAccess(session.role, 'transferDirect')) {
     return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
 

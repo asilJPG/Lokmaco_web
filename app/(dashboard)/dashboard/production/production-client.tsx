@@ -1,13 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ProductPicker, type PickedItem } from '@/components/product-picker';
+import { formatDraftTime, useDraft } from '@/lib/use-draft';
 
-export function ProductionClient() {
+type Draft = { items: PickedItem[]; comment: string };
+
+export function ProductionClient({ storeId }: { storeId: string | null }) {
   const [items, setItems] = useState<PickedItem[]>([]);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const draftValue = useMemo<Draft>(() => ({ items, comment }), [items, comment]);
+  const restoreDraft = useCallback((d: Draft) => {
+    setItems(Array.isArray(d.items) ? d.items : []);
+    setComment(d.comment || '');
+  }, []);
+  // Склад приходит из роли; у админа его нет — тогда общий ключ,
+  // черновик всё равно разделён по филиалу внутри хука.
+  const draft = useDraft<Draft>({
+    name: 'production',
+    scope: storeId || 'default',
+    value: draftValue,
+    isEmpty: (v) => v.items.length === 0 && !v.comment,
+    onRestore: restoreDraft,
+  });
+
+  function resetForm() {
+    setItems([]);
+    setComment('');
+  }
 
   const canSend = items.length > 0 && items.every((it) => it.quantity > 0);
 
@@ -24,8 +47,9 @@ export function ProductionClient() {
       if (!res.ok) setMsg({ ok: false, text: data.error || 'Ошибка' });
       else {
         setMsg({ ok: true, text: `Создан документ ${data.documentNumber}` });
-        setItems([]);
-        setComment('');
+        // Только после успеха, иначе документ проведут дважды.
+        draft.clear();
+        resetForm();
       }
     } finally {
       setBusy(false);
@@ -34,6 +58,15 @@ export function ProductionClient() {
 
   return (
     <div className="grid">
+      {draft.restoredAt !== null && (
+        <div className="banner banner--info draft-banner">
+          <span>Восстановлен черновик от {formatDraftTime(draft.restoredAt)}</span>
+          <button type="button" className="btn btn--sm" onClick={() => { draft.clear(); resetForm(); }}>
+            Очистить
+          </button>
+        </div>
+      )}
+
       <section className="card">
         <div className="card__title"><span className="card__title-text">📦 Заготовки</span></div>
         <ProductPicker items={items} onChange={setItems} />

@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StoreSelect } from '@/components/store-select';
 import { ProductPicker, type PickedItem } from '@/components/product-picker';
+import { formatDraftTime, useDraft } from '@/lib/use-draft';
 
-export function TransferClient() {
+type Draft = { toId: string; toName: string; items: PickedItem[]; comment: string };
+
+export function TransferClient({ canSendDirect }: { canSendDirect: boolean }) {
   const router = useRouter();
   const [fromId, setFromId] = useState('');
   const [fromName, setFromName] = useState('');
@@ -15,6 +18,28 @@ export function TransferClient() {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Черновик привязан к складу-источнику: перемещения с разных складов
+  // не должны затирать друг друга.
+  const draftValue = useMemo<Draft>(() => ({ toId, toName, items, comment }), [toId, toName, items, comment]);
+  const restoreDraft = useCallback((d: Draft) => {
+    setToId(d.toId || '');
+    setToName(d.toName || '');
+    setItems(Array.isArray(d.items) ? d.items : []);
+    setComment(d.comment || '');
+  }, []);
+  const draft = useDraft<Draft>({
+    name: 'transfer',
+    scope: fromId || null,
+    value: draftValue,
+    isEmpty: (v) => v.items.length === 0 && !v.comment,
+    onRestore: restoreDraft,
+  });
+
+  function resetForm() {
+    setItems([]);
+    setComment('');
+  }
 
   const canSend = fromId && toId && fromId !== toId && items.length > 0 && items.every((it) => it.quantity > 0);
 
@@ -43,8 +68,10 @@ export function TransferClient() {
           setMsg({ ok: true, text: 'Отправлено на подтверждение' });
           router.refresh();
         }
-        setItems([]);
-        setComment('');
+        // Черновик убираем только после успеха: иначе он всплывёт в
+        // следующий раз и документ проведут дважды.
+        draft.clear();
+        resetForm();
       }
     } finally {
       setBusy(false);
@@ -53,6 +80,19 @@ export function TransferClient() {
 
   return (
     <div className="grid">
+      {draft.restoredAt !== null && (
+        <div className="banner banner--info draft-banner">
+          <span>Восстановлен черновик от {formatDraftTime(draft.restoredAt)}</span>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => { draft.clear(); resetForm(); }}
+          >
+            Очистить
+          </button>
+        </div>
+      )}
+
       <section className="card">
         <div className="card__title"><span className="card__title-text">📤📥 Склады</span></div>
         <div className="grid grid--2">
@@ -75,12 +115,20 @@ export function TransferClient() {
 
       <div className="action-bar">
         {msg && <div className={`banner ${msg.ok ? 'banner--success' : 'banner--error'}`} style={{ flex: 1 }}>{msg.text}</div>}
-        <button type="button" className="btn" onClick={() => submit(false)} disabled={!canSend || busy}>
+        <button
+          type="button"
+          className={`btn ${canSendDirect ? '' : 'btn--primary action-bar__btn'}`}
+          onClick={() => submit(false)}
+          disabled={!canSend || busy}
+        >
           {busy ? '…' : 'На подтверждение'}
         </button>
-        <button type="button" className="btn btn--primary" onClick={() => submit(true)} disabled={!canSend || busy}>
-          {busy ? 'Создание…' : 'Сразу в iiko'}
-        </button>
+        {/* Прямая отправка минует подтверждение получателем — только админу. */}
+        {canSendDirect && (
+          <button type="button" className="btn btn--primary" onClick={() => submit(true)} disabled={!canSend || busy}>
+            {busy ? 'Создание…' : 'Сразу в iiko'}
+          </button>
+        )}
       </div>
     </div>
   );
