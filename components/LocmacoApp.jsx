@@ -1269,7 +1269,9 @@ export default function LocmacoApp() {
       case "transfer":
         return ["kitchen", "prep_chef", "bar", "supplier", "hall"].includes(role);
       case "inventory":
-        return ["kitchen", "prep_chef", "bar", "supplier"].includes(role);
+        // Раздел оставлен только админу: внутри теперь отчёт о расхождениях,
+        // а не форма проведения пересчёта.
+        return false;
       case "production":
         return ["prep_chef", "bar"].includes(role);
       case "writeoff":
@@ -2220,7 +2222,7 @@ export default function LocmacoApp() {
                       Инвентаризация
                     </div>
                     <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
-                      Фактический пересчет остатков с автосохранением
+                      Расхождения по проведённым пересчётам складов, излишки и недостачи в процентах
                     </div>
                   </div>
                 </button>
@@ -2736,17 +2738,9 @@ export default function LocmacoApp() {
           />
         )}
         {tab === "inventory" && (
-          <InventoryView
-            products={products}
-            stores={stores}
-            showToast={showToast}
-            loading={productsLoading}
-            onRetry={loadData}
-            loggedInUser={loggedInUser}
-            loadHistory={loadHistory}
-            history={history.filter((h) => h.action_type === "inventory")}
-            historyLoading={historyLoading}
-          />
+          <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
+            <InventoriesReport showToast={showToast} loggedInUser={loggedInUser} />
+          </div>
         )}
         {tab === "production" && (
           <ProductionView
