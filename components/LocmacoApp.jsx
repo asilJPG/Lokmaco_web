@@ -15957,6 +15957,156 @@ function AgentChatView({ showToast, loggedInUser }) {
   );
 }
 
+function InventoriesReport({ showToast, loggedInUser }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/iiko/reports/inventories", {
+          headers: {
+            "x-user-id": loggedInUser?.id || "admin",
+            "x-user-role": loggedInUser?.baseRole || "admin",
+          },
+        });
+        const json = await res.json();
+        if (json.success) setData(json);
+        else showToast?.(json.error || "Ошибка загрузки инвентаризаций", "error");
+      } catch (e) {
+        console.error("[inventories]", e);
+        showToast?.("Ошибка загрузки инвентаризаций", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(Number(n) || 0));
+  const pct = (v) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(2)}%`);
+  const fmtDate = (iso) => {
+    const [y, m, d] = String(iso).split("-");
+    return `${d}.${m}.${y}`;
+  };
+
+  const th = { padding: "10px 12px", background: "var(--bg-pill)", fontSize: 12, fontWeight: 700, color: "var(--text-main)", textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)" };
+  const thL = { ...th, textAlign: "left" };
+  const td = { padding: "9px 12px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border-color)", fontVariantNumeric: "tabular-nums", color: "var(--text-main)" };
+  const tdL = { ...td, textAlign: "left" };
+
+  if (loading) {
+    return <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>⏳ Загружаю инвентаризации из iiko…</div>;
+  }
+  if (!data || data.items.length === 0) {
+    return <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>Инвентаризаций не найдено</div>;
+  }
+
+  const t = data.totals;
+  const card = { background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, padding: 16 };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+          📦 Инвентаризации
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+          Все проведённые пересчёты складов и расхождения по ним. Процент считается от себестоимости
+          продаж (COGS) за тот месяц.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Пересчётов</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5 }}>{t.count}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Излишки</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: "#10b981" }}>{fmt(t.surplus)}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Недостачи</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: "#ef4444" }}>{fmt(t.shortage)}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Чистая недостача</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 5, color: t.net > 0 ? "#ef4444" : "#10b981" }}>
+            {fmt(t.net)}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {pct(t.net_pct_of_cogs)} от COGS
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thL}>Дата</th>
+                <th style={thL}>Док</th>
+                <th style={thL}>Склад</th>
+                <th style={th}>Излишки</th>
+                <th style={th}>Недостача</th>
+                <th style={{ ...th, borderLeft: "2px solid var(--border-color)" }}>Нетто</th>
+                <th style={th}>% от COGS</th>
+                <th style={th}>Доля недостач</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((r, i) => {
+                const bad = r.net_pct_of_cogs !== null && r.net_pct_of_cogs >= 5;
+                return (
+                  <tr key={i} style={{ background: bad ? "rgba(239,68,68,0.08)" : "transparent" }}>
+                    <td style={tdL}>{fmtDate(r.date)}</td>
+                    <td style={{ ...tdL, fontFamily: "monospace", color: "var(--text-muted)" }}>{r.document}</td>
+                    <td style={tdL}>
+                      {r.store}
+                      {bad && <span title="Расхождение больше 5% от себестоимости" style={{ marginLeft: 6 }}>⚠️</span>}
+                    </td>
+                    <td style={{ ...td, color: "#10b981" }}>{fmt(r.surplus)}</td>
+                    <td style={{ ...td, color: "#ef4444" }}>{fmt(r.shortage)}</td>
+                    <td style={{ ...td, fontWeight: 700, borderLeft: "2px solid var(--border-color)", color: r.net > 0 ? "#ef4444" : "#10b981" }}>
+                      {fmt(r.net)}
+                    </td>
+                    <td style={{ ...td, fontWeight: 700, color: r.net > 0 ? "#ef4444" : "#10b981" }}>
+                      {pct(r.net_pct_of_cogs)}
+                    </td>
+                    <td style={{ ...td, color: "var(--text-muted)" }}>
+                      {r.shortage_share_pct === null ? "—" : `${r.shortage_share_pct.toFixed(0)}%`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: "var(--bg-pill)" }}>
+                <td style={{ ...tdL, fontWeight: 800 }} colSpan={3}>ИТОГО</td>
+                <td style={{ ...td, fontWeight: 800, color: "#10b981" }}>{fmt(t.surplus)}</td>
+                <td style={{ ...td, fontWeight: 800, color: "#ef4444" }}>{fmt(t.shortage)}</td>
+                <td style={{ ...td, fontWeight: 800, borderLeft: "2px solid var(--border-color)", color: t.net > 0 ? "#ef4444" : "#10b981" }}>{fmt(t.net)}</td>
+                <td style={{ ...td, fontWeight: 800, color: t.net > 0 ? "#ef4444" : "#10b981" }}>{pct(t.net_pct_of_cogs)}</td>
+                <td style={td}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+        <b>Нетто</b> = недостача − излишки: плюс значит товара не хватило, минус — нашлось лишнее.
+        <b> % от COGS</b> — доля расхождения в себестоимости продаж за месяц; в общепите норма до 1–2%,
+        выше 5% подсвечено. <b>Доля недостач</b> показывает, насколько пересчёт однобокий: около 50%
+        это обычный пересорт, ближе к 100% — товар реально пропадает.
+      </div>
+    </div>
+  );
+}
+
 function CashierExpensesReport({ showToast, loggedInUser }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16246,24 +16396,28 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
     cursor: "pointer",
   });
 
-  if (view === "expenses") {
+  const tabs = (
+    <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+      <button style={tabBtn(view === "cash")} onClick={() => setView("cash")}>📊 Касса по дням</button>
+      <button style={tabBtn(view === "expenses")} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
+      <button style={tabBtn(view === "inventories")} onClick={() => setView("inventories")}>📦 Инвентаризации</button>
+    </div>
+  );
+
+  if (view === "expenses" || view === "inventories") {
     return (
       <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-          <button style={tabBtn(false)} onClick={() => setView("cash")}>📊 Касса по дням</button>
-          <button style={tabBtn(true)} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
-        </div>
-        <CashierExpensesReport showToast={showToast} loggedInUser={loggedInUser} />
+        {tabs}
+        {view === "expenses"
+          ? <CashierExpensesReport showToast={showToast} loggedInUser={loggedInUser} />
+          : <InventoriesReport showToast={showToast} loggedInUser={loggedInUser} />}
       </div>
     );
   }
 
   return (
     <div style={{ padding: "20px 24px", maxWidth: 1600, margin: "0 auto" }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        <button style={tabBtn(true)} onClick={() => setView("cash")}>📊 Касса по дням</button>
-        <button style={tabBtn(false)} onClick={() => setView("expenses")}>💸 Расходы кассира</button>
-      </div>
+      {tabs}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
         <div>
