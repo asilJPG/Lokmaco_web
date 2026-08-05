@@ -108,18 +108,24 @@ export default async function HistoryPage({ searchParams }: { searchParams: { [k
                   <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Выручка</th>
                   <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Расходы</th>
                   <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>ЗП (чел)</th>
+                  <th style={{ borderBottom: '1px solid var(--border)' }} />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} data-today={r.date === today || undefined}>
-                    <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>{fmtDate(r.date)}</td>
+                  <tr key={r.id} data-today={r.date === today || undefined} className="row-link">
+                    <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
+                      {/* Ссылка внутри ячейки, а не onClick на строке: работает
+                          средняя кнопка, «открыть в новой вкладке» и клавиатура. */}
+                      <Link href={`/dashboard/history/${r.id}`} className="row-link__target">{fmtDate(r.date)}</Link>
+                    </td>
                     <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'monospace' }}><Copyable value={r.documentNumber || ''} /></td>
                     <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>{r.userName}</td>
                     <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(Number(r.cash) || 0)}</td>
                     <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(Number(r.totalSales) || 0)}</td>
                     <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(Number(r.totalExpenses) || 0)}</td>
                     <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>{r.wageCount}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', color: 'var(--text-faint)' }} aria-hidden="true">→</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Pagination } from '@/components/pagination';
 
 type BalanceItem = {
   product?: { id?: string; name?: string; num?: string };
@@ -51,6 +52,9 @@ export function BalancesClient() {
 
   useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
 
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 });
+  const [page, setPage] = useState(1);
+
   const stores = useMemo(() => data.map((b) => b.storage).filter((s): s is { id: string; name: string } => !!s?.id), [data]);
   const selected = data.find((b) => b.storage?.id === selectedId);
   const rawItems = selected?.balanceItems || [];
@@ -65,6 +69,32 @@ export function BalancesClient() {
         return name.includes(q) || num.includes(q);
       });
   }, [rawItems, query]);
+
+  const sorted = useMemo(() => {
+    const val = (it: typeof filtered[number]) => {
+      switch (sort.key) {
+        case 'num': return it.product?.num || '';
+        case 'amount': return it.amount || 0;
+        case 'sum': return it.sum || 0;
+        default: return it.product?.name || '';
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * sort.dir;
+      return String(x).localeCompare(String(y), 'ru') * sort.dir;
+    });
+  }, [filtered, sort]);
+
+  const pageItems = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Смена склада, поиска или сортировки сбрасывает страницу: иначе после
+  // фильтра остаёшься на 12-й странице, которой уже нет.
+  useEffect(() => { setPage(1); }, [selectedId, query, sort]);
+
+  function applySort(col: SortKey) {
+    setSort((cur) => cur.key === col ? { key: col, dir: cur.dir === 1 ? -1 : 1 } : { key: col, dir: 1 });
+  }
 
   const totalSum = filtered.reduce((s, it) => s + (it.sum || 0), 0);
 
@@ -142,14 +172,14 @@ export function BalancesClient() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Артикул</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Товар</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Кол-во</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Сумма</th>
+                  <SortTh label="Артикул" col="num" sort={sort} onSort={applySort} />
+                  <SortTh label="Товар" col="name" sort={sort} onSort={applySort} />
+                  <SortTh label="Кол-во" col="amount" sort={sort} onSort={applySort} align="right" />
+                  <SortTh label="Сумма" col="sum" sort={sort} onSort={applySort} align="right" />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((it, i) => (
+                {pageItems.map((it, i) => (
                   <tr key={(it.product?.id || '') + i}>
                     <td style={{ padding: '8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 12 }}>{it.product?.num || '—'}</td>
                     <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>{it.product?.name || '—'}</td>
@@ -161,7 +191,32 @@ export function BalancesClient() {
             </table>
           </div>
         )}
+        <Pagination page={page} total={sorted.length} pageSize={PAGE_SIZE} onPage={(p) => {
+          setPage(p);
+          // Листаем — возвращаем к началу таблицы, иначе новая страница
+          // открывается «где-то посередине».
+          if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+        }} />
       </section>
     </div>
+  );
+}
+
+const PAGE_SIZE = 50;
+
+type SortKey = 'num' | 'name' | 'amount' | 'sum';
+
+function SortTh({ label, col, sort, onSort, align = 'left' }: {
+  label: string; col: SortKey; sort: { key: SortKey; dir: 1 | -1 }; onSort: (c: SortKey) => void; align?: 'left' | 'right';
+}) {
+  const active = sort.key === col;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      style={{ padding: '10px 8px', textAlign: align, borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+      title="Сортировать"
+    >
+      {label}{active ? (sort.dir === 1 ? ' ↑' : ' ↓') : ' ↕'}
+    </th>
   );
 }

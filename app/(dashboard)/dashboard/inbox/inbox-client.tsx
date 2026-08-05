@@ -22,6 +22,9 @@ export function InboxClient() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const [failed, setFailed] = useState<{ id: string; error: string }[]>([]);
 
   // `ready` only gates the very first render. Re-loading after an action must
   // not unmount the list: swapping the whole tree for a spinner loses the
@@ -33,6 +36,9 @@ export function InboxClient() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'fetch failed');
       setData(j);
+      // Обработанные исчезают из списка — снимаем их и с отметок.
+      const alive = new Set<string>([...j.incoming, ...j.returned, ...j.outgoing].map((x: Pending) => x.id));
+      setSelected((cur) => new Set([...cur].filter((id) => alive.has(id))));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'fetch failed');
     } finally {
@@ -66,6 +72,50 @@ export function InboxClient() {
     }
   }
 
+  function toggle(id: string) {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  /**
+   * Массовый приём. Отправляем один запрос со списком id — сервер обрабатывает
+   * их по одному, поэтому падение на третьем не отменяет первые два и не
+   * мешает остальным. Что не прошло — показываем поимённо, а не «ошибка».
+   */
+  async function approveSelected() {
+    const ids = [...selected];
+    if (ids.length === 0 || bulk) return;
+    setToast(null);
+    setFailed([]);
+    setBulk({ done: 0, total: ids.length });
+    try {
+      const res = await fetch('/api/iiko/pending-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, action: 'approve_by_receiver' }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ ok: false, text: j.error || `Ошибка ${res.status}` });
+        return;
+      }
+      const bad = (j.results || []).filter((r: any) => !r.ok);
+      setFailed(bad.map((r: any) => ({ id: r.id, error: r.error || 'не удалось' })));
+      setToast({
+        ok: bad.length === 0,
+        text: bad.length === 0
+          ? `Принято перемещений: ${j.ok}. Документы ушли в iiko.`
+          : `Принято ${j.ok} из ${ids.length}. Не прошло: ${bad.length} — смотри ниже.`,
+      });
+      await load();
+    } finally {
+      setBulk(null);
+    }
+  }
+
   if (!ready) return <div className="card"><div className="empty-state">Загрузка…</div></div>;
 
   const empty = data.incoming.length === 0 && data.returned.length === 0 && data.outgoing.length === 0;
@@ -74,12 +124,53 @@ export function InboxClient() {
     <div className="grid">
       {error && <div className="banner banner--error">{error}</div>}
       {toast && <div className={`banner ${toast.ok ? 'banner--success' : 'banner--error'}`}>{toast.text}</div>}
+      {failed.length > 0 && (
+        <div className="banner banner--warn">
+          <div>
+            <strong>Не удалось принять:</strong>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {failed.map((f) => {
+                const doc = data.incoming.find((p) => p.id === f.id);
+                return <li key={f.id}>{doc ? `${doc.storeFromName} → ${doc.storeToName}` : f.id.slice(0, 8)}: {f.error}</li>;
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
       {data.incoming.length > 0 && (
-        <Section title={`📥 Входящие (${data.incoming.length})`}>
+        <Section
+          title={`📥 Входящие (${data.incoming.length})`}
+          action={
+            <label className="bulk-select-all">
+              <input
+                type="checkbox"
+                checked={selected.size > 0 && data.incoming.every((p) => selected.has(p.id))}
+                onChange={(e) => setSelected(e.target.checked ? new Set(data.incoming.map((p) => p.id)) : new Set())}
+              />
+              Выбрать все
+            </label>
+          }
+        >
           {data.incoming.map((p) => (
-            <IncomingCard key={p.id} p={p} busy={busyId === p.id} onAct={(action, payload) => act(p, action, payload)} />
+            <IncomingCard
+              key={p.id}
+              p={p}
+              busy={busyId === p.id || !!bulk}
+              selected={selected.has(p.id)}
+              onToggle={() => toggle(p.id)}
+              onAct={(action, payload) => act(p, action, payload)}
+            />
           ))}
         </Section>
+      )}
+      {selected.size > 0 && (
+        <div className="action-bar">
+          <span className="bulk-count" style={{ fontSize: 13, color: 'var(--text-muted)' }}>Выбрано: {selected.size}</span>
+          <button type="button" className="btn btn--sm" onClick={() => setSelected(new Set())} disabled={!!bulk}>Снять</button>
+          <button type="button" className="btn btn--primary action-bar__btn" onClick={approveSelected} disabled={!!bulk}>
+            {bulk ? `Принимаю… ${bulk.total} шт.` : `✅ Принять выбранные (${selected.size})`}
+          </button>
+        </div>
       )}
       {data.returned.length > 0 && (
         <Section title={`↩️ Возвращены тебе с изменениями (${data.returned.length})`}>
@@ -108,10 +199,13 @@ const ACTION_DONE: Record<string, string> = {
   reject_by_creator: 'Перемещение отменено',
 };
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="card" style={{ padding: 0 }}>
-      <div style={{ padding: '14px 16px', background: 'var(--surface-muted)', borderRadius: 'var(--radius) var(--radius) 0 0', fontWeight: 700, fontSize: 14 }}>{title}</div>
+      <div style={{ padding: '14px 16px', background: 'var(--surface-muted)', borderRadius: 'var(--radius) var(--radius) 0 0', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span>{title}</span>
+        {action}
+      </div>
       <div style={{ padding: 16, display: 'grid', gap: 12 }}>{children}</div>
     </section>
   );
@@ -144,13 +238,20 @@ function ItemsTable({ items }: { items: Item[] }) {
   );
 }
 
-function IncomingCard({ p, busy, onAct }: { p: Pending; busy: boolean; onAct: (action: string, payload?: { items?: Item[]; receiver_comment?: string }) => void }) {
+function IncomingCard({ p, busy, selected, onToggle, onAct }: {
+  p: Pending; busy: boolean; selected: boolean; onToggle: () => void;
+  onAct: (action: string, payload?: { items?: Item[]; receiver_comment?: string }) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [items, setItems] = useState<Item[]>(p.items.map((it) => ({ ...it, received_quantity: it.quantity })));
   const [rc, setRc] = useState('');
 
   return (
-    <div className="card" style={{ borderColor: 'var(--accent)', borderStyle: 'solid' }}>
+    <div className="card" data-selected={selected || undefined} style={{ borderColor: selected ? 'var(--accent)' : 'var(--accent)', borderStyle: 'solid' }}>
+      <label className="bulk-check">
+        <input type="checkbox" checked={selected} onChange={onToggle} disabled={busy} />
+        <span>Отметить для массового приёма</span>
+      </label>
       <Header p={p} />
       {p.comment && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>💬 {p.comment}</div>}
       {!editing ? <ItemsTable items={p.items} /> : (

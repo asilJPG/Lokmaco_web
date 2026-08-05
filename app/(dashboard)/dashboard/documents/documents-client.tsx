@@ -1,5 +1,7 @@
 'use client';
 
+import { Pagination } from '@/components/pagination';
+
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate } from '@/lib/period';
 import { Copyable } from '@/components/copy-button';
@@ -272,13 +274,7 @@ export function DocumentsClient() {
             </table>
           </div>
         )}
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
-            <button type="button" className="btn btn--sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>← Назад</button>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)} из {filtered.length} · стр. {page}/{totalPages}</span>
-            <button type="button" className="btn btn--sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Дальше →</button>
-          </div>
-        )}
+        <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />
       </section>
     </div>
   );

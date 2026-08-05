@@ -47,7 +47,31 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    return await handlePost(req);
+    const body = await req.json();
+    // Пакетный приём: обрабатываем по одному и тем же путём, что и одиночный,
+    // — каждый документ так же атомарно занимается перед отправкой в iiko.
+    // Последовательно, а не Promise.all: параллельные POST-ы в iikoWeb на одной
+    // сессии — верный способ получить гонку на создании документов.
+    if (Array.isArray(body?.ids)) {
+      const results: { id: string; ok: boolean; documentNumber?: string; error?: string }[] = [];
+      for (const rawId of body.ids) {
+        const id = String(rawId);
+        try {
+          // Тело собираем заново, а не копируем: `items` из общего запроса
+          // применились бы ко всем документам разом. Пакетно принимаем только
+          // «как есть», правка количеств — по одному.
+          const res = await handlePost(req, { action: body.action, id, comment: body.comment });
+          const data = await res.json().catch(() => ({}));
+          results.push(res.ok
+            ? { id, ok: true, documentNumber: data?.documentNumber }
+            : { id, ok: false, error: data?.error || `Ошибка ${res.status}` });
+        } catch (e) {
+          results.push({ id, ok: false, error: e instanceof Error ? e.message : 'server error' });
+        }
+      }
+      return Response.json({ results, ok: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length });
+    }
+    return await handlePost(req, body);
   } catch (e) {
     console.error('[pending-transfer POST]', e);
     return Response.json({ error: e instanceof Error ? e.message : 'server error' }, { status: 500 });
@@ -58,7 +82,7 @@ export async function POST(req: Request) {
 // (создание и согласование) жили в одном роуте с одной проверкой.
 const ALLOWED_ROLES = ['admin', 'director', 'supplier', 'kitchen', 'prep_chef', 'bar', 'hall'];
 
-async function handlePost(req: Request) {
+async function handlePost(req: Request, b: any) {
   const session = await requireSession();
   if (!ALLOWED_ROLES.includes(session.role.split(':')[0])) {
     return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
@@ -67,7 +91,6 @@ async function handlePost(req: Request) {
   if (filialIds.length === 0) return Response.json({ error: 'no filial' }, { status: 400 });
   const filialId = filialIds[0];
 
-  const b = await req.json();
   const action: string | undefined = b.action;
   const [baseRole, userStoreId] = session.role.split(':');
   const isAdmin = baseRole === 'admin';
