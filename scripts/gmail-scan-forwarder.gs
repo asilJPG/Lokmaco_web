@@ -53,18 +53,37 @@ function forwardScans() {
   // не находил бы. Дублей не будет и так — от них защищает ярлык.
   //
   // Окно в двое суток — чтобы после долгого простоя не разбирать всю почту.
-  var threads = GmailApp.search('has:attachment newer_than:2d -label:' + DONE_LABEL, 0, 20);
+  var query = 'has:attachment newer_than:2d -label:' + DONE_LABEL;
+  var threads = GmailApp.search(query, 0, 20);
+
+  // Отчитываемся всегда, даже когда делать нечего. Молчаливый запуск не
+  // отличить от сломанного: «Execution completed» и пустой журнал выглядят
+  // одинаково и когда всё хорошо, и когда фильтр отсекает вообще всё.
+  Logger.log('Запрос: ' + query);
+  Logger.log('Найдено писем с вложениями: ' + threads.length);
+  if (threads.length === 0) {
+    Logger.log('Нечего отправлять. Это нормально, если скана ещё не было.');
+    Logger.log('Если скан точно приходил — проверьте, что письмо не старше двух суток и на нём нет ярлыка «' + DONE_LABEL + '».');
+  }
+
+  var skippedBySender = 0;
+  var skippedNoImages = 0;
 
   threads.forEach(function (thread) {
     thread.getMessages().forEach(function (message) {
       var from = message.getFrom();
 
       if (ALLOWED_SENDERS.length > 0 && !matchesSender(from)) {
+        skippedBySender++;
+        Logger.log('пропущено (чужой отправитель): ' + from);
         return;
       }
 
       var images = message.getAttachments().filter(isImage);
-      if (images.length === 0) return;
+      if (images.length === 0) {
+        skippedNoImages++;
+        return;
+      }
 
       var payload = {
         from: from,
@@ -96,6 +115,13 @@ function forwardScans() {
     });
   });
 
+  if (skippedBySender > 0) {
+    Logger.log('Отсеяно по отправителю: ' + skippedBySender +
+      '. Разрешены: ' + (ALLOWED_SENDERS.join(', ') || 'все'));
+  }
+  if (skippedNoImages > 0) Logger.log('Писем без картинок во вложениях: ' + skippedNoImages);
+  Logger.log('ИТОГО отправлено сканов: ' + sent);
+
   return sent;
 }
 
@@ -113,7 +139,14 @@ function isImage(attachment) {
   return /\.(jpe?g|png|webp)$/.test(name);
 }
 
-/** Разовая проверка связи: пишет в лог, что ответил сайт. */
+/**
+ * Разовая проверка связи. Запускать ПЕРВОЙ: она проверяет адрес и секрет,
+ * не трогая почту. Ждём в журнале `200 {"ok":true,"saved":0,...}`.
+ *
+ * 403 — секрет не совпал с тем, что в переменной INBOUND_SCAN_SECRET.
+ * 503 — переменная на сайте вообще не задана.
+ * 404 — неверный адрес в ENDPOINT.
+ */
 function testConnection() {
   var res = UrlFetchApp.fetch(ENDPOINT + '?secret=' + encodeURIComponent(SECRET), {
     method: 'post',
