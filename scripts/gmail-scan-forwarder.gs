@@ -84,9 +84,14 @@ function forwardScans() {
         return;
       }
 
-      var images = message.getAttachments().filter(isImage);
+      var atts = message.getAttachments();
+      var images = atts.filter(isImage);
       if (images.length === 0) {
         skippedNoImages++;
+        atts.forEach(function (a) {
+          Logger.log('пропущено вложение: ' + a.getName() + ' [' + a.getContentType() + '] ' +
+            Math.round(a.getSize() / 1024) + ' KB — не распознано как картинка');
+        });
         return;
       }
 
@@ -94,11 +99,14 @@ function forwardScans() {
         from: from,
         subject: message.getSubject(),
         attachments: images.map(function (a) {
-          return {
-            filename: a.getName(),
-            contentType: a.getContentType(),
-            content: Utilities.base64Encode(a.getBytes()),
-          };
+          var mime = imageMime(a);
+          var fname = a.getName() || 'scan';
+          // Сайт проверяет и тип, и расширение — если имя без него, дописываем,
+          // иначе вложение отобьётся уже на той стороне.
+          if (!/\.(jpe?g|png|webp)$/i.test(fname)) {
+            fname += mime === 'image/png' ? '.png' : '.jpg';
+          }
+          return { filename: fname, contentType: mime, content: Utilities.base64Encode(a.getBytes()) };
         }),
       };
 
@@ -152,11 +160,44 @@ function matchesSender(from) {
   });
 }
 
+/**
+ * Картинка ли это.
+ *
+ * ⚠️ По типу и имени судить нельзя. Почтовые шлюзы сплошь и рядом ставят
+ * `application/octet-stream`, а имя приходит без расширения — так и вышло с
+ * настоящим сканом: файл был JPEG, а скрипт его пропускал. Поэтому последнее
+ * слово за содержимым: у JPEG первые байты FF D8 FF, у PNG — 89 50 4E 47.
+ */
 function isImage(attachment) {
   var type = String(attachment.getContentType() || '').toLowerCase();
   var name = String(attachment.getName() || '').toLowerCase();
+
   if (type.indexOf('image/') === 0) return true;
-  return /\.(jpe?g|png|webp)$/.test(name);
+  if (/\.(jpe?g|png|webp)$/.test(name)) return true;
+
+  try {
+    var b = attachment.getBytes();
+    if (b.length < 4) return false;
+    // getBytes отдаёт знаковые байты: 0xFF приходит как -1.
+    var u = [b[0] & 0xff, b[1] & 0xff, b[2] & 0xff, b[3] & 0xff];
+    if (u[0] === 0xff && u[1] === 0xd8 && u[2] === 0xff) return true;               // JPEG
+    if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47) return true; // PNG
+  } catch (err) {
+    Logger.log('не смогли заглянуть внутрь вложения: ' + err);
+  }
+  return false;
+}
+
+/** Определяем тип по содержимому — почтовый шлюз мог соврать. */
+function imageMime(attachment) {
+  var type = String(attachment.getContentType() || '').toLowerCase();
+  if (type.indexOf('image/') === 0) return type.split(';')[0];
+  try {
+    var b = attachment.getBytes();
+    var u = [b[0] & 0xff, b[1] & 0xff, b[2] & 0xff, b[3] & 0xff];
+    if (u[0] === 0x89 && u[1] === 0x50) return 'image/png';
+  } catch (err) { /* ниже отдадим jpeg */ }
+  return 'image/jpeg';
 }
 
 /**
