@@ -195,3 +195,51 @@ function doGet(e) {
     .createTextOutput(JSON.stringify({ ok: true, sent: sent }))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/**
+ * Диагностика: показывает, что скрипт ВИДИТ в почте, ничего не отправляя.
+ *
+ * Нужна, когда письмо в ящике есть, а `forwardScans` его «не находит».
+ * Причин ровно четыре, и все они видны в выводе: письмо старше двух суток, на
+ * нём уже висит ярлык обработки, отправитель не тот, либо вложение не
+ * картинка (МФУ часто шлёт PDF, хотя в настройках выбран JPEG).
+ *
+ * Запустить, скопировать журнал целиком — по нему сразу понятно, что чинить.
+ */
+function diagnose() {
+  Logger.log('=== ЧТО ВИДИТ СКРИПТ ===');
+  Logger.log('Разрешённые отправители: ' + (ALLOWED_SENDERS.join(', ') || '(любые)'));
+  Logger.log('Ярлык обработанных: ' + DONE_LABEL);
+
+  // Ищем ШИРЕ рабочего запроса: без фильтра по ярлыку и с запасом по сроку.
+  // Задача не отправить, а понять, что вообще лежит в ящике.
+  var threads = GmailApp.search('has:attachment newer_than:7d in:anywhere', 0, 10);
+  Logger.log('Писем с вложениями за 7 дней (включая спам): ' + threads.length);
+
+  threads.forEach(function (thread, i) {
+    var labels = thread.getLabels().map(function (l) { return l.getName(); });
+    thread.getMessages().forEach(function (m) {
+      Logger.log('--- письмо ' + (i + 1) + ' ---');
+      Logger.log('от:      ' + m.getFrom());
+      Logger.log('тема:    ' + m.getSubject());
+      Logger.log('дата:    ' + m.getDate());
+      Logger.log('ярлыки:  ' + (labels.join(', ') || '(нет)'));
+      Logger.log('в спаме: ' + (thread.isInSpam() ? 'ДА' : 'нет'));
+
+      var atts = m.getAttachments();
+      Logger.log('вложений: ' + atts.length);
+      atts.forEach(function (a) {
+        Logger.log('   file: ' + a.getName() + ' [' + a.getContentType() + '] ' +
+          Math.round(a.getSize() / 1024) + ' KB ' +
+          (isImage(a) ? '<- подходит' : '<- НЕ КАРТИНКА, будет пропущено'));
+      });
+
+      // Прямо говорим, возьмёт скрипт это письмо или нет и почему.
+      var why = [];
+      if (ALLOWED_SENDERS.length > 0 && !matchesSender(m.getFrom())) why.push('отправитель не в списке разрешённых');
+      if (labels.indexOf(DONE_LABEL) !== -1) why.push('уже помечено как отправленное');
+      if (atts.filter(isImage).length === 0) why.push('нет вложений-картинок');
+      Logger.log(why.length === 0 ? 'ВЕРДИКТ: письмо будет отправлено' : 'ВЕРДИКТ: пропустим - ' + why.join('; '));
+    });
+  });
+}
