@@ -1276,3 +1276,24 @@ tr[data-today="true"] td:first-child {
   font-weight: 600;
   color: var(--warning, #b45309);
 }
+
+/* ---------------- Очередь сканов с МФУ ---------------- */
+.scan-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.scan-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.scan-item img {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  flex-shrink: 0;
+}
+.scan-item__body { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.scan-item__meta { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }

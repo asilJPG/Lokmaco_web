@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { VoiceInput } from './voice-input';
 import { PhotoInput, type Photo } from './photo-input';
+import { ScanInbox } from './scan-inbox';
 import { StoreSelect } from '@/components/store-select';
 import { SupplierSelect } from '@/components/supplier-select';
 
@@ -117,15 +118,16 @@ export function InvoiceClient() {
    * же читается моделью. Результат попадает в ту же таблицу, что и текстовый
    * разбор: провести приход можно только после проверки человеком.
    */
-  async function parsePhoto() {
-    if (!invoicePhoto) return;
+  async function parsePhoto(path?: string) {
+    const target = path || invoicePhoto?.path;
+    if (!target) return;
     setPhotoParsing(true);
     setParseError(null);
     try {
       const res = await fetch('/api/iiko/parse-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: invoicePhoto.path }),
+        body: JSON.stringify({ path: target }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -197,6 +199,8 @@ export function InvoiceClient() {
 
   return (
     <div className="grid">
+      <ScanInbox onPick={(path) => parsePhoto(path)} />
+
       <section className="card">
         <div className="card__title"><span className="card__title-text">🗣️ Текст накладной</span></div>
         <div className="field">
@@ -367,7 +371,7 @@ export function InvoiceClient() {
         </div>
         {invoicePhoto && (
           <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn--primary" onClick={parsePhoto} disabled={photoParsing || busy}>
+            <button type="button" className="btn btn--primary" onClick={() => parsePhoto()} disabled={photoParsing || busy}>
               {photoParsing ? '⏳ Читаю накладную…' : '📄 Заполнить позиции с фото накладной'}
             </button>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '6px 0 0' }}>

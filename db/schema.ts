@@ -147,6 +147,30 @@ export const iikoCache = pgTable('iiko_cache', {
   pk: primaryKey({ columns: [t.key, t.filialId] }),
 }));
 
+/**
+ * Входящие сканы накладных: МФУ шлёт скан на почту, почтовый провайдер дёргает
+ * вебхук, вложение ложится сюда и распознаётся. Снабженец потом открывает
+ * готовый черновик, а не грузит файл руками.
+ *
+ * Таблица наша, легаси о ней не знает.
+ */
+export const scanInbox = pgTable('scan_inbox', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  filialId: integer('filial_id').notNull(),
+  fromEmail: text('from_email'),
+  subject: text('subject'),
+  photoPath: text('photo_path').notNull(),
+  parsed: jsonb('parsed'),
+  parseError: text('parse_error'),
+  /** new — ждёт оформления · used — приход создан · dismissed — отклонён. */
+  status: text('status').notNull().default('new'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  handledBy: text('handled_by'),
+}, (t) => ({
+  byFilialStatus: index('scan_inbox_filial_status_idx').on(t.filialId, t.status, t.createdAt),
+}));
+
 export type Asset = typeof assets.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;

@@ -1,5 +1,5 @@
 import { db, schema } from '@/db/client';
-import { requireSession } from '@/lib/auth-session';
+import { getSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { canAccess } from '@/lib/access';
 import { sendPurchasesDigest } from '@/lib/purchases-digest';
@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, day, ...result });
   }
 
-  const session = await requireSession();
+  // Ручка вне middleware (см. PUBLIC_API), поэтому сессию проверяем сами:
+  // без этого анонимный запрос упал бы 500 вместо честного 401.
+  const session = await getSession();
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   if (!canAccess(session.role, 'reconciliation')) {
     return Response.json({ error: 'Доступ только для администратора' }, { status: 403 });
   }

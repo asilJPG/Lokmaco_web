@@ -1,10 +1,21 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { verifySession } from '@/lib/auth';
 
+/**
+ * Ручки, куда сессии не будет по определению.
+ *
+ * Первые три — вход: сессия там как раз и выдаётся. Две последние вызываются
+ * не человеком, а машиной: почтовый провайдер приносит скан, планировщик
+ * Vercel запускает рассылку. Куки у них нет, и middleware отбивал бы их 401
+ * до самого роута. ⚠️ Каждая из них обязана проверять СВОЙ секрет
+ * (`INBOUND_SCAN_SECRET`, `CRON_SECRET`) — без сессии это единственная защита.
+ */
 const PUBLIC_API = new Set([
   '/api/auth/passkey/login/options',
   '/api/auth/passkey/login/verify',
   '/api/auth/access-code',
+  '/api/inbound/scan',
+  '/api/telegram/purchases',
 ]);
 
 export async function middleware(req: NextRequest) {
