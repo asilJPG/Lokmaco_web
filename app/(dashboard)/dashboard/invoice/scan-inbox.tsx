@@ -15,6 +15,8 @@ export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise
   const [scans, setScans] = useState<Scan[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -30,6 +32,30 @@ export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise
   }
 
   useEffect(() => { load(); }, []);
+
+  /**
+   * Забрать почту прямо сейчас, не дожидаясь фонового таймера. Нужно ровно
+   * для одного случая: человек отсканировал и стоит у принтера — минута
+   * ожидания здесь ощущается дольше, чем есть.
+   */
+  async function checkMail() {
+    setChecking(true);
+    setNote(null);
+    try {
+      const res = await fetch('/api/iiko/scans/refresh', { method: 'POST' });
+      const j = await res.json();
+      if (j.configured === false) {
+        setNote('Почтовый мост не настроен — сканы приедут, когда сработает таймер.');
+      } else if (!j.ok) {
+        setNote(j.error || 'Почту проверить не удалось');
+      }
+      await load();
+    } catch {
+      setNote('Почту проверить не удалось');
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function use(scan: Scan) {
     setBusyId(scan.id);
@@ -60,14 +86,34 @@ export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise
     }
   }
 
-  if (!ready || scans.length === 0) return null;
+  if (!ready) return null;
+
+  if (scans.length === 0) {
+    // Пустую очередь не прячем целиком: кнопка «Проверить почту» нужна именно
+    // тогда, когда скан ещё не приехал.
+    return (
+      <section className="card">
+        <div className="card__title">
+          <span className="card__title-text">📠 Сканы накладных</span>
+          <button type="button" className="btn btn--sm" onClick={checkMail} disabled={checking}>
+            {checking ? '⏳ Проверяю…' : '📥 Проверить почту'}
+          </button>
+        </div>
+        <div className="empty-state">Новых сканов нет</div>
+        {note && <div className="banner banner--warn">{note}</div>}
+      </section>
+    );
+  }
 
   return (
     <section className="card">
       <div className="card__title">
         <span className="card__title-text">📠 Сканы накладных ({scans.length})</span>
-        <button type="button" className="btn btn--sm" onClick={load}>↻ Обновить</button>
+        <button type="button" className="btn btn--sm" onClick={checkMail} disabled={checking}>
+          {checking ? '⏳ Проверяю…' : '📥 Проверить почту'}
+        </button>
       </div>
+      {note && <div className="banner banner--warn" style={{ marginBottom: 12 }}>{note}</div>}
       <div className="scan-list">
         {scans.map((s) => (
           <div key={s.id} className="scan-item">

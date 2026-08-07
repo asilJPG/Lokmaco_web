@@ -13,9 +13,14 @@
  *  3. Запустить forwardScans() руками — Google попросит разрешение на доступ
  *     к почте, согласиться.
  *  4. Часы слева → «Триггеры» → добавить триггер: forwardScans, по времени,
- *     каждые 5 минут.
+ *     «Ежеминутный таймер». Минута — минимум, который даёт Google.
+ *  5. «Развернуть» → «Новое развёртывание» → тип «Веб-приложение»,
+ *     запуск от своего имени, доступ «Все». Скопировать выданный адрес и
+ *     положить его в переменную GMAIL_SCRIPT_URL на Vercel.
  *
- * Дальше сканы приезжают на сайт сами, в раздел «Приход».
+ * Пятый шаг — ради кнопки «Проверить почту» на странице прихода: она зовёт
+ * скрипт напрямую, и скан подтягивается сразу, не дожидаясь таймера. Ждать
+ * минуту, стоя у принтера, — ровно то, чего мы избегаем.
  */
 
 // Адрес сайта. На проде — https://<ваш-домен>/api/inbound/scan
@@ -41,6 +46,7 @@ var DONE_LABEL = 'lokmaco-отправлено';
 
 function forwardScans() {
   var label = GmailApp.getUserLabelByName(DONE_LABEL) || GmailApp.createLabel(DONE_LABEL);
+  var sent = 0;
 
   // ⚠️ Намеренно без `is:unread`. Этот признак ненадёжен: письмо, посланное
   // с того же ящика, Gmail помечает прочитанным сразу, и скрипт молча ничего
@@ -81,6 +87,7 @@ function forwardScans() {
 
       if (res.getResponseCode() === 200) {
         thread.addLabel(label);
+        sent += images.length;
         Logger.log('отправлено: ' + message.getSubject() + ' → ' + res.getContentText());
       } else {
         // Ярлык не ставим: на следующем запуске попробуем ещё раз.
@@ -88,6 +95,8 @@ function forwardScans() {
       }
     });
   });
+
+  return sent;
 }
 
 function matchesSender(from) {
@@ -113,4 +122,34 @@ function testConnection() {
     muteHttpExceptions: true,
   });
   Logger.log(res.getResponseCode() + ' ' + res.getContentText());
+}
+
+/**
+ * Точка входа для сайта: кнопка «Проверить почту» на странице прихода зовёт
+ * этот адрес и получает скан немедленно.
+ *
+ * ⚠️ Веб-приложение открыто всем, кто знает ссылку, — иначе Google требует
+ * вход в аккаунт, и сайт позвать его не сможет. Поэтому секрет обязателен:
+ * без него ссылка сама по себе даёт запустить разбор почты.
+ */
+function doGet(e) {
+  var given = (e && e.parameter && e.parameter.secret) || '';
+  if (given !== SECRET) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: 'forbidden' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var sent = 0;
+  try {
+    sent = forwardScans();
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, sent: sent }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
