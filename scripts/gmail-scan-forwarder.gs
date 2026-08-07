@@ -109,17 +109,28 @@ function forwardScans() {
         muteHttpExceptions: true,
       });
 
-      if (res.getResponseCode() === 200) {
+      // ⚠️ Помечаем обработанным только когда сайт РЕАЛЬНО сохранил скан.
+      // Раньше хватало ответа 200 — и письма, на которых сайт ответил
+      // «принял, но сохранить не смог», навсегда выпадали из обработки:
+      // ярлык стоит, скана нет, и следов не найти.
+      var body = {};
+      try { body = JSON.parse(res.getContentText()); } catch (parseErr) { body = {}; }
+      var reallySaved = res.getResponseCode() === 200 && Number(body.saved) > 0;
+
+      if (body.skipped) Logger.log('сайт пропустил вложения: ' + JSON.stringify(body.skipped));
+
+      if (reallySaved) {
         thread.addLabel(label);
         // Вытаскиваем из спама: письма оттуда Gmail сам удаляет через 30 дней,
         // а нам скан нужен как подтверждение прихода. Заодно Gmail постепенно
         // перестанет считать этого отправителя спамом.
         try { thread.moveToInbox(); } catch (moveErr) { Logger.log('из спама не достали: ' + moveErr); }
-        sent += images.length;
-        Logger.log('отправлено: ' + message.getSubject() + ' → ' + res.getContentText());
+        sent += Number(body.saved);
+        Logger.log('сохранено на сайте: ' + message.getSubject() + ' → ' + res.getContentText());
       } else {
-        // Ярлык не ставим: на следующем запуске попробуем ещё раз.
-        Logger.log('ОШИБКА ' + res.getResponseCode() + ': ' + res.getContentText());
+        // Ярлык не ставим: на следующем запуске попробуем ещё раз. Именно это
+        // и нужно, когда сайт временно не может писать в хранилище.
+        Logger.log('НЕ СОХРАНЕНО (' + res.getResponseCode() + '): ' + res.getContentText());
       }
     });
   });
