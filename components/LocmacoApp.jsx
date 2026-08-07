@@ -10406,6 +10406,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
   const [expensePeriod, setExpensePeriod] = useState("this_month");
   const [cashReportsPage, setCashReportsPage] = useState(1);
   const [adminExpensesPage, setAdminExpensesPage] = useState(1);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [expenseDates, setExpenseDates] = useState(() => {
     const now = new Date();
     const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
@@ -10797,6 +10798,26 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
       showToast("Ошибка сети при добавлении расхода", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveExpenseEdit = async (form) => {
+    try {
+      const r = await fetch("/api/iiko/analytics/cash-expenses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const res = await r.json();
+      if (res && res.success) {
+        showToast(res.unchanged ? "Изменений не было" : "Расход обновлён");
+        setEditingExpense(null);
+        loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+      } else {
+        showToast(res?.error || "Ошибка сохранения", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при сохранении", "error");
     }
   };
 
@@ -13572,6 +13593,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
             </button>
           </div>
 
+          {editingExpense && (
+            <ExpenseEditModal
+              expense={editingExpense}
+              onClose={() => setEditingExpense(null)}
+              onSave={handleSaveExpenseEdit}
+            />
+          )}
           {cashExpensesData ? (
             <div>
               {/* Summary Cards */}
@@ -13765,7 +13793,7 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                   <th style={{ padding: "8px 4px" }}>Дата</th>
                                   <th style={{ padding: "8px 4px" }}>Название</th>
                                   <th style={{ padding: "8px 4px" }}>Сумма</th>
-                                  <th style={{ padding: "8px 4px", width: 40 }}></th>
+                                  <th style={{ padding: "8px 4px", width: 76 }}></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -13775,21 +13803,37 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                                     <td style={{ padding: "10px 4px", color: "var(--text-main)" }}>{expense.name}</td>
                                     <td style={{ padding: "10px 4px", fontWeight: 700, color: "#ef4444" }}>{fmtPrice(expense.amount)}</td>
                                     <td style={{ padding: "10px 4px" }}>
-                                      <button
-                                        onClick={() => handleDeleteExpense(expense.id)}
-                                        style={{
-                                          background: "none",
-                                          border: "none",
-                                          color: "#ef4444",
-                                          cursor: "pointer",
-                                          padding: 4,
-                                          display: "flex",
-                                          alignItems: "center",
-                                        }}
-                                        title="Удалить"
-                                      >
-                                        {I.trash}
-                                      </button>
+                                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                        <button
+                                          onClick={() => setEditingExpense(expense)}
+                                          style={{
+                                            background: "none",
+                                            border: "none",
+                                            color: "var(--text-muted)",
+                                            cursor: "pointer",
+                                            padding: 4,
+                                            fontSize: 14,
+                                          }}
+                                          title="Изменить"
+                                        >
+                                          ✏️
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteExpense(expense.id)}
+                                          style={{
+                                            background: "none",
+                                            border: "none",
+                                            color: "#ef4444",
+                                            cursor: "pointer",
+                                            padding: 4,
+                                            display: "flex",
+                                            alignItems: "center",
+                                          }}
+                                          title="Удалить"
+                                        >
+                                          {I.trash}
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -15958,6 +16002,69 @@ function AgentChatView({ showToast, loggedInUser }) {
         >
           {busy ? "…" : "Спросить"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseEditModal({ expense, onClose, onSave }) {
+  const [name, setName] = useState(expense.name || "");
+  const [amount, setAmount] = useState(String(expense.amount ?? ""));
+  const [date, setDate] = useState(expense.date || "");
+  const [saving, setSaving] = useState(false);
+
+  const inp = {
+    width: "100%", padding: "10px 12px", borderRadius: 8,
+    border: "1px solid var(--border-color)", background: "var(--bg-pill)",
+    color: "var(--text-main)", fontSize: 14, outline: "none", fontFamily: "inherit",
+  };
+  const lbl = { fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" };
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    await onSave({ id: expense.id, name: name.trim(), amount: parseFloat(amount) || 0, date });
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "var(--bg-card)", borderRadius: 14, border: "1px solid var(--border-color)", width: "100%", maxWidth: 420, padding: 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Правка расхода из сейфа</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Назначение</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inp} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={lbl}>Сумма</label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Дата</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inp} />
+          </div>
+        </div>
+
+        {Array.isArray(expense.edit_history) && expense.edit_history.length > 0 && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+            Правился {expense.edit_history.length} раз, последний —{" "}
+            {new Date(expense.edit_history[expense.edit_history.length - 1].edited_at).toLocaleString("ru-RU")}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={saving} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontWeight: 600, cursor: "pointer" }}>
+            Отмена
+          </button>
+          <button onClick={submit} disabled={saving || !name.trim()} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: saving ? "#9ca3af" : "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -156,11 +156,21 @@ export async function GET(request) {
   }
 }
 
+/**
+ * bot_actions.tg_id — bigint. Заголовок может прийти пустым (middleware пишет
+ * String(user.tg_id || ""), а у админа с tg_id = 0 это даёт ""), поэтому строку
+ * сюда подставлять нельзя: Postgres ответит 400 22P02.
+ */
+function parseTgId(raw) {
+  const n = Number(raw);
+  return raw !== null && raw !== "" && Number.isFinite(n) ? n : 0;
+}
+
 export async function POST(request) {
   try {
     const requesterRole = request.headers.get("x-user-role") || "";
     const requesterName = decodeURIComponent(request.headers.get("x-user-name") || "Администратор");
-    const requesterTgId = request.headers.get("x-user-tg-id") || "admin";
+    const requesterTgId = parseTgId(request.headers.get("x-user-tg-id"));
     const [baseRole] = requesterRole.split(":");
     
     if (baseRole !== "admin") {
@@ -210,6 +220,86 @@ export async function POST(request) {
     return Response.json({ success: true, expense: data[0] });
   } catch (e) {
     console.error("[/api/iiko/analytics/cash-expenses POST]", e.message);
+    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
+  }
+}
+
+/** Правка уже внесённого расхода из сейфа. Любой админ, с записью в аудит. */
+export async function PATCH(request) {
+  try {
+    const requesterRole = request.headers.get("x-user-role") || "";
+    const requesterName = decodeURIComponent(request.headers.get("x-user-name") || "Администратор");
+    const [baseRole] = requesterRole.split(":");
+
+    if (baseRole !== "admin") {
+      return Response.json({ error: "Доступ разрешен только для администраторов" }, { status: 403 });
+    }
+
+    const { id, name, amount, date } = await request.json();
+    if (!id) {
+      return Response.json({ error: "Не указан id расхода" }, { status: 400 });
+    }
+
+    const findUrl = `${SUPABASE_URL}/rest/v1/bot_actions?id=eq.${id}&action_type=eq.admin_expense&select=*`;
+    const findRes = await http1Fetch(findUrl, { method: "GET", headers: getHeaders() });
+    if (!findRes.ok) throw new Error(`Lookup failed: ${findRes.status}`);
+    const found = await findRes.json();
+    if (!Array.isArray(found) || found.length === 0) {
+      return Response.json({ error: "Расход не найден" }, { status: 404 });
+    }
+
+    const prev = found[0].details || {};
+    const nextName = name !== undefined ? String(name).trim() : prev.name;
+    const nextDate = date || prev.selected_date;
+    let nextAmount = prev.amount;
+    if (amount !== undefined) {
+      const n = parseFloat(amount);
+      if (isNaN(n) || n <= 0) {
+        return Response.json({ error: "Сумма должна быть числом больше 0" }, { status: 400 });
+      }
+      nextAmount = n;
+    }
+    if (!nextName) {
+      return Response.json({ error: "Название не может быть пустым" }, { status: 400 });
+    }
+
+    const changes = {};
+    if (prev.name !== nextName) changes.name = { from: prev.name, to: nextName };
+    if (Number(prev.amount) !== Number(nextAmount)) {
+      changes.amount = { from: Number(prev.amount) || 0, to: nextAmount };
+    }
+    if (prev.selected_date !== nextDate) {
+      changes.selected_date = { from: prev.selected_date, to: nextDate };
+    }
+    if (Object.keys(changes).length === 0) {
+      return Response.json({ success: true, unchanged: true, message: "Изменений нет" });
+    }
+
+    const details = {
+      ...prev,
+      name: nextName,
+      amount: nextAmount,
+      selected_date: nextDate,
+      edit_history: [
+        ...(Array.isArray(prev.edit_history) ? prev.edit_history : []),
+        { edited_at: new Date().toISOString(), edited_by: requesterName, changes },
+      ],
+    };
+
+    const patchUrl = `${SUPABASE_URL}/rest/v1/bot_actions?id=eq.${id}&action_type=eq.admin_expense`;
+    const res = await http1Fetch(patchUrl, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify({ details, created_at: `${nextDate}T12:00:00+05:00` }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Failed to update admin expense: ${res.status} ${errText}`);
+    }
+
+    return Response.json({ success: true, details, changed: Object.keys(changes).length });
+  } catch (e) {
+    console.error("[/api/iiko/analytics/cash-expenses PATCH]", e.message);
     return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
