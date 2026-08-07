@@ -31,6 +31,8 @@ export async function GET() {
       from: r.fromEmail,
       subject: r.subject,
       createdAt: r.createdAt,
+      parsed: r.parsed,
+      parseError: r.parseError,
     })),
   });
 }

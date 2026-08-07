@@ -1297,3 +1297,12 @@ tr[data-today="true"] td:first-child {
 }
 .scan-item__body { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
 .scan-item__meta { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+
+/* Готовые позиции прямо в карточке скана — чтобы не нажимать ради просмотра. */
+.scan-item__items {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

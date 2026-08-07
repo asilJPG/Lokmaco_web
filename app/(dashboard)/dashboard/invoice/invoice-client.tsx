@@ -118,6 +118,32 @@ export function InvoiceClient() {
    * же читается моделью. Результат попадает в ту же таблицу, что и текстовый
    * разбор: провести приход можно только после проверки человеком.
    */
+  /** Разложить распознанные позиции в таблицу. Общее для фото и для скана. */
+  function applyParsed(raw: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean }[]) {
+    const parsed: InvoiceItem[] = raw.map((it) => ({
+      product_id: it.product_id || '',
+      product_name: it.product_name || '',
+      unit: it.unit || 'кг',
+      quantity: Number(it.quantity) || 0,
+      price: Number(it.price) || 0,
+      as_written: it.as_written,
+      needs_review: it.needs_review,
+    }));
+    setItems(parsed);
+    const unmatched = parsed.filter((it) => !it.product_id).length;
+    const review = parsed.filter((it) => it.needs_review && it.product_id).length;
+    setMsg({
+      ok: unmatched === 0,
+      text: unmatched === 0
+        ? `Позиций подставлено: ${parsed.length}. Проверь количества и цены перед отправкой.`
+        : `Подставлено ${parsed.length}, из них ${unmatched} не нашлись в номенклатуре — выбери товар вручную.`,
+    });
+    if (review > 0) {
+      setParseError(`Строк, где название в накладной не совпало с товаром в iiko: ${review}. Они помечены — сверь, тот ли товар выбран.`);
+    }
+    return parsed;
+  }
+
   async function parsePhoto(path?: string) {
     const target = path || invoicePhoto?.path;
     if (!target) return;
@@ -134,27 +160,7 @@ export function InvoiceClient() {
         setParseError(data.error || 'Не удалось распознать накладную');
         return;
       }
-      const parsed: InvoiceItem[] = (data.items || []).map((it: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean }) => ({
-        product_id: it.product_id || '',
-        product_name: it.product_name || '',
-        unit: it.unit || 'кг',
-        quantity: Number(it.quantity) || 0,
-        price: Number(it.price) || 0,
-        as_written: it.as_written,
-        needs_review: it.needs_review,
-      }));
-      setItems(parsed);
-      const unmatched = parsed.filter((it) => !it.product_id).length;
-      const review = parsed.filter((it) => it.needs_review && it.product_id).length;
-      if (review > 0) {
-        setParseError(`Строк, где название в накладной не совпало с товаром в iiko: ${review}. Они помечены — сверь, тот ли товар выбран.`);
-      }
-      setMsg({
-        ok: true,
-        text: unmatched === 0
-          ? `С фото распознано позиций: ${parsed.length}. Проверь количества и цены перед отправкой.`
-          : `Распознано ${parsed.length}, из них ${unmatched} не нашлись в номенклатуре — выбери товар вручную.`,
-      });
+      applyParsed(data.items || []);
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Ошибка сети');
     } finally {
@@ -199,7 +205,10 @@ export function InvoiceClient() {
 
   return (
     <div className="grid">
-      <ScanInbox onPick={(path) => parsePhoto(path)} />
+      <ScanInbox
+        onPick={(path) => parsePhoto(path)}
+        onUse={(parsed) => applyParsed(parsed.items || [])}
+      />
 
       <section className="card">
         <div className="card__title"><span className="card__title-text">🗣️ Текст накладной</span></div>

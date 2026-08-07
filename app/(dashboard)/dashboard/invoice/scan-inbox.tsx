@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-type Scan = { id: number; path: string; url: string; from: string | null; subject: string | null; createdAt: string };
+type ParsedItem = { product_name?: string; as_written?: string; quantity?: number; unit?: string; price?: number; needs_review?: boolean; product_id?: string };
+type Parsed = { items: ParsedItem[]; supplier?: string; doc_number?: string };
+type Scan = {
+  id: number; path: string; url: string; from: string | null; subject: string | null; createdAt: string;
+  parsed: Parsed | null; parseError: string | null;
+};
 
 /**
  * Сканы, пришедшие с МФУ по почте.
@@ -11,7 +16,10 @@ type Scan = { id: number; path: string; url: string; from: string | null; subjec
  * она приехала сюда и ждёт. Клик — позиции распознаются и подставляются в форму
  * ниже, дальше как обычно: проверить и провести.
  */
-export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise<void> }) {
+export function ScanInbox({ onPick, onUse }: {
+  onPick: (path: string) => void | Promise<void>;
+  onUse: (parsed: Parsed) => void;
+}) {
   const [scans, setScans] = useState<Scan[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
@@ -60,7 +68,10 @@ export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise
   async function use(scan: Scan) {
     setBusyId(scan.id);
     try {
-      await onPick(scan.path);
+      // Разобранное приехало вместе со сканом — подставляем мгновенно.
+      // Ходим к модели заново только если при приёме распознать не вышло.
+      if (scan.parsed?.items?.length) onUse(scan.parsed);
+      else await onPick(scan.path);
       await fetch('/api/iiko/scans', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -122,11 +133,29 @@ export function ScanInbox({ onPick }: { onPick: (path: string) => void | Promise
             <div className="scan-item__body">
               <div className="scan-item__meta">
                 {new Date(s.createdAt).toLocaleString('ru-RU')}
-                {s.from ? ` · ${s.from}` : ''}
+                {s.parsed?.supplier ? ` · ${s.parsed.supplier}` : ''}
+                {s.parsed?.doc_number ? ` · № ${s.parsed.doc_number}` : ''}
               </div>
+
+              {s.parsed?.items?.length ? (
+                <div className="scan-item__items">
+                  {s.parsed.items.slice(0, 4).map((it, i) => (
+                    <div key={i}>
+                      {it.needs_review && <span title={`В накладной: ${it.as_written}`}>⚠️ </span>}
+                      {it.product_name} — {it.quantity} {it.unit} × {Number(it.price || 0).toLocaleString('ru-RU')}
+                    </div>
+                  ))}
+                  {s.parsed.items.length > 4 && <div>…и ещё {s.parsed.items.length - 4}</div>}
+                </div>
+              ) : s.parseError ? (
+                <div className="banner banner--warn" style={{ padding: '4px 8px', fontSize: 12 }}>
+                  Распознать не вышло: {s.parseError}
+                </div>
+              ) : null}
+
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn--primary btn--sm" disabled={busyId === s.id} onClick={() => use(s)}>
-                  {busyId === s.id ? '⏳ Читаю…' : '📄 Распознать'}
+                  {busyId === s.id ? '⏳ Читаю…' : s.parsed?.items?.length ? '✓ Взять в приход' : '📄 Распознать'}
                 </button>
                 <button type="button" className="btn btn--sm" disabled={busyId === s.id} onClick={() => dismiss(s)}>
                   Убрать

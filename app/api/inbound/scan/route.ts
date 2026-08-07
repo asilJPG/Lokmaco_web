@@ -1,6 +1,7 @@
 import { db, schema } from '@/db/client';
 import { buildPhotoPath, uploadPhoto, ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES } from '@/lib/storage';
 import { tashkentDate } from '@/lib/tashkent';
+import { parseInvoicePhoto } from '@/lib/parse-invoice-photo';
 
 export const dynamic = 'force-dynamic';
 // Скачать вложение, положить в хранилище и распознать — минуты хватает с запасом.
@@ -66,9 +67,14 @@ async function extract(req: Request): Promise<{ attachments: Attachment[]; from:
  * Приём сканов накладных с почты.
  *
  * МФУ отправляет скан на выделенный адрес, почтовый провайдер дёргает эту
- * ручку, вложение ложится в хранилище и встаёт в очередь «сканы ждут
- * оформления». Распознавание идёт отдельно, при открытии — чтобы письмо не
- * висело в ожидании ответа модели и провайдер не считал доставку неудачной.
+ * ручку, вложение ложится в хранилище и **сразу распознаётся**: снабженец
+ * должен открыть страницу и увидеть готовые позиции, а не жать «Распознать» и
+ * ждать. Ответ из-за этого занимает секунд двадцать — Apps Script столько
+ * ждёт спокойно (его потолок 60 с).
+ *
+ * ⚠️ Провал распознавания не отменяет приём: скан всё равно сохраняется, а
+ * причина пишется в `parse_error`. Иначе плохо снятая накладная пропадала бы
+ * бесследно, и человек даже не знал бы, что она приходила.
  *
  * ⚠️ Ручка живёт вне сессии: сюда стучится почтовый сервис, а не человек.
  * Поэтому секрет обязателен, иначе прислать «скан» сможет кто угодно.
@@ -116,11 +122,22 @@ export async function POST(req: Request) {
       console.error('[inbound/scan] не сохранили вложение', e);
       continue;
     }
+    let parsed: unknown = null;
+    let parseError: string | null = null;
+    try {
+      parsed = await parseInvoicePhoto(filialId, path);
+    } catch (e) {
+      parseError = e instanceof Error ? e.message : 'не удалось распознать';
+      console.error('[inbound/scan] распознать не вышло', path, parseError);
+    }
+
     const [row] = await db.insert(schema.scanInbox).values({
       filialId,
       fromEmail: payload.from.slice(0, 300),
       subject: payload.subject.slice(0, 300),
       photoPath: path,
+      parsed,
+      parseError,
     }).returning({ id: schema.scanInbox.id });
     saved.push(row.id);
   }
