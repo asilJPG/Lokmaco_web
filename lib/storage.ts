@@ -40,6 +40,17 @@ function creds(): { url: string; key: string } {
   const url = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || '';
   if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_KEY не заданы');
+
+  // ⚠️ Ключ уходит в HTTP-заголовок, а туда можно только латиницу. Если в нём
+  // окажется что-то ещё, fetch падает с «Cannot convert argument to a
+  // ByteString» — сообщение, по которому причину не угадать. Так уже было:
+  // из интерфейса скопировали не сам ключ, а маску из точек «••••».
+  if (/[^\x20-\x7E]/.test(key)) {
+    throw new Error(
+      'SUPABASE_KEY содержит недопустимые символы — похоже, скопирована маска (точки), а не сам ключ. ' +
+      'Настоящий ключ начинается на «eyJ» и состоит из латиницы, цифр, точек, дефисов и подчёркиваний.'
+    );
+  }
   return { url, key };
 }
 
