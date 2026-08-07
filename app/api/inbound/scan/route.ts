@@ -110,16 +110,23 @@ export async function POST(req: Request) {
   }
 
   const saved: number[] = [];
+  // ⚠️ Причины пропуска возвращаем в ответе, а не только в консоль. Молчаливый
+  // `saved: 0` уже стоил часа поисков: письмо принято, ответ 200, а почему
+  // ничего не сохранилось — не видно ни в журнале скрипта, ни на сайте.
+  const skipped: string[] = [];
+
   for (const a of payload.attachments) {
     if (a.bytes.byteLength > MAX_PHOTO_BYTES * 4) {
-      console.warn('[inbound/scan] вложение слишком большое, пропущено', a.filename, a.bytes.byteLength);
+      skipped.push(`${a.filename}: слишком большой файл (${Math.round(a.bytes.byteLength / 1024)} КБ)`);
       continue;
     }
     const path = buildPhotoPath(filialId, 'invoice', a.contentType, tashkentDate());
     try {
       await uploadPhoto(path, a.bytes, a.contentType);
     } catch (e) {
-      console.error('[inbound/scan] не сохранили вложение', e);
+      const reason = e instanceof Error ? e.message : 'ошибка хранилища';
+      console.error('[inbound/scan] не сохранили вложение', reason);
+      skipped.push(`${a.filename}: ${reason}`);
       continue;
     }
     let parsed: unknown = null;
@@ -142,5 +149,10 @@ export async function POST(req: Request) {
     saved.push(row.id);
   }
 
-  return Response.json({ ok: true, saved: saved.length, ids: saved });
+  return Response.json({
+    ok: true,
+    saved: saved.length,
+    ids: saved,
+    ...(skipped.length > 0 ? { skipped } : {}),
+  });
 }
