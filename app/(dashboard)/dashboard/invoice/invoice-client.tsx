@@ -7,7 +7,13 @@ import { StoreSelect } from '@/components/store-select';
 import { SupplierSelect } from '@/components/supplier-select';
 
 type Product = { id: string; name: string; num: string; mainUnit: string };
-type InvoiceItem = { product_id: string; product_name: string; unit: string; quantity: number; price: number };
+type InvoiceItem = {
+  product_id: string; product_name: string; unit: string; quantity: number; price: number;
+  /** Как позиция написана в накладной, если приход распознан с фото. */
+  as_written?: string;
+  /** Модель выбрала товар, отличающийся от написанного — строку надо перепроверить. */
+  needs_review?: boolean;
+};
 
 export function InvoiceClient() {
   const [text, setText] = useState('');
@@ -29,6 +35,7 @@ export function InvoiceClient() {
   const [goodsPhoto, setGoodsPhoto] = useState<Photo | null>(null);
   const [invoicePhoto, setInvoicePhoto] = useState<Photo | null>(null);
 
+  const [photoParsing, setPhotoParsing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -104,6 +111,54 @@ export function InvoiceClient() {
     if (!q) return [];
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [addQuery, products]);
+
+  /**
+   * Позиции с фотографии накладной. Снимок уже загружен ради факта — здесь он
+   * же читается моделью. Результат попадает в ту же таблицу, что и текстовый
+   * разбор: провести приход можно только после проверки человеком.
+   */
+  async function parsePhoto() {
+    if (!invoicePhoto) return;
+    setPhotoParsing(true);
+    setParseError(null);
+    try {
+      const res = await fetch('/api/iiko/parse-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: invoicePhoto.path }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setParseError(data.error || 'Не удалось распознать накладную');
+        return;
+      }
+      const parsed: InvoiceItem[] = (data.items || []).map((it: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean }) => ({
+        product_id: it.product_id || '',
+        product_name: it.product_name || '',
+        unit: it.unit || 'кг',
+        quantity: Number(it.quantity) || 0,
+        price: Number(it.price) || 0,
+        as_written: it.as_written,
+        needs_review: it.needs_review,
+      }));
+      setItems(parsed);
+      const unmatched = parsed.filter((it) => !it.product_id).length;
+      const review = parsed.filter((it) => it.needs_review && it.product_id).length;
+      if (review > 0) {
+        setParseError(`Строк, где название в накладной не совпало с товаром в iiko: ${review}. Они помечены — сверь, тот ли товар выбран.`);
+      }
+      setMsg({
+        ok: true,
+        text: unmatched === 0
+          ? `С фото распознано позиций: ${parsed.length}. Проверь количества и цены перед отправкой.`
+          : `Распознано ${parsed.length}, из них ${unmatched} не нашлись в номенклатуре — выбери товар вручную.`,
+      });
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Ошибка сети');
+    } finally {
+      setPhotoParsing(false);
+    }
+  }
 
   async function submit() {
     setBusy(true);
@@ -197,6 +252,14 @@ export function InvoiceClient() {
                         <>
                           {it.product_name}
                           <span style={{ color: 'var(--text-faint)', fontSize: 11, marginLeft: 8 }}>{it.unit}</span>
+                          {it.needs_review && (
+                            /* В накладной одно, в номенклатуре выбрано другое. Чаще всего
+                               это «морковь» → «Морковь желтый»: вариантов два, и товар
+                               на складе от выбора зависит. */
+                            <div className="review-note">
+                              ⚠️ В накладной: «{it.as_written}» — проверь, тот ли товар
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div>
@@ -302,6 +365,16 @@ export function InvoiceClient() {
           <PhotoInput kind="goods" photo={goodsPhoto} onChange={setGoodsPhoto} disabled={busy} />
           <PhotoInput kind="invoice" photo={invoicePhoto} onChange={setInvoicePhoto} disabled={busy} />
         </div>
+        {invoicePhoto && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="btn btn--primary" onClick={parsePhoto} disabled={photoParsing || busy}>
+              {photoParsing ? '⏳ Читаю накладную…' : '📄 Заполнить позиции с фото накладной'}
+            </button>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              Позиции подставятся в таблицу выше. Проверь их: снимок под углом или в тени читается плохо, а модель отвечает уверенно в любом случае.
+            </p>
+          </div>
+        )}
         {(!goodsPhoto || !invoicePhoto) && (
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '10px 0 0' }}>
             Фото необязательны, но приход без них будет помечен в истории — по нему потом не проверишь, что привезли.

@@ -1268,3 +1268,11 @@ tr[data-today="true"] td:first-child {
   color: var(--danger, #dc2626);
   background: color-mix(in srgb, var(--danger, #dc2626) 10%, transparent);
 }
+
+/* Строка прихода, где модель выбрала товар не дословно по накладной. */
+.review-note {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning, #b45309);
+}
