@@ -53,7 +53,11 @@ function forwardScans() {
   // не находил бы. Дублей не будет и так — от них защищает ярлык.
   //
   // Окно в двое суток — чтобы после долгого простоя не разбирать всю почту.
-  var query = 'has:attachment newer_than:2d -label:' + DONE_LABEL;
+  // ⚠️ `in:anywhere` обязателен. Письма от принтера Gmail охотно кладёт в
+  // Спам: отправитель незнакомый, тема служебная, вложение картинкой. Без
+  // этого куска поиск смотрит только обычную почту и честно находит ноль —
+  // так и вышло при первом запуске.
+  var query = 'has:attachment newer_than:2d in:anywhere -label:' + DONE_LABEL;
   var threads = GmailApp.search(query, 0, 20);
 
   // Отчитываемся всегда, даже когда делать нечего. Молчаливый запуск не
@@ -64,6 +68,7 @@ function forwardScans() {
   if (threads.length === 0) {
     Logger.log('Нечего отправлять. Это нормально, если скана ещё не было.');
     Logger.log('Если скан точно приходил — проверьте, что письмо не старше двух суток и на нём нет ярлыка «' + DONE_LABEL + '».');
+    Logger.log('Поиск идёт и по Спаму тоже (in:anywhere).');
   }
 
   var skippedBySender = 0;
@@ -106,6 +111,10 @@ function forwardScans() {
 
       if (res.getResponseCode() === 200) {
         thread.addLabel(label);
+        // Вытаскиваем из спама: письма оттуда Gmail сам удаляет через 30 дней,
+        // а нам скан нужен как подтверждение прихода. Заодно Gmail постепенно
+        // перестанет считать этого отправителя спамом.
+        try { thread.moveToInbox(); } catch (moveErr) { Logger.log('из спама не достали: ' + moveErr); }
         sent += images.length;
         Logger.log('отправлено: ' + message.getSubject() + ' → ' + res.getContentText());
       } else {
