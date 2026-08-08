@@ -15157,6 +15157,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const [editModalAsset, setEditModalAsset] = useState(null); // Asset object to edit or new
   const [qrModalAsset, setQrModalAsset] = useState(null); // Asset object for QR sticker print
   const [scanOpen, setScanOpen] = useState(false); // Camera-based inventory scanner
+  const [openGroups, setOpenGroups] = useState(() => new Set()); // раскрытые партии
 
   const loadAssets = async () => {
     setLoading(true);
@@ -15321,6 +15322,37 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
   const totalInitialCost = filteredAssets.reduce((sum, a) => sum + (parseFloat(a.initial_cost) || 0), 0);
   const totalCount = filteredAssets.length;
+
+  // Разбитые партии показываем одной строкой: 20 карточек «Монстеры» — это один
+  // вид, а не двадцать позиций в списке. Ключ — инв. номер без суффикса -NN плюс
+  // название, чтобы разные виды с похожей нумерацией не слиплись.
+  const groupedAssets = (() => {
+    const groups = new Map();
+    for (const a of filteredAssets) {
+      const base = String(a.inv_number || "").replace(/-\d+$/, "");
+      const key = `${base}|${a.name}`;
+      if (!groups.has(key)) groups.set(key, { key, base, name: a.name, units: [] });
+      groups.get(key).units.push(a);
+    }
+    return Array.from(groups.values()).map((g) => {
+      g.units.sort((x, y) => String(x.inv_number).localeCompare(String(y.inv_number)));
+      // «Отсканировано» — по последней дате инвентаризации в этой партии:
+      // экземпляры с той же датой попали в последний обход, остальные пропущены.
+      const days = g.units.map((u) => (u.last_inventoried_at || "").slice(0, 10)).filter(Boolean);
+      const lastDay = days.sort().slice(-1)[0] || null;
+      const scanned = lastDay
+        ? g.units.filter((u) => (u.last_inventoried_at || "").slice(0, 10) === lastDay).length
+        : 0;
+      return {
+        ...g,
+        isBatch: g.units.length > 1,
+        total: g.units.length,
+        lastDay,
+        scanned,
+        cost: g.units.reduce((s, u) => s + (parseFloat(u.initial_cost) || 0), 0),
+      };
+    });
+  })();
 
   const handleExportCsv = () => {
     const rows = [[
@@ -15625,7 +15657,128 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredAssets.map((asset) => {
+                {groupedAssets.map((group) => {
+                  // Партия из нескольких экземпляров — одна сворачиваемая строка
+                  if (group.isBatch) {
+                    const isOpen = openGroups.has(group.key);
+                    const missing = group.total - group.scanned;
+                    const toggle = () =>
+                      setOpenGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      });
+
+                    return (
+                      <Fragment key={group.key}>
+                        <tr
+                          onClick={toggle}
+                          style={{
+                            borderBottom: "1px solid var(--border-color)",
+                            cursor: "pointer",
+                            background: isOpen ? "var(--bg-pill)" : "transparent",
+                          }}
+                        >
+                          <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--color-primary, #6366f1)" }}>
+                            <span style={{ marginRight: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                              {isOpen ? "▾" : "▸"}
+                            </span>
+                            {group.base}
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 700, color: "var(--text-main)" }}>
+                              {group.name}
+                              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+                                × {group.total} шт
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, marginTop: 3 }}>
+                              {group.lastDay ? (
+                                <span style={{ color: missing > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>
+                                  Отсканировано {group.scanned} из {group.total}
+                                  {missing > 0 ? ` · не найдено ${missing}` : " · все на месте"}
+                                </span>
+                              ) : (
+                                <span style={{ color: "var(--text-muted)" }}>Инвентаризация не проводилась</span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: "14px 16px", color: "var(--text-main)" }}>
+                            📅 {group.units[0]?.commissioning_date || "—"}
+                          </td>
+                          <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, color: "var(--text-main)" }}>
+                            {formatMoney(group.cost)}
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 600 }}>👤 {group.units[0]?.responsible_person || "Не указан"}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>📍 {group.units[0]?.location || "—"}</div>
+                          </td>
+                          <td style={{ padding: "14px 16px" }}>
+                            <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, fontWeight: 700, background: "var(--bg-pill)", color: "var(--text-muted)" }}>
+                              Партия
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 16px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+                            {isOpen ? "свернуть" : "раскрыть"}
+                          </td>
+                        </tr>
+
+                        {isOpen && group.units.map((u) => {
+                          const scannedNow =
+                            group.lastDay && (u.last_inventoried_at || "").slice(0, 10) === group.lastDay;
+                          return (
+                            <tr key={u.id} style={{ borderBottom: "1px solid var(--border-color)", background: "rgba(99,102,241,0.03)" }}>
+                              <td style={{ padding: "10px 16px 10px 38px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>
+                                {u.inv_number}
+                              </td>
+                              <td style={{ padding: "10px 16px", fontSize: 13 }}>
+                                {group.lastDay ? (
+                                  scannedNow ? (
+                                    <span style={{ color: "#10b981", fontWeight: 600 }}>✅ отсканирован {u.last_inventoried_at ? new Date(u.last_inventoried_at).toLocaleDateString("ru-RU") : ""}</span>
+                                  ) : (
+                                    <span style={{ color: "#ef4444", fontWeight: 700 }}>❌ не найден при последнем обходе</span>
+                                  )
+                                ) : (
+                                  <span style={{ color: "var(--text-muted)" }}>не сканировался</span>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)" }}>
+                                № {u.serial_number || "—"}
+                              </td>
+                              <td style={{ padding: "10px 16px", textAlign: "right", fontSize: 12, color: "var(--text-muted)" }}>
+                                {formatMoney(u.initial_cost)}
+                              </td>
+                              <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)" }}>
+                                📍 {u.location || "—"}
+                              </td>
+                              <td style={{ padding: "10px 16px" }}></td>
+                              <td style={{ padding: "10px 16px", textAlign: "center" }}>
+                                <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                                  <button
+                                    onClick={() => setQrModalAsset(u)}
+                                    title="QR-стикер этого экземпляра"
+                                    style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 11, cursor: "pointer" }}
+                                  >
+                                    📱 QR
+                                  </button>
+                                  <button
+                                    onClick={() => setEditModalAsset(u)}
+                                    title="Изменить"
+                                    style={{ padding: "4px 8px", borderRadius: 7, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 11, cursor: "pointer" }}
+                                  >
+                                    ✏️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  }
+
+                  const asset = group.units[0];
                   const statusColors = {
                     in_use: { bg: "rgba(16, 185, 129, 0.1)", color: "#10b981", label: "🟢 В эксплуатации" },
                     repair: { bg: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", label: "🟡 В ремонте" },
