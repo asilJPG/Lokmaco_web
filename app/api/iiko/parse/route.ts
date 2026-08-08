@@ -1,16 +1,12 @@
-import { withIikoSession, iikoGet } from '@/lib/iiko';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
-import { extractItems, matchItems, type ParsedItem } from '@/lib/invoice-match';
+import { applyPacks, extractItems, loadGoods, matchItems, packsHint, type Good, type ParsedItem } from '@/lib/invoice-match';
 
 export const dynamic = 'force-dynamic';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-4-27b-it:free';
-
-type IikoProduct = { id: string; name: string; type?: string; mainUnit?: string };
-type ProductLite = { id: string; name: string };
 
 export async function POST(req: Request) {
   await requireSession();
@@ -34,12 +30,9 @@ export async function POST(req: Request) {
   const { xml: creds } = await resolveIikoCreds(filialId);
 
   // 1. Список товаров из iiko
-  let products: ProductLite[] = [];
+  let products: Good[] = [];
   try {
-    products = await withIikoSession(async (token) => {
-      const data = (await iikoGet<IikoProduct[]>('v2/entities/products/list', token, creds)) || [];
-      return data.filter((p) => p.type === 'GOODS').map((p) => ({ id: p.id, name: p.name }));
-    }, creds);
+    products = await loadGoods(creds);
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : 'iiko failed' }, { status: 502 });
   }
@@ -54,6 +47,10 @@ export async function POST(req: Request) {
 ВАЖНО: если пользователь указал число после количества — это ОБЩАЯ СУММА за весь товар, НЕ цена за единицу. Раздели сумму на количество чтобы получить price.
 Пример: "помидоры 50кг 600000" → quantity=50, price=12000 (600000/50)
 Пример: "молоко 10л 450000" → quantity=10, price=45000 (450000/10)
+Количество и цену НЕ пересчитывай из упаковок в штуки — это сделаем сами. Но если названа упаковка
+(коробка, мешок, пачка) и такой товар есть в списке ФАСОВКА — добавь поле "pack" с названием фасовки оттуда.
+
+ФАСОВКА: ${packsHint(products)}
 ТЕКСТ: ${text}
 ТОВАРЫ: ${namesStr}
 ОТВЕТ JSON массив без markdown: [{"product_name":"точное название из списка","quantity":50,"unit":"кг","price":12000}]`;
@@ -93,7 +90,10 @@ export async function POST(req: Request) {
 
   // 3. Матчинг общий с разбором фото: одна и та же накладная не должна попадать
   //    в разные позиции iiko в зависимости от того, надиктовали её или сняли.
-  const items = matchItems(parsed.items as ParsedItem[], products);
+  const items = applyPacks(
+    matchItems(parsed.items as ParsedItem[], products),
+    new Map(products.map((p) => [p.id, p]))
+  );
 
   return Response.json({ items });
 }

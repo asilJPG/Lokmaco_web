@@ -1,6 +1,6 @@
 import { resolveIikoCreds } from './filial-iiko';
 import { downloadPhoto } from './storage';
-import { loadGoods, matchItems, extractItems, stripFences, type ParsedItem } from './invoice-match';
+import { loadGoods, matchItems, applyPacks, packsHint, extractItems, stripFences, type ParsedItem } from './invoice-match';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'google/gemini-2.5-flash';
@@ -8,7 +8,7 @@ const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'google/gemini-2.5-f
 /** Модель обязана так ответить, если на снимке не накладная или ничего не разобрать. */
 const NOTHING = 'НЕТ_НАКЛАДНОЙ';
 
-const PROMPT = (names: string) => `Ты читаешь ФОТОГРАФИЮ бумажной накладной из ресторана в Узбекистане и превращаешь её в позиции прихода.
+const PROMPT = (names: string, packs: string) => `Ты читаешь ФОТОГРАФИЮ бумажной накладной из ресторана в Узбекистане и превращаешь её в позиции прихода.
 
 ГЛАВНОЕ ПРАВИЛО: выписывай только те позиции, которые РЕАЛЬНО ВИДНЫ на снимке.
 Никогда не додумывай товары, количества и цены. Не бери их из списка номенклатуры «по смыслу».
@@ -22,10 +22,17 @@ const PROMPT = (names: string) => `Ты читаешь ФОТОГРАФИЮ бу
 
 Цена (price) — за ЕДИНИЦУ. Если в накладной указана сумма за строку, раздели её на количество.
 
+Количество и цену пиши РОВНО КАК В НАКЛАДНОЙ. Ничего не пересчитывай из упаковок в штуки — это сделаем сами.
+Но если строка накладной — это упаковка (коробка, мешок, пачка, банка; или на товаре указан вес и объём: «228гр», «1.5л»),
+а такой товар есть в списке ФАСОВКА — верни поле "pack" с названием фасовки оттуда. Иначе поле "pack" не пиши.
+
+ФАСОВКА (у этих товаров склад считает в основной единице, а закупают упаковками):
+${packs}
+
 НОМЕНКЛАТУРА: ${names}
 
 Ответ — JSON без markdown:
-{"items":[{"as_written":"морковь","product_name":"Морковь желтый","quantity":50,"unit":"кг","price":12000}],"supplier":"поставщик если виден","doc_number":"номер если виден"}`;
+{"items":[{"as_written":"морковь","product_name":"Морковь желтый","quantity":50,"unit":"кг","price":12000},{"as_written":"Oreo 228gr","product_name":"Орео печеньки","pack":"коробка","quantity":5,"unit":"коробка","price":27790}],"supplier":"поставщик если виден","doc_number":"номер если виден"}`;
 
 
 export type PhotoParseResult = {
@@ -62,7 +69,7 @@ export async function parseInvoicePhoto(filialId: number, path: string): Promise
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: PROMPT(products.map((p) => p.name).join(', ')) },
+          { type: 'text', text: PROMPT(products.map((p) => p.name).join(', '), packsHint(products)) },
           { type: 'image_url', image_url: { url: dataUrl } },
         ],
       }],
@@ -97,7 +104,7 @@ export async function parseInvoicePhoto(filialId: number, path: string): Promise
   const items: ParsedItem[] = parsed.items;
   if (items.length === 0) throw new Error('В накладной не распознано ни одной позиции');
 
-  const matched = matchItems(items, products);
+  const matched = applyPacks(matchItems(items, products), new Map(products.map((p) => [p.id, p])));
 
   // Два разных товара, свёрнутые в один: «AKS гель 1000мл» и «AKS гель 450мл»
   // оба тянутся к «AKS гель 1кг ведро». По отдельности каждая строка выглядит
@@ -116,7 +123,8 @@ export async function parseInvoicePhoto(filialId: number, path: string): Promise
       const chosen = String(it.product_name || '').trim().toLowerCase();
       const differs = !!written && !!chosen && written !== chosen;
       const duplicate = !!it.product_id && (seen.get(it.product_id) || 0) > 1;
-      return { ...it, needs_review: differs || duplicate };
+      // Пересчёт из упаковок меняет и количество, и цену — это надо увидеть.
+      return { ...it, needs_review: differs || duplicate || !!it.pack_note };
     }),
     supplier: parsed.supplier,
     doc_number: parsed.doc_number,

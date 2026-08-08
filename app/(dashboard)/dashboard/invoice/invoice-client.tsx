@@ -12,6 +12,8 @@ type InvoiceItem = {
   product_id: string; product_name: string; unit: string; quantity: number; price: number;
   /** Как позиция написана в накладной, если приход распознан с фото. */
   as_written?: string;
+  /** «5 коробка × 24 = 120 шт» — как упаковки пересчитали в основную единицу. */
+  pack_note?: string;
   /** Модель выбрала товар, отличающийся от написанного — строку надо перепроверить. */
   needs_review?: boolean;
 };
@@ -75,14 +77,9 @@ export function InvoiceClient() {
         setParseError(data.error || 'Ошибка распознавания');
         return;
       }
-      const parsed: InvoiceItem[] = (data.items || []).map((it: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number }) => ({
-        product_id: it.product_id || '',
-        product_name: it.product_name || '',
-        unit: it.unit || 'шт',
-        quantity: Number(it.quantity) || 0,
-        price: Number(it.price) || 0,
-      }));
-      setItems(parsed);
+      // Через ту же функцию, что и фото: пересчёт упаковок и пометки о проверке
+      // должны выглядеть одинаково, надиктовали приход или сняли.
+      applyParsed(data.items || []);
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Ошибка сети');
     } finally {
@@ -119,7 +116,7 @@ export function InvoiceClient() {
    * разбор: провести приход можно только после проверки человеком.
    */
   /** Разложить распознанные позиции в таблицу. Общее для фото и для скана. */
-  function applyParsed(raw: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean }[]) {
+  function applyParsed(raw: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean; pack_note?: string }[]) {
     const parsed: InvoiceItem[] = raw.map((it) => ({
       product_id: it.product_id || '',
       product_name: it.product_name || '',
@@ -128,6 +125,7 @@ export function InvoiceClient() {
       price: Number(it.price) || 0,
       as_written: it.as_written,
       needs_review: it.needs_review,
+      pack_note: it.pack_note,
     }));
     setItems(parsed);
     const unmatched = parsed.filter((it) => !it.product_id).length;
@@ -265,6 +263,12 @@ export function InvoiceClient() {
                         <>
                           {it.product_name}
                           <span style={{ color: 'var(--text-faint)', fontSize: 11, marginLeft: 8 }}>{it.unit}</span>
+                          {it.pack_note && (
+                            /* Пересчёт упаковок в основную единицу: в накладной коробки,
+                               на складе штуки. Показываем саму арифметику — иначе цифры
+                               в форме не сходятся с цифрами в накладной, и это пугает. */
+                            <div className="review-note">📦 {it.pack_note} (по карточке iiko)</div>
+                          )}
                           {it.needs_review && (
                             /* В накладной одно, в номенклатуре выбрано другое. Чаще всего
                                это «морковь» → «Морковь желтый»: вариантов два, и товар
