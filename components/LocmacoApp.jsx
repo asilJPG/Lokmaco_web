@@ -15243,6 +15243,43 @@ function FixedAssetsView({ showToast, loggedInUser }) {
     }
   };
 
+  const handleSplitAsset = async (asset) => {
+    const n = parseInt(asset.quantity, 10) || 1;
+    if (n < 2) {
+      showToast?.("Разбивать нечего: количество меньше двух", "warn");
+      return;
+    }
+    if (!window.confirm(
+      `Разбить «${asset.name}» на ${n} отдельных карточек?\n\n` +
+      `У каждой будет свой QR и номер ${asset.inv_number}-01…${asset.inv_number}-${String(n).padStart(2, "0")}. ` +
+      `Стоимость поделится поровну. Исходная позиция будет удалена.\n\n` +
+      `В iiko ничего не изменится.`
+    )) return;
+
+    try {
+      const res = await fetch("/api/iiko/assets/split", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": loggedInUser?.id || "admin",
+          "x-user-role": loggedInUser?.baseRole || "admin",
+          "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ"),
+        },
+        body: JSON.stringify({ id: asset.id, count: n }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast?.(json.message || `Разбито на ${json.count}`, "success");
+        await loadAssets();
+      } else {
+        showToast?.(json.error || "Ошибка разбивки", "error");
+      }
+    } catch (e) {
+      console.error("[split]", e);
+      showToast?.("Ошибка разбивки", "error");
+    }
+  };
+
   const handleDeleteAsset = async (id, name) => {
     if (!window.confirm(`Вы действительно хотите удалить или списать "${name}"?`)) return;
     try {
@@ -15649,6 +15686,27 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                           >
                             📱 QR-код
                           </button>
+
+                          {/* Split Button — только для позиций с количеством > 1 */}
+                          {(parseInt(asset.quantity, 10) || 1) > 1 && (
+                            <button
+                              onClick={() => handleSplitAsset(asset)}
+                              title={`Разбить на ${asset.quantity} отдельных карточек со своими QR`}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border-color)",
+                                background: "rgba(245, 158, 11, 0.12)",
+                                color: "#b45309",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ✂️ ×{asset.quantity}
+                            </button>
+                          )}
 
                           {/* Edit Button */}
                           <button
@@ -16747,14 +16805,22 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
                 if (!inv) continue;
                 const asset = byInv.get(inv);
                 if (asset) {
+                  let already = false;
                   setScannedIds(prev => {
-                    if (prev.has(asset.id)) return prev;
+                    if (prev.has(asset.id)) { already = true; return prev; }
                     const next = new Set(prev);
                     next.add(asset.id);
                     return next;
                   });
-                  setLastScan({ ok: true, inv, name: asset.name });
-                  if (navigator.vibrate) navigator.vibrate(60);
+                  setLastScan({
+                    ok: !already,
+                    duplicate: already,
+                    inv,
+                    name: asset.name,
+                    location: asset.location,
+                    serial: asset.serial_number,
+                  });
+                  if (navigator.vibrate) navigator.vibrate(already ? [40, 60, 40] : 60);
                 } else {
                   setLastScan({ ok: false, inv, name: "Не найдено в базе" });
                 }
@@ -16825,12 +16891,22 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
         </div>
 
         {/* last scan feedback */}
-        <div style={{ padding: "10px 18px", background: lastScan ? (lastScan.ok ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)") : "var(--bg-pill)", borderBottom: "1px solid var(--border-color)", minHeight: 44, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ padding: "10px 18px", background: lastScan ? (lastScan.ok ? "rgba(16,185,129,0.12)" : lastScan.duplicate ? "rgba(245,158,11,0.14)" : "rgba(239,68,68,0.12)") : "var(--bg-pill)", borderBottom: "1px solid var(--border-color)", minHeight: 52, display: "flex", alignItems: "center", gap: 10 }}>
           {lastScan ? (
             <>
-              <span style={{ fontSize: 18 }}>{lastScan.ok ? "✅" : "⚠️"}</span>
-              <div style={{ fontSize: 13, color: "var(--text-main)" }}>
+              <span style={{ fontSize: 18 }}>{lastScan.ok ? "✅" : lastScan.duplicate ? "🔁" : "⚠️"}</span>
+              <div style={{ fontSize: 13, color: "var(--text-main)", lineHeight: 1.4 }}>
                 <b>{lastScan.inv}</b> — {lastScan.name}
+                {lastScan.duplicate && (
+                  <span style={{ color: "#b45309", fontWeight: 700 }}> · уже отсканирован, не засчитан</span>
+                )}
+                {(lastScan.location || lastScan.serial) && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                    {lastScan.location ? `📍 ${lastScan.location}` : ""}
+                    {lastScan.location && lastScan.serial ? " · " : ""}
+                    {lastScan.serial ? `№ ${lastScan.serial}` : ""}
+                  </div>
+                )}
               </div>
             </>
           ) : (
