@@ -1,6 +1,6 @@
 import { resolveIikoCreds } from './filial-iiko';
 import { downloadPhoto } from './storage';
-import { loadGoods, matchItems, stripFences, type ParsedItem } from './invoice-match';
+import { loadGoods, matchItems, extractItems, stripFences, type ParsedItem } from './invoice-match';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'google/gemini-2.5-flash';
@@ -67,6 +67,10 @@ export async function parseInvoicePhoto(filialId: number, path: string): Promise
         ],
       }],
       temperature: 0,
+      // ⚠️ Без этого провайдер обрывает ответ на паре сотен токенов: накладная
+      // на пять строк приезжала обрезанной посреди слова, JSON не собирался, и
+      // скан уходил в «Не удалось разобрать ответ модели».
+      max_tokens: 4000,
     }),
     cache: 'no-store',
     signal: AbortSignal.timeout(55_000),
@@ -84,26 +88,37 @@ export async function parseInvoicePhoto(filialId: number, path: string): Promise
     throw new Error('На фото не видно накладной — переснимите ровнее и при хорошем свете');
   }
 
-  let parsed: { items?: ParsedItem[]; supplier?: string; doc_number?: string };
-  try {
-    parsed = JSON.parse(content);
-  } catch {
+  const parsed = extractItems(content);
+  if (!parsed) {
+    console.error('[parseInvoicePhoto] модель ответила не JSON:', content.slice(0, 500));
     throw new Error('Не удалось разобрать ответ модели');
   }
 
-  const items = Array.isArray(parsed.items) ? parsed.items : [];
+  const items: ParsedItem[] = parsed.items;
   if (items.length === 0) throw new Error('В накладной не распознано ни одной позиции');
 
+  const matched = matchItems(items, products);
+
+  // Два разных товара, свёрнутые в один: «AKS гель 1000мл» и «AKS гель 450мл»
+  // оба тянутся к «AKS гель 1кг ведро». По отдельности каждая строка выглядит
+  // правдоподобно — видно только рядом, поэтому считаем повторы заранее.
+  const seen = new Map<string, number>();
+  for (const it of matched) {
+    if (it.product_id) seen.set(it.product_id, (seen.get(it.product_id) || 0) + 1);
+  }
+
   return {
-    items: matchItems(items, products).map((it) => {
+    items: matched.map((it) => {
       // Если в накладной написано не то же самое, что выбрано в номенклатуре,
       // строку надо перепроверить: «морковь» превращается в «Морковь желтый»
       // или «Морковь красная» с вероятностью 50/50, а это разный товар.
       const written = String(it.as_written || '').trim().toLowerCase();
       const chosen = String(it.product_name || '').trim().toLowerCase();
-      return { ...it, needs_review: !!written && !!chosen && written !== chosen };
+      const differs = !!written && !!chosen && written !== chosen;
+      const duplicate = !!it.product_id && (seen.get(it.product_id) || 0) > 1;
+      return { ...it, needs_review: differs || duplicate };
     }),
-    supplier: parsed.supplier || '',
-    doc_number: parsed.doc_number || '',
+    supplier: parsed.supplier,
+    doc_number: parsed.doc_number,
   };
 }

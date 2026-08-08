@@ -2,6 +2,7 @@ import { withIikoSession, iikoGet } from '@/lib/iiko';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
+import { extractItems, matchItems, type ParsedItem } from '@/lib/invoice-match';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,14 +11,6 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-4-27b-it:
 
 type IikoProduct = { id: string; name: string; type?: string; mainUnit?: string };
 type ProductLite = { id: string; name: string };
-
-type AiItem = {
-  product_name?: string;
-  quantity?: number;
-  unit?: string;
-  price?: number;
-  product_id?: string;
-};
 
 export async function POST(req: Request) {
   await requireSession();
@@ -77,6 +70,7 @@ export async function POST(req: Request) {
         model: OPENROUTER_MODEL,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
+        max_tokens: 4000,
       }),
     });
   } catch (e) {
@@ -92,53 +86,14 @@ export async function POST(req: Request) {
   if (content.startsWith('```')) content = content.split('\n').slice(1).join('\n');
   if (content.endsWith('```')) content = content.slice(0, -3);
 
-  let items: AiItem[];
-  try {
-    items = JSON.parse(content.trim());
-  } catch {
-    return Response.json({ error: 'AI вернул невалидный JSON', raw: content }, { status: 422 });
+  const parsed = extractItems(content);
+  if (!parsed) {
+    return Response.json({ error: 'AI вернул невалидный JSON', raw: content.slice(0, 500) }, { status: 422 });
   }
 
-  // 3. Локальный матчинг — точная копия логики легаси (exact → partial → word overlap)
-  for (const item of items) {
-    const aiName = (item.product_name || '').toLowerCase().trim();
-    let bestMatch: ProductLite | null = null;
-    let bestScore = 0;
-
-    for (const p of products) {
-      const pName = p.name.toLowerCase().trim();
-
-      if (aiName === pName) {
-        bestMatch = p;
-        break;
-      }
-
-      let score = 0;
-      if (aiName.includes(pName) || pName.includes(aiName)) {
-        score = aiName.length / Math.max(pName.length, 1);
-      } else {
-        const aiWords = new Set(aiName.split(/\s+/));
-        const pWords = new Set(pName.split(/\s+/));
-        const common = [...aiWords].filter((w) => pWords.has(w));
-        if (common.length > 0) {
-          const union = new Set([...aiWords, ...pWords]);
-          score = common.length / Math.max(union.size, 1);
-        }
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = p;
-      }
-    }
-
-    if (bestMatch) {
-      item.product_id = bestMatch.id;
-      item.product_name = bestMatch.name;
-    } else {
-      item.product_id = '';
-    }
-  }
+  // 3. Матчинг общий с разбором фото: одна и та же накладная не должна попадать
+  //    в разные позиции iiko в зависимости от того, надиктовали её или сняли.
+  const items = matchItems(parsed.items as ParsedItem[], products);
 
   return Response.json({ items });
 }
