@@ -104,19 +104,31 @@ export async function POST(request) {
       const existingAssets = await getAssetsList();
       const existingMapByCode = {};
       const existingMapBySerial = {};
+      // Позиция могла быть уже развёрнута на экземпляры (EQ-0069-01…-20).
+      // Тогда самого EQ-0069 в базе нет, и без этой карты повторный импорт
+      // создал бы партию заново поверх существующей.
+      const existingBases = new Set();
 
       existingAssets.forEach(a => {
-        if (a.inv_number) existingMapByCode[a.inv_number] = a;
+        if (a.inv_number) {
+          existingMapByCode[a.inv_number] = a;
+          existingBases.add(String(a.inv_number).replace(/-\d+$/, ""));
+        }
         if (a.serial_number) existingMapBySerial[a.serial_number] = a;
       });
 
       let addedCount = 0;
       let updatedCount = 0;
+      let unitsCreated = 0;
+
+      // Больше этого на одну номенклатуру не разворачиваем: расходники вроде
+      // салфеток приходят сотнями, и поштучные карточки для них бессмысленны.
+      const MAX_UNITS = 50;
 
       for (const p of equipProducts) {
         const purchases = equipPurchaseMap[p.id] || [];
-        purchases.sort((a, b) => new Date(b.date || "1970-01-01") - new Date(a.date || "1970-01-01"));
-        const lastPurchase = purchases[0] || {};
+        purchases.sort((a, b) => new Date(a.date || "1970-01-01") - new Date(b.date || "1970-01-01"));
+        const lastPurchase = purchases[purchases.length - 1] || {};
 
         const invNumber = p.num ? `EQ-${p.num.padStart(4, "0")}` : (p.code ? `EQ-${p.code}` : `EQ-${p.id.slice(0, 6).toUpperCase()}`);
         const initialCost = lastPurchase.price || lastPurchase.sum || p.estimatedPurchasePrice || 0;
@@ -139,26 +151,71 @@ export async function POST(request) {
             const ok = await updateAsset(existing.id, updates);
             if (ok) updatedCount++;
           }
+          continue;
+        }
+
+        // Уже развёрнута на экземпляры — второй раз не заводим
+        if (existingBases.has(invNumber)) continue;
+
+        // Сколько штук реально пришло: суммируем ВСЕ приходы, а не только последний.
+        // Каждый экземпляр наследует цену и дату своего прихода.
+        const units = [];
+        for (const pu of purchases) {
+          const amount = Math.round(parseFloat(pu.amount) || 0);
+          if (amount <= 0) continue;
+          const unitPrice = pu.price || (amount > 0 ? pu.sum / amount : pu.sum) || 0;
+          for (let k = 0; k < amount && units.length < MAX_UNITS; k++) {
+            units.push({ price: unitPrice, date: pu.date || commissioningDate });
+          }
+          if (units.length >= MAX_UNITS) break;
+        }
+
+        const base = {
+          name: p.name,
+          category: "Оборудование",
+          location: "Кухня / Ресторан",
+          responsible_person: "Материально-ответственное лицо",
+          status: "in_use",
+        };
+
+        if (units.length > 1) {
+          // Партия: сразу поштучные карточки со своими QR
+          const pad = (i) => String(i).padStart(String(units.length).length < 2 ? 2 : String(units.length).length, "0");
+          let ok = 0;
+          for (let i = 0; i < units.length; i++) {
+            const unitInv = `${invNumber}-${pad(i + 1)}`;
+            const row = await createAsset({
+              ...base,
+              inv_number: unitInv,
+              quantity: 1,
+              initial_cost: units[i].price,
+              commissioning_date: units[i].date,
+              serial_number: unitInv,
+              notes: `Экземпляр ${i + 1} из ${units.length}. Импортировано из iiko (ID: ${p.id}${p.code ? ", Код: " + p.code : ""})`,
+            });
+            if (row) ok++;
+          }
+          if (ok > 0) {
+            addedCount++;
+            unitsCreated += ok;
+          }
         } else {
           const created = await createAsset({
+            ...base,
             inv_number: invNumber,
-            name: p.name,
-            category: "Оборудование",
-            location: "Кухня / Ресторан",
-            responsible_person: "Материально-ответственное лицо",
-            quantity: lastPurchase.amount || 1,
-            initial_cost: initialCost,
-            commissioning_date: commissioningDate,
-            status: "in_use",
+            quantity: 1,
+            initial_cost: units[0]?.price ?? initialCost,
+            commissioning_date: units[0]?.date ?? commissioningDate,
             serial_number: p.code || "",
-            notes: `Импортировано из iiko (ID: ${p.id}${p.code ? ", Код: " + p.code : ""})`
+            notes: `Импортировано из iiko (ID: ${p.id}${p.code ? ", Код: " + p.code : ""})`,
           });
-          if (created) addedCount++;
+          if (created) { addedCount++; unitsCreated++; }
         }
       }
 
       return {
         success: true,
+        unitsCreated,
         totalFound: equipProducts.length,
         addedCount,
         updatedCount
@@ -178,7 +235,12 @@ export async function POST(request) {
 
     return Response.json({
       success: true,
-      message: `Синхронизировано из iiko: создано ${syncResult.addedCount} шт, обновлено ${syncResult.updatedCount} шт.`,
+      message:
+        `Синхронизировано из iiko: позиций создано ${syncResult.addedCount}` +
+        (syncResult.unitsCreated && syncResult.unitsCreated !== syncResult.addedCount
+          ? ` (карточек с учётом партий — ${syncResult.unitsCreated})`
+          : "") +
+        `, обновлено ${syncResult.updatedCount}.`,
       data: syncResult
     });
   } catch (e) {
