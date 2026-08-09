@@ -17753,12 +17753,44 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
           setError("Камера недоступна в этом браузере");
           return;
         }
-        if (!("BarcodeDetector" in window)) {
+        if (!window.isSecureContext) {
           setSupported(false);
-          setError("QR-детектор не поддержан. Используйте Chrome (Android) или Safari 17+ на iPhone.");
+          setError("Камера работает только по https. Откройте сайт по защищённой ссылке.");
           return;
         }
-        detectorRef.current = new window.BarcodeDetector({ formats: ["qr_code"] });
+
+        // BarcodeDetector есть только в Chromium. В WebKit его нет ни в одной
+        // версии Safari, а на iPhone все браузеры (включая Chrome) — это WebKit,
+        // поэтому там декодируем кадры сами через jsQR.
+        let detect;
+        if ("BarcodeDetector" in window) {
+          const d = new window.BarcodeDetector({ formats: ["qr_code"] });
+          detectorRef.current = d;
+          detect = async (video) => {
+            const codes = await d.detect(video);
+            return (codes || []).map((c) => c.rawValue || "");
+          };
+        } else {
+          const { default: jsQR } = await import("jsqr");
+          detect = (video) => {
+            const canvas = canvasRef.current;
+            if (!canvas || !video.videoWidth) return [];
+            // кадр целиком jsQR жуёт слишком долго — хватает 640px по ширине
+            const scale = Math.min(1, 640 / video.videoWidth);
+            const w = Math.round(video.videoWidth * scale);
+            const h = Math.round(video.videoHeight * scale);
+            if (canvas.width !== w || canvas.height !== h) {
+              canvas.width = w;
+              canvas.height = h;
+            }
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            ctx.drawImage(video, 0, 0, w, h);
+            const { data } = ctx.getImageData(0, 0, w, h);
+            const code = jsQR(data, w, h, { inversionAttempts: "dontInvert" });
+            return code?.data ? [code.data] : [];
+          };
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" }
         });
@@ -17769,13 +17801,23 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
         video.srcObject = stream;
         await video.play();
 
+        // Программное декодирование дорогое: 10 кадров в секунду достаточно,
+        // чтобы поймать наклейку, и не греет телефон.
+        let lastRun = 0;
+
         const loop = async () => {
           if (cancelled || !videoRef.current) return;
+          const now = performance.now();
+          if (now - lastRun < 100) {
+            rafRef.current = requestAnimationFrame(loop);
+            return;
+          }
+          lastRun = now;
           try {
-            const codes = await detectorRef.current.detect(videoRef.current);
-            if (codes && codes.length > 0) {
-              for (const c of codes) {
-                const inv = parseInv(c.rawValue || "");
+            const values = await detect(videoRef.current);
+            if (values.length > 0) {
+              for (const raw of values) {
+                const inv = parseInv(raw);
                 if (!inv) continue;
                 const asset = byInv.get(inv);
                 if (asset) {
