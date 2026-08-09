@@ -3799,9 +3799,10 @@ async function compressImage(file, maxSide = 1600, quality = 0.82) {
 function PhotoPicker({ photos, onPick, onRemove, busy, compact, label }) {
   const camRef = useRef(null);
   const galRef = useRef(null);
+  const [menu, setMenu] = useState(false);
 
   const btn = {
-    padding: compact ? "4px 8px" : "8px 14px",
+    padding: compact ? "4px 10px" : "8px 14px",
     borderRadius: 8,
     border: "1px solid var(--border-color)",
     background: "var(--bg-card)",
@@ -3818,7 +3819,24 @@ function PhotoPicker({ photos, onPick, onRemove, busy, compact, label }) {
   const handle = (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
+    setMenu(false);
     if (files.length) onPick(files);
+  };
+
+  const sheetBtn = {
+    width: "100%",
+    padding: "16px 18px",
+    borderRadius: 12,
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-card)",
+    color: "var(--text-main)",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    textAlign: "left",
   };
 
   return (
@@ -3827,12 +3845,78 @@ function PhotoPicker({ photos, onPick, onRemove, busy, compact, label }) {
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>{label}</div>
       )}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" style={btn} disabled={busy} onClick={() => camRef.current?.click()}>
-          📷 {compact ? "" : "Сфотографировать"}
+        <button type="button" style={btn} disabled={busy} onClick={() => setMenu(true)}>
+          📷 {compact ? "Фото" : "Добавить фото"}
         </button>
-        <button type="button" style={btn} disabled={busy} onClick={() => galRef.current?.click()}>
-          🖼 {compact ? "" : "Из галереи"}
-        </button>
+
+        {menu && (
+          <div
+            onClick={() => setMenu(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15,23,42,.5)",
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              padding: 12,
+              animation: "fadeIn .15s ease",
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "min(420px, 100%)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div
+                style={{
+                  background: "var(--bg-card)",
+                  borderRadius: 14,
+                  padding: 8,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  boxShadow: "0 18px 44px rgba(0,0,0,.28)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    padding: "6px 10px 0",
+                  }}
+                >
+                  {label || "Добавить фотографию"}
+                </div>
+                <button type="button" style={sheetBtn} onClick={() => camRef.current?.click()}>
+                  <span style={{ fontSize: 22 }}>📷</span> Сделать фото
+                </button>
+                <button type="button" style={sheetBtn} onClick={() => galRef.current?.click()}>
+                  <span style={{ fontSize: 22 }}>🖼</span> Выбрать из галереи
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMenu(false)}
+                style={{
+                  ...sheetBtn,
+                  justifyContent: "center",
+                  color: "var(--text-muted)",
+                  boxShadow: "0 18px 44px rgba(0,0,0,.28)",
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
         {photos.map((p) => (
           <div
             key={p.id}
