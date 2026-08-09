@@ -1,5 +1,6 @@
 import { withIikoSession, iikoPostXml } from "@/lib/iiko";
 import { logAction } from "@/lib/supabase.js";
+import { sendInvoiceReport } from "@/lib/telegram.js";
 
 export async function POST(request) {
   let body = {};
@@ -87,6 +88,16 @@ export async function POST(request) {
         ...photoDetails,
       };
       await logAction(user.tg_id, user.name, "invoice", dn, details);
+
+      await sendInvoiceReport({
+        documentNumber: `${dn} от ${dateStr}`,
+        supplierName: supplier_name || "Неизвестный поставщик",
+        storeName: store_name || "Неизвестный склад",
+        userName: user.name || "—",
+        items: details.items,
+        details,
+      });
+
       return Response.json({ success: true, documentNumber: dn });
     } else {
       const details = {
@@ -159,7 +170,7 @@ function buildPhotoDetails(attachments, items) {
     .slice(0, 60)
     .map((a) => ({
       path: String(a.path),
-      kind: a.kind === "invoice" ? "invoice" : "item",
+      kind: ["invoice", "collage"].includes(a.kind) ? a.kind : "item",
       product_id: a.product_id ? String(a.product_id) : "",
       product_name: a.product_name ? String(a.product_name) : "",
       content_type: String(a.content_type || "image/jpeg"),

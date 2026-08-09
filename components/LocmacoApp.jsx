@@ -3795,6 +3795,77 @@ async function compressImage(file, maxSide = 1600, quality = 0.82) {
   }
 }
 
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/**
+ * Клеит фотографии позиций в один коллаж с подписями — его бот кидает в группу
+ * под снимком накладной. Собираем в браузере: на сервере нет ни sharp, ни
+ * canvas, а исходники и так лежат тут же.
+ */
+async function buildCollage(entries) {
+  if (!entries.length) return null;
+  try {
+    const cols = Math.min(3, entries.length);
+    const rows = Math.ceil(entries.length / cols);
+    const CELL = 420;
+    const PAD = 10;
+    const LABEL = 46;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = cols * CELL + PAD * (cols + 1);
+    canvas.height = rows * (CELL + LABEL) + PAD * (rows + 1);
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < entries.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = PAD + col * (CELL + PAD);
+      const y = PAD + row * (CELL + LABEL + PAD);
+
+      try {
+        const img = await loadImage(entries[i].url);
+        // вписываем по короткой стороне и обрезаем по центру
+        const scale = Math.max(CELL / img.width, CELL / img.height);
+        const sw = CELL / scale;
+        const sh = CELL / scale;
+        const sx = (img.width - sw) / 2;
+        const sy = (img.height - sh) / 2;
+        ctx.drawImage(img, sx, sy, sw, sh, x, y, CELL, CELL);
+      } catch {
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillRect(x, y, CELL, CELL);
+      }
+
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 24px system-ui, -apple-system, sans-serif";
+      ctx.textBaseline = "middle";
+      let label = entries[i].label || "";
+      while (ctx.measureText(label).width > CELL - 8 && label.length > 4) {
+        label = label.slice(0, -2);
+      }
+      if (label !== entries[i].label) label += "…";
+      ctx.fillText(label, x, y + CELL + LABEL / 2);
+    }
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+    if (!blob) return null;
+    return new File([blob], "collage.jpg", { type: "image/jpeg" });
+  } catch (e) {
+    console.error("collage:", e);
+    return null;
+  }
+}
+
 /** Кнопки «снять / из галереи» плюс превью уже прикреплённых снимков. */
 function PhotoPicker({ photos, onPick, onRemove, busy, compact, label }) {
   const camRef = useRef(null);
@@ -4142,6 +4213,25 @@ function IncomingView({
       return;
     }
 
+    setSubmitting(true);
+
+    // Коллаж позиций для фотоотчёта в группу — по одному снимку на позицию,
+    // не больше 9 на картинку, иначе ячейки становятся нечитаемыми.
+    const collageEntries = prepared.flatMap((it) => {
+      const p = photosOf(it.product_id).find((x) => x.url && x.path);
+      return p
+        ? [{ url: p.url, label: `${it.product_name} — ${it.quantity} ${it.unit || "шт"}` }]
+        : [];
+    });
+
+    const collagePaths = [];
+    for (let i = 0; i < collageEntries.length; i += 9) {
+      const file = await buildCollage(collageEntries.slice(i, i + 9));
+      if (!file) continue;
+      const res = await API.uploadInvoicePhoto(file, draftId, "collage");
+      if (res?.success) collagePaths.push(res.photo.path);
+    }
+
     const attachments = [
       ...photosOf(INVOICE_KEY)
         .filter((p) => p.path)
@@ -4151,6 +4241,11 @@ function IncomingView({
           content_type: p.type,
           size: p.size,
         })),
+      ...collagePaths.map((path) => ({
+        path,
+        kind: "collage",
+        content_type: "image/jpeg",
+      })),
       ...prepared.flatMap((it) =>
         photosOf(it.product_id)
           .filter((p) => p.path)
@@ -4165,7 +4260,6 @@ function IncomingView({
       ),
     ];
 
-    setSubmitting(true);
     const result = await API.createInvoice({
       supplier_id: form.supplierId,
       supplier_name: form.supplierName,
@@ -10793,7 +10887,9 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore, viewer
                       }}
                     >
                       {details.photos_complete
-                        ? `📷 Фото: ${(details.photos || []).length}`
+                        ? `📷 Фото: ${
+                            (details.photos || []).filter((p) => p.kind !== "collage").length
+                          }`
                         : "⚠️ Фото приложены не полностью"}
                     </span>
                     {viewerRole === "admin" && (

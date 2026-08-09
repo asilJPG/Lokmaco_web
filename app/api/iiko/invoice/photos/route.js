@@ -42,7 +42,8 @@ export async function POST(request) {
     const form = await request.formData();
     const file = form.get("file");
     const draftId = String(form.get("draft_id") || "").replace(/[^A-Za-z0-9_-]/g, "");
-    const kind = form.get("kind") === "invoice" ? "invoice" : "item";
+    const rawKind = String(form.get("kind") || "");
+    const kind = ["invoice", "collage"].includes(rawKind) ? rawKind : "item";
 
     if (!file || typeof file.arrayBuffer !== "function") {
       return Response.json({ error: "Файл не передан" }, { status: 400 });
