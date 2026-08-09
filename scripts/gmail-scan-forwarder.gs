@@ -41,23 +41,64 @@ var SECRET = 'ВСТАВЬТЕ_СЕКРЕТ';
  */
 var ALLOWED_SENDERS = ['asil.aminjonov.bp@gmail.com'];
 
-/** Ярлык, которым помечаем разобранные письма — единственная защита от дублей. */
+/** Ярлык на разобранных письмах. Нужен человеку — видеть, что скрипт их взял. */
 var DONE_LABEL = 'lokmaco-отправлено';
+
+/** Где помним уже отправленные письма. Ярлыком обойтись нельзя, см. ниже. */
+var SEEN_KEY = 'lokmaco_seen_messages';
+
+/** Сколько дней помнить отправленные письма. Больше окна поиска — с запасом. */
+var SEEN_DAYS = 7;
+
+/**
+ * Письма, которые уже уехали на сайт.
+ *
+ * ⚠️ Считаем ПИСЬМАМИ, а не цепочками. Ярлык Gmail вешается на всю цепочку, а
+ * принтер шлёт все сканы с одной и той же темой — Gmail складывает их в одну
+ * цепочку. Из-за этого второй скан навсегда выпадал из поиска: на цепочке уже
+ * висел ярлык, `-label:` её отсекал, и журнал показывал ноль писем при живом
+ * письме в ящике.
+ */
+function loadSeen() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(SEEN_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    Logger.log('память об отправленных не прочиталась, начинаем с чистой: ' + err);
+    return {};
+  }
+}
+
+function saveSeen(seen) {
+  var edge = Date.now() - SEEN_DAYS * 24 * 60 * 60 * 1000;
+  var fresh = {};
+  for (var id in seen) {
+    if (seen[id] > edge) fresh[id] = seen[id];
+  }
+  PropertiesService.getScriptProperties().setProperty(SEEN_KEY, JSON.stringify(fresh));
+}
 
 function forwardScans() {
   var label = GmailApp.getUserLabelByName(DONE_LABEL) || GmailApp.createLabel(DONE_LABEL);
+  var seen = loadSeen();
   var sent = 0;
+  var skippedSeen = 0;
 
   // ⚠️ Намеренно без `is:unread`. Этот признак ненадёжен: письмо, посланное
   // с того же ящика, Gmail помечает прочитанным сразу, и скрипт молча ничего
-  // не находил бы. Дублей не будет и так — от них защищает ярлык.
+  // не находил бы.
+  //
+  // ⚠️ И намеренно без `-label:`. Ярлык живёт на цепочке целиком, а сканы от
+  // принтера идут одной темой и попадают в одну цепочку — второй скан такой
+  // фильтр выкидывал вместе с первым. От дублей защищает список отправленных
+  // писем (см. loadSeen), он считает письмами, а не цепочками.
   //
   // Окно в двое суток — чтобы после долгого простоя не разбирать всю почту.
   // ⚠️ `in:anywhere` обязателен. Письма от принтера Gmail охотно кладёт в
   // Спам: отправитель незнакомый, тема служебная, вложение картинкой. Без
   // этого куска поиск смотрит только обычную почту и честно находит ноль —
   // так и вышло при первом запуске.
-  var query = 'has:attachment newer_than:2d in:anywhere -label:' + DONE_LABEL;
+  var query = 'has:attachment newer_than:2d in:anywhere';
   var threads = GmailApp.search(query, 0, 20);
 
   // Отчитываемся всегда, даже когда делать нечего. Молчаливый запуск не
@@ -67,8 +108,8 @@ function forwardScans() {
   Logger.log('Найдено писем с вложениями: ' + threads.length);
   if (threads.length === 0) {
     Logger.log('Нечего отправлять. Это нормально, если скана ещё не было.');
-    Logger.log('Если скан точно приходил — проверьте, что письмо не старше двух суток и на нём нет ярлыка «' + DONE_LABEL + '».');
-    Logger.log('Поиск идёт и по Спаму тоже (in:anywhere).');
+    Logger.log('Если скан точно приходил — проверьте, что письмо не старше двух суток.');
+    Logger.log('Поиск идёт и по Спаму тоже (in:anywhere). Подробности покажет diagnose().');
   }
 
   var skippedBySender = 0;
@@ -77,6 +118,12 @@ function forwardScans() {
   threads.forEach(function (thread) {
     thread.getMessages().forEach(function (message) {
       var from = message.getFrom();
+      var msgId = message.getId();
+
+      if (seen[msgId]) {
+        skippedSeen++;
+        return;
+      }
 
       if (ALLOWED_SENDERS.length > 0 && !matchesSender(from)) {
         skippedBySender++;
@@ -128,6 +175,10 @@ function forwardScans() {
       if (body.skipped) Logger.log('сайт пропустил вложения: ' + JSON.stringify(body.skipped));
 
       if (reallySaved) {
+        // Письмо — в память (защита от дублей), ярлык — на цепочку (человеку
+        // видно, что скрипт тут был). Поиск по ярлыку больше не фильтрует.
+        seen[msgId] = Date.now();
+        saveSeen(seen);
         thread.addLabel(label);
         // Вытаскиваем из спама: письма оттуда Gmail сам удаляет через 30 дней,
         // а нам скан нужен как подтверждение прихода. Заодно Gmail постепенно
@@ -148,6 +199,7 @@ function forwardScans() {
       '. Разрешены: ' + (ALLOWED_SENDERS.join(', ') || 'все'));
   }
   if (skippedNoImages > 0) Logger.log('Писем без картинок во вложениях: ' + skippedNoImages);
+  if (skippedSeen > 0) Logger.log('Уже отправляли раньше, пропущено писем: ' + skippedSeen);
   Logger.log('ИТОГО отправлено сканов: ' + sent);
 
   return sent;
@@ -219,6 +271,24 @@ function testConnection() {
 }
 
 /**
+ * Забыть, какие письма уже отправляли, и снять ярлыки за неделю.
+ *
+ * Нужна ровно в одном случае: скан застрял на сайте или его удалили, а письмо
+ * надо прогнать заново. Дальше forwardScans() возьмёт его как новое —
+ * значит, скан приедет ещё раз, и лишний придётся убрать из очереди руками.
+ */
+function resetSeen() {
+  PropertiesService.getScriptProperties().deleteProperty(SEEN_KEY);
+  var label = GmailApp.getUserLabelByName(DONE_LABEL);
+  if (label) {
+    var threads = GmailApp.search('label:' + DONE_LABEL + ' newer_than:7d in:anywhere', 0, 50);
+    threads.forEach(function (t) { t.removeLabel(label); });
+    Logger.log('Снят ярлык с цепочек: ' + threads.length);
+  }
+  Logger.log('Память об отправленных письмах очищена — всё за двое суток уедет заново.');
+}
+
+/**
  * Точка входа для сайта: кнопка «Проверить почту» на странице прихода зовёт
  * этот адрес и получает скан немедленно.
  *
@@ -259,9 +329,11 @@ function doGet(e) {
  * Запустить, скопировать журнал целиком — по нему сразу понятно, что чинить.
  */
 function diagnose() {
+  var seen = loadSeen();
   Logger.log('=== ЧТО ВИДИТ СКРИПТ ===');
   Logger.log('Разрешённые отправители: ' + (ALLOWED_SENDERS.join(', ') || '(любые)'));
-  Logger.log('Ярлык обработанных: ' + DONE_LABEL);
+  Logger.log('Ярлык обработанных: ' + DONE_LABEL + ' (на поиск больше не влияет)');
+  Logger.log('Помним отправленных писем: ' + Object.keys(seen).length);
 
   // Ищем ШИРЕ рабочего запроса: без фильтра по ярлыку и с запасом по сроку.
   // Задача не отправить, а понять, что вообще лежит в ящике.
@@ -289,7 +361,7 @@ function diagnose() {
       // Прямо говорим, возьмёт скрипт это письмо или нет и почему.
       var why = [];
       if (ALLOWED_SENDERS.length > 0 && !matchesSender(m.getFrom())) why.push('отправитель не в списке разрешённых');
-      if (labels.indexOf(DONE_LABEL) !== -1) why.push('уже помечено как отправленное');
+      if (seen[m.getId()]) why.push('это письмо уже отправляли (' + new Date(seen[m.getId()]) + ')');
       if (atts.filter(isImage).length === 0) why.push('нет вложений-картинок');
       Logger.log(why.length === 0 ? 'ВЕРДИКТ: письмо будет отправлено' : 'ВЕРДИКТ: пропустим - ' + why.join('; '));
     });
