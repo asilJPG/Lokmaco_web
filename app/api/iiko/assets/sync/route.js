@@ -165,8 +165,10 @@ export async function POST(request) {
             if (!existing.commissioning_date && commissioningDate) {
               updates.commissioning_date = commissioningDate;
             }
-            // Вернулась в справочник после архивации
-            if (existing.status === "written_off") {
+            // Вернулась в справочник после архивации. Настоящее списание ОС
+            // (written_off) при этом не трогаем — это решение бухгалтерии,
+            // а не следствие правки справочника.
+            if (existing.status === "archived") {
               updates.status = "in_use";
               restoredCount++;
             }
@@ -234,15 +236,18 @@ export async function POST(request) {
         }
       }
 
-      // 5. Чего в iiko больше нет — помечаем списанным, но не удаляем:
+      // 5. Чего в iiko больше нет — уводим в архив, но не удаляем:
       // за карточкой могут стоять напечатанные наклейки и отметки об
       // инвентаризации. Вернут номенклатуру в iiko — карточка оживёт сама.
+      //
+      // Это НЕ списание ОС: `written_off` ставит бухгалтерия руками, и такие
+      // карточки сверка не трогает вовсе.
       const archived = [];
       for (const [base, rows] of byBase) {
         if (!base || seenBases.has(base)) continue;
         for (const row of rows) {
-          if (row.status === "written_off") continue;
-          const ok = await updateAsset(row.id, { status: "written_off" });
+          if (row.status === "archived" || row.status === "written_off") continue;
+          const ok = await updateAsset(row.id, { status: "archived" });
           if (ok) {
             archivedCount++;
             if (archived.length < 50) archived.push(`${row.inv_number} — ${row.name}`);
@@ -280,7 +285,7 @@ export async function POST(request) {
       parts.push(`карточек с учётом партий ${syncResult.unitsCreated}`);
     }
     parts.push(`обновлено ${syncResult.updatedCount}`);
-    if (syncResult.archivedCount) parts.push(`списано ${syncResult.archivedCount}`);
+    if (syncResult.archivedCount) parts.push(`убрано в архив ${syncResult.archivedCount}`);
     if (syncResult.restoredCount) parts.push(`возвращено ${syncResult.restoredCount}`);
 
     return Response.json({

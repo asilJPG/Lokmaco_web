@@ -16156,10 +16156,10 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   // Calculations for financial summary
   const filteredAssets = assets.filter(a => {
     if (categoryFilter !== "all" && a.category !== categoryFilter) return false;
-    // «Все статусы» — это действующие: списанное (в том числе убранное из iiko)
-    // лежит в базе ради истории и наклеек, но в рабочем списке только мешает.
+    // «Действующие» — всё, кроме архива: убранное из справочника iiko лежит
+    // в базе ради наклеек и истории, но в рабочем списке только мешает.
     if (statusFilter === "all") {
-      if (a.status === "written_off") return false;
+      if (a.status === "archived") return false;
     } else if (statusFilter !== "everything" && a.status !== statusFilter) {
       return false;
     }
@@ -16480,8 +16480,9 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             <option value="in_use">🟢 В эксплуатации</option>
             <option value="repair">🟡 В ремонте</option>
             <option value="in_stock">🔵 На складе</option>
-            <option value="written_off">🔴 Списано / нет в iiko</option>
-            <option value="everything">📦 Все, включая списанные</option>
+            <option value="written_off">🔴 Списано</option>
+            <option value="archived">📦 Нет в iiko (архив)</option>
+            <option value="everything">🗂 Все, включая архив</option>
           </select>
         </div>
       </div>
@@ -16639,7 +16640,8 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                     in_use: { bg: "rgba(16, 185, 129, 0.1)", color: "#10b981", label: "🟢 В эксплуатации" },
                     repair: { bg: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", label: "🟡 В ремонте" },
                     in_stock: { bg: "rgba(59, 130, 246, 0.1)", color: "#3b82f6", label: "🔵 На складе" },
-                    written_off: { bg: "rgba(239, 68, 68, 0.1)", color: "#ef4444", label: "🔴 Списан" }
+                    written_off: { bg: "rgba(239, 68, 68, 0.1)", color: "#ef4444", label: "🔴 Списан" },
+                    archived: { bg: "rgba(100, 116, 139, 0.12)", color: "#64748b", label: "📦 Нет в iiko" }
                   };
                   const st = statusColors[asset.status] || statusColors.in_use;
 
