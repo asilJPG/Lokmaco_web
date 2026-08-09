@@ -2,7 +2,8 @@ import { uploadInvoiceFile, downloadInvoiceFile, storageConfigured } from "@/lib
 
 export const dynamic = "force-dynamic";
 
-const UPLOAD_ROLES = ["admin", "director", "supplier"];
+// Загружают те же, кто оформляет приход; смотрит — только админ.
+const UPLOAD_ROLES = ["admin", "supplier"];
 const VIEW_ROLES = ["admin"];
 
 const MAX_BYTES = 12 * 1024 * 1024;

@@ -24,7 +24,9 @@ export async function POST(request) {
     const { supplier_id, supplier_name, store_id, store_name, items, comment, attachments } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
-    const allowedRoles = ["admin", "director", "supplier"];
+    // Тот же список, что и у вкладки «Приход» в hasAccess: приходы делает
+    // снабженец, админ — сверх всего. Директор приходы не оформляет.
+    const allowedRoles = ["admin", "supplier"];
     if (!allowedRoles.includes(baseRole)) {
       return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
     }
