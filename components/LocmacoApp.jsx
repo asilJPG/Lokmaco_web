@@ -107,6 +107,23 @@ const API = {
   createInvoice(data) {
     return this.post("/invoice", data);
   },
+  async uploadInvoicePhoto(file, draftId, kind) {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("draft_id", draftId);
+      fd.append("kind", kind);
+      const r = await fetch("/api/iiko/invoice/photos", { method: "POST", body: fd });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
+    } catch (e) {
+      console.error("API upload photo:", e);
+      return { success: false, error: e.message };
+    }
+  },
   createService(data) {
     return this.post("/services", data);
   },
@@ -3749,6 +3766,161 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
 //  INCOMING — поставщик → склад → товары (поиск + кол-во + сумма) → провести
 // ═══════════════════════════════════════════════════════════════
 
+function makeDraftId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Снимок с телефона весит 3-5 МБ, а для «что реально привезли» хватает 1600px.
+ * Сжимаем в браузере, чтобы кладовщик не ждал загрузку на мобильном интернете.
+ */
+async function compressImage(file, maxSide = 1600, quality = 0.82) {
+  if (!file.type?.startsWith("image/") || file.type === "image/heic") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size < 800 * 1024) return file;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    bitmap.close?.();
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
+      type: "image/jpeg",
+    });
+  } catch (e) {
+    return file;
+  }
+}
+
+/** Кнопки «снять / из галереи» плюс превью уже прикреплённых снимков. */
+function PhotoPicker({ photos, onPick, onRemove, busy, compact, label }) {
+  const camRef = useRef(null);
+  const galRef = useRef(null);
+
+  const btn = {
+    padding: compact ? "4px 8px" : "8px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-card)",
+    color: "var(--text-main)",
+    fontSize: compact ? 11 : 12,
+    fontWeight: 600,
+    cursor: busy ? "wait" : "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    whiteSpace: "nowrap",
+  };
+
+  const handle = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length) onPick(files);
+  };
+
+  return (
+    <div>
+      {label && (
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>{label}</div>
+      )}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" style={btn} disabled={busy} onClick={() => camRef.current?.click()}>
+          📷 {compact ? "" : "Сфотографировать"}
+        </button>
+        <button type="button" style={btn} disabled={busy} onClick={() => galRef.current?.click()}>
+          🖼 {compact ? "" : "Из галереи"}
+        </button>
+        {photos.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              position: "relative",
+              width: compact ? 40 : 56,
+              height: compact ? 40 : 56,
+              borderRadius: 8,
+              overflow: "hidden",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-hover)",
+            }}
+          >
+            {p.url ? (
+              <img
+                src={p.url}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <div style={{ fontSize: 18, textAlign: "center", lineHeight: compact ? "40px" : "56px" }}>
+                📄
+              </div>
+            )}
+            {p.uploading && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(255,255,255,.72)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              >
+                ⌛
+              </div>
+            )}
+            {!p.uploading && (
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                title="Убрать"
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  right: 1,
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  border: "none",
+                  background: "rgba(15,23,42,.72)",
+                  color: "#fff",
+                  fontSize: 10,
+                  lineHeight: "16px",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <input
+        ref={camRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple
+        onChange={handle}
+        style={{ display: "none" }}
+      />
+      <input
+        ref={galRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        onChange={handle}
+        style={{ display: "none" }}
+      />
+    </div>
+  );
+}
+
 function IncomingView({
   products,
   suppliers,
@@ -3774,6 +3946,69 @@ function IncomingView({
   });
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Фотографии: ключ — product_id для товаров, "__invoice__" для накладной.
+  const INVOICE_KEY = "__invoice__";
+  const [draftId, setDraftId] = useState(makeDraftId);
+  const [photos, setPhotos] = useState({});
+
+  const photosOf = (key) => photos[key] || [];
+
+  const addPhotos = async (key, files) => {
+    const kind = key === INVOICE_KEY ? "invoice" : "item";
+    for (const raw of files) {
+      const file = await compressImage(raw);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const url = file.type?.startsWith("image/") ? URL.createObjectURL(file) : "";
+
+      setPhotos((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] || []), { id, url, uploading: true, size: file.size, type: file.type }],
+      }));
+
+      const res = await API.uploadInvoicePhoto(file, draftId, kind);
+
+      setPhotos((prev) => {
+        const list = prev[key] || [];
+        if (!res?.success) {
+          return { ...prev, [key]: list.filter((p) => p.id !== id) };
+        }
+        return {
+          ...prev,
+          [key]: list.map((p) =>
+            p.id === id ? { ...p, uploading: false, path: res.photo.path } : p
+          ),
+        };
+      });
+
+      if (!res?.success) {
+        if (url) URL.revokeObjectURL(url);
+        showToast(res?.error || "Не удалось загрузить фото", "error");
+      }
+    }
+  };
+
+  const removePhoto = (key, id) => {
+    setPhotos((prev) => {
+      const list = prev[key] || [];
+      const target = list.find((p) => p.id === id);
+      if (target?.url) URL.revokeObjectURL(target.url);
+      return { ...prev, [key]: list.filter((p) => p.id !== id) };
+    });
+  };
+
+  const resetPhotos = () => {
+    Object.values(photos).flat().forEach((p) => p.url && URL.revokeObjectURL(p.url));
+    setPhotos({});
+    setDraftId(makeDraftId());
+  };
+
+  const uploadingCount = Object.values(photos)
+    .flat()
+    .filter((p) => p.uploading).length;
+
+  const itemsWithoutPhoto = items.filter((it) => photosOf(it.product_id).length === 0);
+  const hasInvoicePhoto = photosOf(INVOICE_KEY).length > 0;
 
   const addItem = (p) => {
     setItems((prev) => [
@@ -3818,6 +4053,34 @@ function IncomingView({
       showToast("Укажите количество", "error");
       return;
     }
+    if (uploadingCount > 0) {
+      showToast("Дождитесь загрузки фотографий", "error");
+      return;
+    }
+
+    const attachments = [
+      ...photosOf(INVOICE_KEY)
+        .filter((p) => p.path)
+        .map((p) => ({
+          path: p.path,
+          kind: "invoice",
+          content_type: p.type,
+          size: p.size,
+        })),
+      ...prepared.flatMap((it) =>
+        photosOf(it.product_id)
+          .filter((p) => p.path)
+          .map((p) => ({
+            path: p.path,
+            kind: "item",
+            product_id: it.product_id,
+            product_name: it.product_name,
+            content_type: p.type,
+            size: p.size,
+          }))
+      ),
+    ];
+
     setSubmitting(true);
     const result = await API.createInvoice({
       supplier_id: form.supplierId,
@@ -3826,6 +4089,7 @@ function IncomingView({
       store_name: form.storeName,
       items: prepared,
       comment: form.comment,
+      attachments,
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
@@ -3839,6 +4103,7 @@ function IncomingView({
       setMode("idle");
       setStep(0);
       setItems([]);
+      resetPhotos();
       setForm({
         supplierId: "",
         supplierName: "",
@@ -3883,6 +4148,7 @@ function IncomingView({
               setMode("idle");
               setStep(0);
               setItems([]);
+              resetPhotos();
             }}
           >
             {I.x} Отмена
@@ -3945,6 +4211,7 @@ function IncomingView({
                 history={history.filter((act) => act.action_type === "invoice")}
                 loading={historyLoading}
                 onRefresh={loadHistory}
+                viewerRole={loggedInUser?.baseRole}
                 emptyText="История приходов пуста"
                 onRestore={(act) => {
                   if (act.details) {
@@ -4093,6 +4360,25 @@ function IncomingView({
                                 <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                   {it.unit}
                                 </div>
+                                <div style={{ marginTop: 6 }}>
+                                  <PhotoPicker
+                                    compact
+                                    photos={photosOf(it.product_id)}
+                                    onPick={(files) => addPhotos(it.product_id, files)}
+                                    onRemove={(pid) => removePhoto(it.product_id, pid)}
+                                  />
+                                  {photosOf(it.product_id).length === 0 && (
+                                    <div
+                                      style={{
+                                        fontSize: 10,
+                                        color: "#b45309",
+                                        marginTop: 4,
+                                      }}
+                                    >
+                                      фото не прикреплено
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
                                 <div
@@ -4172,6 +4458,28 @@ function IncomingView({
                       </table>
                     </div>
                   )}
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: 12,
+                      border: "1px solid var(--border-color)",
+                      borderRadius: 10,
+                      background: "var(--bg-hover)",
+                    }}
+                  >
+                    <PhotoPicker
+                      label="📄 Накладная поставщика"
+                      photos={photosOf(INVOICE_KEY)}
+                      onPick={(files) => addPhotos(INVOICE_KEY, files)}
+                      onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
+                    />
+                    {!hasInvoicePhoto && (
+                      <div style={{ fontSize: 11, color: "#b45309", marginTop: 6 }}>
+                        Фотография накладной не прикреплена
+                      </div>
+                    )}
+                  </div>
+
                   <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
                   <input
                     value={form.comment}
@@ -4181,6 +4489,32 @@ function IncomingView({
                     placeholder="Необязательно"
                     style={inp}
                   />
+
+                  {items.length > 0 && (!hasInvoicePhoto || itemsWithoutPhoto.length > 0) && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        background: "#fffbeb",
+                        border: "1px solid #fde68a",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        fontSize: 11,
+                        color: "#92400e",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      ⚠️ Приход пройдёт и без фотографий, но в истории он будет
+                      помечен как неполный.
+                      {!hasInvoicePhoto && <div>• нет фото накладной</div>}
+                      {itemsWithoutPhoto.length > 0 && (
+                        <div>
+                          • без фото товара:{" "}
+                          {itemsWithoutPhoto.map((x) => x.product_name).join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div
                     style={{
                       display: "flex",
@@ -4194,10 +4528,14 @@ function IncomingView({
                     </Btn>
                     <Btn
                       onClick={handleSubmit}
-                      disabled={submitting || items.length === 0}
+                      disabled={submitting || items.length === 0 || uploadingCount > 0}
                     >
                       {submitting ? I.loader : I.send}{" "}
-                      {submitting ? "Отправка..." : "Провести"}
+                      {submitting
+                        ? "Отправка..."
+                        : uploadingCount > 0
+                        ? `Загрузка фото (${uploadingCount})...`
+                        : "Провести"}
                     </Btn>
                   </div>
                 </>
@@ -9525,7 +9863,262 @@ function Btn({ children, outline, onClick, disabled, style }) {
   );
 }
 
-function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
+/**
+ * Карточка прихода целиком: позиции, суммы и всё, что сфотографировали при
+ * приёмке. Открывает только админ — фото лежат в приватном бакете и идут
+ * через наш роут с проверкой роли.
+ */
+function InvoiceDetailModal({ act, onClose }) {
+  const [zoom, setZoom] = useState(null);
+  const details = act?.details || {};
+  const items = details.items || [];
+  const photos = details.photos || [];
+
+  const invoicePhotos = photos.filter((p) => p.kind === "invoice");
+  const photosByProduct = {};
+  photos
+    .filter((p) => p.kind === "item")
+    .forEach((p) => {
+      (photosByProduct[p.product_id] ||= []).push(p);
+    });
+
+  const src = (p) => `/api/iiko/invoice/photos?path=${encodeURIComponent(p.path)}`;
+
+  const total = items.reduce(
+    (s, it) => s + (Number(it.total) || Number(it.price) * Number(it.quantity) || 0),
+    0
+  );
+
+  const created = act?.created_at
+    ? new Date(act.created_at).toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  const thumb = (p, key) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => p.content_type === "application/pdf"
+        ? window.open(src(p), "_blank")
+        : setZoom(src(p))}
+      style={{
+        width: 84,
+        height: 84,
+        padding: 0,
+        borderRadius: 10,
+        overflow: "hidden",
+        border: "1px solid var(--border-color)",
+        background: "var(--bg-hover)",
+        cursor: "pointer",
+      }}
+    >
+      {p.content_type === "application/pdf" ? (
+        <span style={{ fontSize: 24 }}>📄</span>
+      ) : (
+        <img
+          src={src(p)}
+          alt=""
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      )}
+    </button>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,.55)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg-card)",
+          borderRadius: 16,
+          width: "min(760px, 100%)",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          padding: 20,
+          boxShadow: "0 24px 60px rgba(0,0,0,.28)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 14,
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>
+              Приход № {act?.document_number || "—"}
+            </h3>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              {details.supplier_name || "Поставщик"} → {details.store_name || "Склад"}
+              {created ? ` · ${created}` : ""} · {act?.user_name || "—"}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: 22,
+              cursor: "pointer",
+              color: "var(--text-muted)",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {!details.photos_complete && (
+          <div
+            style={{
+              background: "#fffbeb",
+              border: "1px solid #fde68a",
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: 12,
+              color: "#92400e",
+              marginBottom: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            ⚠️ Приход задокументирован не полностью.
+            {!details.has_invoice_photo && <div>• фотография накладной не прикреплена</div>}
+            {details.items_without_photo?.length > 0 && (
+              <div>• без фото товара: {details.items_without_photo.join(", ")}</div>
+            )}
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Товары</div>
+        <div
+          style={{
+            border: "1px solid var(--border-color)",
+            borderRadius: 10,
+            overflow: "hidden",
+            marginBottom: 18,
+          }}
+        >
+          {items.map((it, idx) => {
+            const list = photosByProduct[it.product_id] || [];
+            return (
+              <div
+                key={idx}
+                style={{
+                  padding: "10px 12px",
+                  borderTop: idx ? "1px solid var(--border-color)" : "none",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    fontSize: 13,
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>{it.product_name || "Товар"}</span>
+                  <span style={{ whiteSpace: "nowrap" }}>
+                    {it.quantity} {it.unit || "шт"}
+                    {Number(it.price) > 0 && ` × ${fmt(Number(it.price))}`}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  {list.length > 0 ? (
+                    list.map((p, i) => thumb(p, i))
+                  ) : (
+                    <span style={{ fontSize: 11, color: "#b45309", fontWeight: 600 }}>
+                      📵 фотография не прикреплена
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div
+            style={{
+              padding: "10px 12px",
+              borderTop: "1px solid var(--border-color)",
+              display: "flex",
+              justifyContent: "space-between",
+              fontWeight: 800,
+              fontSize: 13,
+              background: "var(--bg-hover)",
+            }}
+          >
+            <span>Итого</span>
+            <span>{fmtPrice(total)}</span>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+          Накладная поставщика
+        </div>
+        {invoicePhotos.length > 0 ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {invoicePhotos.map((p, i) => thumb(p, i))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+            📵 Фотография накладной не прикреплена
+          </div>
+        )}
+
+        {details.comment && (
+          <div style={{ marginTop: 16, fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+            💬 {details.comment}
+          </div>
+        )}
+      </div>
+
+      {zoom && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.88)",
+            zIndex: 1100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <img
+            src={zoom}
+            alt=""
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryList({ history, loading, onRefresh, emptyText, onRestore, viewerRole }) {
+  const [openInvoice, setOpenInvoice] = useState(null);
   if (loading && history.length === 0) {
     return <LoadingBlock text="Загрузка истории..." />;
   }
@@ -10095,6 +10688,50 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
                   </div>
                 )}
 
+                {isInvoice && (details.photos || details.items_without_photo) && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: details.photos_complete ? "#ecfdf5" : "#fffbeb",
+                        color: details.photos_complete ? "#059669" : "#b45309",
+                      }}
+                    >
+                      {details.photos_complete
+                        ? `📷 Фото: ${(details.photos || []).length}`
+                        : "⚠️ Фото приложены не полностью"}
+                    </span>
+                    {viewerRole === "admin" && (
+                      <button
+                        onClick={() => setOpenInvoice(act)}
+                        style={{
+                          background: "var(--bg-hover)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 8,
+                          padding: "5px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "var(--text-main)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        📂 Открыть накладную
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {isFailed && onRestore && (
                   <div
                     style={{
@@ -10141,6 +10778,10 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore }) {
           );
         })}
       </div>
+
+      {openInvoice && (
+        <InvoiceDetailModal act={openInvoice} onClose={() => setOpenInvoice(null)} />
+      )}
     </div>
   );
 }

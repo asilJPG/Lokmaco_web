@@ -21,7 +21,7 @@ export async function POST(request) {
     };
 
     body = await request.json();
-    const { supplier_id, supplier_name, store_id, store_name, items, comment } = body;
+    const { supplier_id, supplier_name, store_id, store_name, items, comment, attachments } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     const allowedRoles = ["admin", "director", "supplier"];
@@ -65,17 +65,24 @@ export async function POST(request) {
       return await iikoPostXml("documents/import/incomingInvoice", xml, token);
     });
 
+    const photoDetails = buildPhotoDetails(attachments, items);
+
     if (success) {
       const details = {
+        supplier_id,
         supplier_name: supplier_name || "Неизвестный поставщик",
+        store_id,
         store_name: store_name || "Неизвестный склад",
         items: items.map(it => ({
+          product_id: it.product_id,
           product_name: it.product_name || "Товар",
           quantity: it.quantity,
           price: it.price,
+          total: it.total,
           unit: it.unit || "шт"
         })),
         comment: comment || "",
+        ...photoDetails,
       };
       await logAction(user.tg_id, user.name, "invoice", dn, details);
       return Response.json({ success: true, documentNumber: dn });
@@ -95,6 +102,7 @@ export async function POST(request) {
           unit: it.unit || "шт"
         })),
         comment: comment || "",
+        ...photoDetails,
       };
       await logAction(user.tg_id, user.name, "invoice", "СБОЙ", details);
       return Response.json({ success: false, error: "iiko rejected the document" }, { status: 500 });
@@ -130,6 +138,48 @@ export async function POST(request) {
     } catch (_) {}
     return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
+}
+
+// Пути внутри бакета invoice-photos: <черновик>/<файл>
+const SAFE_PHOTO_PATH = /^[A-Za-z0-9_-]{6,64}\/[A-Za-z0-9._-]{1,120}$/;
+
+/**
+ * Приводит вложения к хранимому виду и сразу считает, чего не хватает.
+ * Флаги пишем в базу, а не выводим на лету: если состав позиций потом
+ * поменяется, отметка «фото не было» должна остаться такой, какой была
+ * в момент проведения.
+ */
+function buildPhotoDetails(attachments, items) {
+  const list = Array.isArray(attachments) ? attachments : [];
+
+  const photos = list
+    .filter((a) => a && SAFE_PHOTO_PATH.test(String(a.path || "")))
+    .slice(0, 60)
+    .map((a) => ({
+      path: String(a.path),
+      kind: a.kind === "invoice" ? "invoice" : "item",
+      product_id: a.product_id ? String(a.product_id) : "",
+      product_name: a.product_name ? String(a.product_name) : "",
+      content_type: String(a.content_type || "image/jpeg"),
+      size: Number(a.size) || 0,
+    }));
+
+  const withPhoto = new Set(
+    photos.filter((p) => p.kind === "item" && p.product_id).map((p) => p.product_id)
+  );
+
+  const itemsWithoutPhoto = (items || [])
+    .filter((it) => !withPhoto.has(String(it.product_id || "")))
+    .map((it) => it.product_name || "Товар");
+
+  const hasInvoicePhoto = photos.some((p) => p.kind === "invoice");
+
+  return {
+    photos,
+    has_invoice_photo: hasInvoicePhoto,
+    items_without_photo: itemsWithoutPhoto,
+    photos_complete: hasInvoicePhoto && itemsWithoutPhoto.length === 0,
+  };
 }
 
 function pad(n) {
