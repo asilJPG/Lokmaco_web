@@ -4107,6 +4107,9 @@ function IncomingView({
   const INVOICE_KEY = "__invoice__";
   const [draftId, setDraftId] = useState(makeDraftId);
   const [photos, setPhotos] = useState({});
+  // Если хранилище не настроено, фото загрузить физически нельзя — тогда
+  // требование снимка накладной снимается, иначе приход вообще не провести.
+  const [storageError, setStorageError] = useState("");
 
   const photosOf = (key) => photos[key] || [];
 
@@ -4139,6 +4142,7 @@ function IncomingView({
 
       if (!res?.success) {
         if (url) URL.revokeObjectURL(url);
+        if (/Хранилище/i.test(res?.error || "")) setStorageError(res.error);
         showToast(res?.error || "Не удалось загрузить фото", "error");
       }
     }
@@ -4393,6 +4397,8 @@ function IncomingView({
                 viewerRole={loggedInUser?.baseRole}
                 emptyText="История приходов пуста"
                 onRestore={(act) => {
+                  // Фотографии в черновик не переносятся: снимок накладной
+                  // нужно приложить заново, поэтому возвращаем на её шаг.
                   if (act.details) {
                     setForm({
                       supplierId: act.details.supplier_id || "",
@@ -4431,7 +4437,7 @@ function IncomingView({
             padding: 24,
           }}
         >
-          <StepBar steps={["Поставщик", "Склад", "Товары"]} current={step} />
+          <StepBar steps={["Поставщик", "Склад", "Накладная", "Товары"]} current={step} />
 
           {step === 0 && (
             <div>
@@ -4486,6 +4492,70 @@ function IncomingView({
             <div>
               <div style={crumb}>
                 ✅ {form.supplierName} → {form.storeName}
+              </div>
+              <label style={lbl}>Фотография накладной</label>
+              <div
+                style={{
+                  padding: 16,
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 12,
+                  background: "var(--bg-hover)",
+                }}
+              >
+                <PhotoPicker
+                  photos={photosOf(INVOICE_KEY)}
+                  onPick={(files) => addPhotos(INVOICE_KEY, files)}
+                  onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
+                />
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
+                  Снимите накладную поставщика целиком, чтобы читались позиции и
+                  суммы. Можно приложить несколько снимков или PDF.
+                </div>
+              </div>
+
+              {storageError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    background: "#fffbeb",
+                    border: "1px solid #fde68a",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    fontSize: 11,
+                    color: "#92400e",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  ⚠️ {storageError}
+                  <div>Фото приложить не получится — приход можно провести без него.</div>
+                </div>
+              ) : (
+                !hasInvoicePhoto && (
+                  <div style={{ marginTop: 12, fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+                    Без фотографии накладной перейти к товарам нельзя
+                  </div>
+                )
+              )}
+
+              <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+                <Btn outline onClick={() => setStep(1)}>
+                  ← Назад
+                </Btn>
+                <Btn
+                  onClick={() => setStep(3)}
+                  disabled={uploadingCount > 0 || (!hasInvoicePhoto && !storageError)}
+                >
+                  {uploadingCount > 0 ? "Загрузка..." : "Далее — товары →"}
+                </Btn>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div>
+              <div style={crumb}>
+                ✅ {form.supplierName} → {form.storeName}
+                {hasInvoicePhoto ? " · накладная приложена" : ""}
               </div>
               {loading ? (
                 <LoadingBlock text="Загрузка товаров..." />
@@ -4647,16 +4717,12 @@ function IncomingView({
                     }}
                   >
                     <PhotoPicker
+                      compact
                       label="📄 Накладная поставщика"
                       photos={photosOf(INVOICE_KEY)}
                       onPick={(files) => addPhotos(INVOICE_KEY, files)}
                       onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
                     />
-                    {!hasInvoicePhoto && (
-                      <div style={{ fontSize: 11, color: "#b45309", marginTop: 6 }}>
-                        Фотография накладной не прикреплена
-                      </div>
-                    )}
                   </div>
 
                   <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
@@ -4702,7 +4768,7 @@ function IncomingView({
                       justifyContent: "flex-end",
                     }}
                   >
-                    <Btn outline onClick={() => setStep(1)}>
+                    <Btn outline onClick={() => setStep(2)}>
                       ← Назад
                     </Btn>
                     <Btn

@@ -1,6 +1,7 @@
 import { withIikoSession, iikoPostXml } from "@/lib/iiko";
 import { logAction } from "@/lib/supabase.js";
 import { sendInvoiceReport } from "@/lib/telegram.js";
+import { storageConfigured } from "@/lib/storage.js";
 
 export async function POST(request) {
   let body = {};
@@ -38,6 +39,15 @@ export async function POST(request) {
 
     if (!supplier_id || !store_id || !items?.length) {
       return Response.json({ error: "Missing supplier_id, store_id or items" }, { status: 400 });
+    }
+
+    // Снимок накладной обязателен — но только если фото вообще можно грузить.
+    // Иначе ненастроенное хранилище остановило бы приёмку товара целиком.
+    if (storageConfigured() && !(attachments || []).some((a) => a?.kind === "invoice")) {
+      return Response.json(
+        { error: "Приложите фотографию накладной поставщика" },
+        { status: 400 }
+      );
     }
 
     // Generate local log tracking ID
