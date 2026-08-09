@@ -1,4 +1,5 @@
 import { getAssetById, createAsset, deleteAsset, logAction } from "@/lib/supabase";
+import { baseInvNumber, unitInvNumber } from "@/lib/inv-number";
 
 export const dynamic = "force-dynamic";
 
@@ -43,12 +44,11 @@ export async function POST(request) {
     const per = Math.floor((totalCost / n) * 100) / 100;
     const lastCost = Math.round((totalCost - per * (n - 1)) * 100) / 100;
 
-    const baseInv = String(asset.inv_number || `EQ-${String(asset.id).slice(0, 6)}`).replace(/-\d+$/, "");
-    const pad = (i) => String(i).padStart(String(n).length < 2 ? 2 : String(n).length, "0");
+    const baseInv = baseInvNumber(asset.inv_number || `EQ-${String(asset.id).slice(0, 6)}`);
 
     const created = [];
     for (let i = 1; i <= n; i++) {
-      const unitInv = `${baseInv}-${pad(i)}`;
+      const unitInv = unitInvNumber(baseInv, i, n);
       const row = await createAsset({
         inv_number: unitInv,
         name: asset.name,

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import { baseInvNumber } from "@/lib/inv-number";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -16003,7 +16004,34 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   };
 
   useEffect(() => {
-    loadAssets();
+    (async () => {
+      await loadAssets();
+
+      // Тихая сверка с iiko при открытии раздела: справочник там — источник
+      // истины, руками кнопку жать не нужно. Сервер сам пропустит запуск,
+      // если сверка была меньше получаса назад.
+      try {
+        const res = await fetch("/api/iiko/assets/sync?auto=1", {
+          method: "POST",
+          headers: {
+            "x-user-id": loggedInUser?.id || "admin",
+            "x-user-role": loggedInUser?.baseRole || "admin",
+            "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ")
+          }
+        });
+        const json = await res.json();
+        const d = json?.data;
+        const changed =
+          d && (d.addedCount || d.updatedCount || d.archivedCount || d.restoredCount);
+        if (json?.success && !json.skipped && changed) {
+          await loadAssets();
+          showToast?.(json.message, "success");
+        }
+      } catch (e) {
+        console.error("[FixedAssetsView] auto-sync:", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSyncIiko = async () => {
@@ -16128,7 +16156,13 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   // Calculations for financial summary
   const filteredAssets = assets.filter(a => {
     if (categoryFilter !== "all" && a.category !== categoryFilter) return false;
-    if (statusFilter !== "all" && a.status !== statusFilter) return false;
+    // «Все статусы» — это действующие: списанное (в том числе убранное из iiko)
+    // лежит в базе ради истории и наклеек, но в рабочем списке только мешает.
+    if (statusFilter === "all") {
+      if (a.status === "written_off") return false;
+    } else if (statusFilter !== "everything" && a.status !== statusFilter) {
+      return false;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
@@ -16150,7 +16184,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const groupedAssets = (() => {
     const groups = new Map();
     for (const a of filteredAssets) {
-      const base = String(a.inv_number || "").replace(/-\d+$/, "");
+      const base = baseInvNumber(a.inv_number);
       const key = `${base}|${a.name}`;
       if (!groups.has(key)) groups.set(key, { key, base, name: a.name, units: [] });
       groups.get(key).units.push(a);
@@ -16442,11 +16476,12 @@ function FixedAssetsView({ showToast, loggedInUser }) {
               cursor: "pointer"
             }}
           >
-            <option value="all">⚡ Все статусы</option>
+            <option value="all">⚡ Действующие</option>
             <option value="in_use">🟢 В эксплуатации</option>
             <option value="repair">🟡 В ремонте</option>
             <option value="in_stock">🔵 На складе</option>
-            <option value="written_off">🔴 Списано</option>
+            <option value="written_off">🔴 Списано / нет в iiko</option>
+            <option value="everything">📦 Все, включая списанные</option>
           </select>
         </div>
       </div>

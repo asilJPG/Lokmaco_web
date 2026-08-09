@@ -1,9 +1,11 @@
 import { withIikoSession, iikoGetJson, http1Fetch } from "@/lib/iiko";
-import { getAssetsList, createAsset, updateAsset, logAction } from "@/lib/supabase";
+import { getAssetsList, createAsset, updateAsset, logAction, getLastActionAt } from "@/lib/supabase";
+import { baseInvNumber, unitInvNumber } from "@/lib/inv-number";
 
 export const dynamic = "force-dynamic";
 
 const IIKO_SERVER = (process.env.IIKO_SERVER || "").replace(/\/+$/, "");
+const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000;
 
 export async function POST(request) {
   try {
@@ -19,6 +21,16 @@ export async function POST(request) {
     const [baseRole] = userRole.split(":");
     if (baseRole !== "admin" && baseRole !== "manager") {
       return Response.json({ error: "Доступ только для администратора и менеджера" }, { status: 403 });
+    }
+
+    // Автозапуск при открытии раздела: полная сверка ходит в iiko за списком
+    // накладных на два года, гонять её на каждое открытие страницы незачем.
+    const isAuto = new URL(request.url).searchParams.get("auto") === "1";
+    if (isAuto) {
+      const last = await getLastActionAt("assets_sync_iiko");
+      if (last && Date.now() - new Date(last).getTime() < AUTO_SYNC_INTERVAL_MS) {
+        return Response.json({ success: true, skipped: true, lastSyncAt: last });
+      }
     }
 
     const syncResult = await withIikoSession(async (token) => {
@@ -102,24 +114,26 @@ export async function POST(request) {
       // NOTE: the `assets` table has no `iiko_id`/`code` columns, so we dedupe on the
       // deterministic inventory number and on the serial number (which stores iiko code).
       const existingAssets = await getAssetsList();
-      const existingMapByCode = {};
-      const existingMapBySerial = {};
-      // Позиция могла быть уже развёрнута на экземпляры (EQ-0069-01…-20).
-      // Тогда самого EQ-0069 в базе нет, и без этой карты повторный импорт
-      // создал бы партию заново поверх существующей.
-      const existingBases = new Set();
 
+      // Карточки, сгруппированные по базовому номеру: у развёрнутой партии
+      // самого EQ-0069 в базе нет, есть EQ-0069-01…-20.
+      const byBase = new Map();
       existingAssets.forEach(a => {
-        if (a.inv_number) {
-          existingMapByCode[a.inv_number] = a;
-          existingBases.add(String(a.inv_number).replace(/-\d+$/, ""));
-        }
-        if (a.serial_number) existingMapBySerial[a.serial_number] = a;
+        if (!a.inv_number) return;
+        const base = baseInvNumber(a.inv_number);
+        if (!byBase.has(base)) byBase.set(base, []);
+        byBase.get(base).push(a);
       });
 
       let addedCount = 0;
       let updatedCount = 0;
       let unitsCreated = 0;
+      let archivedCount = 0;
+      let restoredCount = 0;
+
+      // Что реально есть в iiko прямо сейчас — по этому списку в конце
+      // архивируем всё, чего там больше нет.
+      const seenBases = new Set();
 
       // Больше этого на одну номенклатуру не разворачиваем: расходники вроде
       // салфеток приходят сотнями, и поштучные карточки для них бессмысленны.
@@ -134,28 +148,36 @@ export async function POST(request) {
         const initialCost = lastPurchase.price || lastPurchase.sum || p.estimatedPurchasePrice || 0;
         const commissioningDate = lastPurchase.date || new Date().toISOString().split("T")[0];
 
-        const existing =
-          existingMapByCode[invNumber] ||
-          (p.code ? existingMapBySerial[p.code] : null);
+        seenBases.add(invNumber);
 
-        if (existing) {
-          const updates = {};
-          if ((!existing.initial_cost || existing.initial_cost === 0) && initialCost > 0) {
-            updates.initial_cost = initialCost;
-          }
-          if (!existing.commissioning_date && commissioningDate) {
-            updates.commissioning_date = commissioningDate;
-          }
+        const existingRows = byBase.get(invNumber);
 
-          if (Object.keys(updates).length > 0) {
-            const ok = await updateAsset(existing.id, updates);
-            if (ok) updatedCount++;
+        if (existingRows?.length) {
+          // Позиция уже есть (одной карточкой или партией экземпляров).
+          // Имя тянем из iiko — там источник истины по номенклатуре.
+          // Цену и дату не затираем: их правят руками на сайте.
+          for (const existing of existingRows) {
+            const updates = {};
+            if (existing.name !== p.name) updates.name = p.name;
+            if ((!existing.initial_cost || existing.initial_cost === 0) && initialCost > 0) {
+              updates.initial_cost = initialCost;
+            }
+            if (!existing.commissioning_date && commissioningDate) {
+              updates.commissioning_date = commissioningDate;
+            }
+            // Вернулась в справочник после архивации
+            if (existing.status === "written_off") {
+              updates.status = "in_use";
+              restoredCount++;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              const ok = await updateAsset(existing.id, updates);
+              if (ok) updatedCount++;
+            }
           }
           continue;
         }
-
-        // Уже развёрнута на экземпляры — второй раз не заводим
-        if (existingBases.has(invNumber)) continue;
 
         // Сколько штук реально пришло: суммируем ВСЕ приходы, а не только последний.
         // Каждый экземпляр наследует цену и дату своего прихода.
@@ -180,10 +202,9 @@ export async function POST(request) {
 
         if (units.length > 1) {
           // Партия: сразу поштучные карточки со своими QR
-          const pad = (i) => String(i).padStart(String(units.length).length < 2 ? 2 : String(units.length).length, "0");
           let ok = 0;
           for (let i = 0; i < units.length; i++) {
-            const unitInv = `${invNumber}-${pad(i + 1)}`;
+            const unitInv = unitInvNumber(invNumber, i + 1, units.length);
             const row = await createAsset({
               ...base,
               inv_number: unitInv,
@@ -213,12 +234,31 @@ export async function POST(request) {
         }
       }
 
+      // 5. Чего в iiko больше нет — помечаем списанным, но не удаляем:
+      // за карточкой могут стоять напечатанные наклейки и отметки об
+      // инвентаризации. Вернут номенклатуру в iiko — карточка оживёт сама.
+      const archived = [];
+      for (const [base, rows] of byBase) {
+        if (!base || seenBases.has(base)) continue;
+        for (const row of rows) {
+          if (row.status === "written_off") continue;
+          const ok = await updateAsset(row.id, { status: "written_off" });
+          if (ok) {
+            archivedCount++;
+            if (archived.length < 50) archived.push(`${row.inv_number} — ${row.name}`);
+          }
+        }
+      }
+
       return {
         success: true,
         unitsCreated,
         totalFound: equipProducts.length,
         addedCount,
-        updatedCount
+        updatedCount,
+        archivedCount,
+        restoredCount,
+        archived
       };
     });
 
@@ -230,17 +270,22 @@ export async function POST(request) {
       userId,
       userRole,
       added: syncResult.addedCount,
-      updated: syncResult.updatedCount
+      updated: syncResult.updatedCount,
+      archived: syncResult.archivedCount,
+      restored: syncResult.restoredCount
     });
+
+    const parts = [`создано ${syncResult.addedCount}`];
+    if (syncResult.unitsCreated && syncResult.unitsCreated !== syncResult.addedCount) {
+      parts.push(`карточек с учётом партий ${syncResult.unitsCreated}`);
+    }
+    parts.push(`обновлено ${syncResult.updatedCount}`);
+    if (syncResult.archivedCount) parts.push(`списано ${syncResult.archivedCount}`);
+    if (syncResult.restoredCount) parts.push(`возвращено ${syncResult.restoredCount}`);
 
     return Response.json({
       success: true,
-      message:
-        `Синхронизировано из iiko: позиций создано ${syncResult.addedCount}` +
-        (syncResult.unitsCreated && syncResult.unitsCreated !== syncResult.addedCount
-          ? ` (карточек с учётом партий — ${syncResult.unitsCreated})`
-          : "") +
-        `, обновлено ${syncResult.updatedCount}.`,
+      message: `Синхронизировано из iiko: ${parts.join(", ")}.`,
       data: syncResult
     });
   } catch (e) {
