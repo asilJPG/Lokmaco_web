@@ -1,4 +1,4 @@
-import { getAssetById, createAsset, deleteAsset, logAction } from "@/lib/supabase";
+import { getAssetById, createAsset, updateAsset, logAction } from "@/lib/supabase";
 import { baseInvNumber, unitInvNumber } from "@/lib/inv-number";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +46,28 @@ export async function POST(request) {
 
     const baseInv = baseInvNumber(asset.inv_number || `EQ-${String(asset.id).slice(0, 6)}`);
 
-    const created = [];
-    for (let i = 1; i <= n; i++) {
+    // Первым экземпляром делаем саму исходную карточку, а не создаём её
+    // заново: на ней могут висеть наклейка и отметки инвентаризации, а
+    // удаление источника всё это обнулило бы.
+    const firstInv = unitInvNumber(baseInv, 1, n);
+    const firstOk = await updateAsset(id, {
+      inv_number: firstInv,
+      quantity: 1,
+      initial_cost: n === 1 ? lastCost : per,
+      serial_number: firstInv,
+      notes: `Экземпляр 1 из ${n}. Разбито из позиции ${asset.inv_number || id}.${
+        asset.notes ? " " + asset.notes : ""
+      }`,
+    });
+    if (!firstOk) {
+      return Response.json(
+        { success: false, error: "Не удалось преобразовать исходную позицию" },
+        { status: 500 }
+      );
+    }
+
+    const created = [{ id, inv_number: firstInv }];
+    for (let i = 2; i <= n; i++) {
       const unitInv = unitInvNumber(baseInv, i, n);
       const row = await createAsset({
         inv_number: unitInv,
@@ -68,37 +88,23 @@ export async function POST(request) {
       if (row) created.push({ id: row.id, inv_number: row.inv_number });
     }
 
-    if (created.length !== n) {
-      return Response.json(
-        {
-          success: false,
-          error: `Создано только ${created.length} из ${n}. Исходная позиция не удалена — проверьте список.`,
-          created,
-        },
-        { status: 500 }
-      );
-    }
-
-    // Исходную позицию убираем: иначе те же 20 штук посчитаются дважды
-    const removed = await deleteAsset(id);
-
     await logAction(userTgId, userName, "asset_split", String(asset.inv_number || id), {
       source_id: id,
       source_inv: asset.inv_number,
       name: asset.name,
       count: n,
+      created: created.length,
       total_cost: totalCost,
-      source_deleted: removed,
     });
 
     return Response.json({
       success: true,
-      count: n,
+      count: created.length,
       created,
-      source_deleted: removed,
-      message: removed
-        ? `Позиция разбита на ${n} экземпляров`
-        : `Создано ${n} экземпляров, но исходную позицию удалить не удалось — удалите вручную`,
+      message:
+        created.length === n
+          ? `Позиция разбита на ${n} экземпляров`
+          : `Создано ${created.length} из ${n} — остальные не сохранились, проверьте список`,
     });
   } catch (e) {
     console.error("[/api/iiko/assets/split]", e.message);

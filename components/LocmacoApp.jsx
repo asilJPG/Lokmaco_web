@@ -17693,6 +17693,24 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                     >
                       ✏️ Изменить
                     </button>
+                    {!many && (parseInt(asset.quantity, 10) || 1) > 1 && (
+                      <button
+                        className="touch-btn"
+                        onClick={() => handleSplitAsset(asset)}
+                        title={`Разбить на ${asset.quantity} карточек`}
+                        style={{
+                          flex: 1,
+                          borderRadius: 10,
+                          border: "1px solid #f59e0b",
+                          background: "rgba(245,158,11,.12)",
+                          color: "#b45309",
+                          fontSize: 13,
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✂️ {asset.quantity} шт.
+                      </button>
+                    )}
                     {many && (
                       <button
                         className="touch-btn"
