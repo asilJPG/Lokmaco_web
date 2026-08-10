@@ -17058,6 +17058,8 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const isMobile = useIsMobile();
   const [locationsOpen, setLocationsOpen] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [bindAsset, setBindAsset] = useState(null);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [locations, setLocations] = useState([]);
@@ -17330,6 +17332,11 @@ function FixedAssetsView({ showToast, loggedInUser }) {
     } else if (statusFilter !== "everything" && a.status !== statusFilter) {
       return false;
     }
+    if (locationFilter === "none") {
+      if (a.location_id) return false;
+    } else if (locationFilter !== "all" && a.location_id !== locationFilter) {
+      return false;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
@@ -17344,6 +17351,13 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
   const totalInitialCost = filteredAssets.reduce((sum, a) => sum + (parseFloat(a.initial_cost) || 0), 0);
   const totalCount = filteredAssets.length;
+
+  // Показываем то, с чем можно что-то сделать: сколько ещё оклеить и сколько
+  // ни разу не попадало в обход. «На обслуживании» в прежней плитке почти
+  // всегда был ноль и место занимал зря.
+  const withoutTag = filteredAssets.filter((a) => !tagByAsset[a.id]).length;
+  const neverAudited = filteredAssets.filter((a) => !a.last_inventoried_at).length;
+  const withoutPlace = filteredAssets.filter((a) => !a.location_id).length;
 
   // Разбитые партии показываем одной строкой: 20 карточек «Монстеры» — это один
   // вид, а не двадцать позиций в списке. Ключ — инв. номер без суффикса -NN плюс
@@ -17440,193 +17454,156 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
   return (
     <div style={{ padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
-      {/* Header Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+      {/* Шапка: два постоянных действия, остальное — в меню «Ещё».
+          Раньше здесь стояло восемь кнопок в ряд, и найти нужную было тяжело. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-main)", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-            🏛️ Основные средства и НМА
-            <span style={{ fontSize: 13, fontWeight: 600, background: "var(--bg-pill)", padding: "3px 10px", borderRadius: 20, color: "var(--text-muted)" }}>
-              {totalCount} объектов
-            </span>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", margin: 0 }}>
+            🏛️ Основные средства
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>
-            Учет оборудования ресторана, даты приходов, первоначальная стоимость, износ и QR-коды для инвентаризации
+            {totalCount} единиц · {formatMoney(totalInitialCost)}
           </p>
         </div>
 
-        <div className="stack-mobile" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="stack-mobile" style={{ display: "flex", gap: 8, flexWrap: "wrap", position: "relative" }}>
           <button
             className="touch-btn"
             onClick={() => setScanOpen(true)}
             style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "none",
+              padding: "10px 18px", borderRadius: 10, border: "none",
               background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.25)"
+              color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(245,158,11,.25)",
             }}
           >
-            📷 Инвентаризация сканером
+            📷 Инвентаризация
           </button>
 
           <button
             className="touch-btn"
-            onClick={handleExportCsv}
+            onClick={() => setLookupOpen(true)}
             style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "1px solid var(--border-color)",
-              background: "var(--bg-pill)",
-              color: "var(--text-main)",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8
+              padding: "10px 18px", borderRadius: 10,
+              border: "1px solid var(--border-color)", background: "var(--bg-card)",
+              color: "var(--text-main)", fontSize: 14, fontWeight: 700, cursor: "pointer",
             }}
           >
-            📊 Экспорт CSV
+            🔍 Найти по QR
           </button>
 
           <button
             className="touch-btn"
-            onClick={handleSyncIiko}
-            disabled={syncing}
+            onClick={() => setMoreOpen((v) => !v)}
             style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "none",
-              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: syncing ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)",
-              opacity: syncing ? 0.7 : 1
+              padding: "10px 18px", borderRadius: 10,
+              border: "1px solid var(--border-color)", background: "var(--bg-card)",
+              color: "var(--text-main)", fontSize: 14, fontWeight: 700, cursor: "pointer",
             }}
           >
-            {syncing ? "⌛ Синхронизация с iiko..." : "⚡ Импортировать приходы из iiko"}
+            ⋯ Ещё
           </button>
 
-          {[
-            ...(pendingSplits.length
-              ? [
+          {moreOpen && (
+            <>
+              <div
+                onClick={() => setMoreOpen(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 40 }}
+              />
+              <div
+                style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 50,
+                  minWidth: 260, background: "var(--bg-card)",
+                  border: "1px solid var(--border-color)", borderRadius: 12,
+                  boxShadow: "0 12px 32px rgba(0,0,0,.16)", overflow: "hidden",
+                }}
+              >
+                {[
+                  { label: "🏷 Наклейки", hint: "печать пачки и привязка", onClick: () => setTagsOpen(true) },
+                  { label: "📍 Места", hint: "справочник размещения", onClick: () => setLocationsOpen(true) },
+                  ...(pendingSplits.length
+                    ? [{
+                        label: `✂️ Развернуть партии`,
+                        hint: `${pendingSplits.length} позиц. → ${pendingUnits} карточек`,
+                        onClick: handleSplitAll,
+                      }]
+                    : []),
                   {
-                    label: `✂️ Развернуть партии (${pendingUnits})`,
-                    onClick: handleSplitAll,
+                    label: "➕ Добавить вручную",
+                    hint: "чего нет в справочнике iiko",
+                    onClick: () => setEditModalAsset({
+                      inv_number: "", name: "", category: "Оборудование",
+                      location: "Кухня", responsible_person: "Шеф-повар",
+                      initial_cost: "", commissioning_date: new Date().toISOString().split("T")[0],
+                      status: "in_use", notes: "",
+                    }),
                   },
-                ]
-              : []),
-            { label: "🔍 Найти по QR", onClick: () => setLookupOpen(true) },
-            { label: "📍 Места", onClick: () => setLocationsOpen(true) },
-            {
-              label: `🏷 Наклейки${
-                Object.keys(tagByAsset).length ? ` (${Object.keys(tagByAsset).length})` : ""
-              }`,
-              onClick: () => setTagsOpen(true),
-            },
-          ].map((b) => (
-            <button
-              key={b.label}
-              className="touch-btn"
-              onClick={b.onClick}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 10,
-                border: "1px solid var(--border-color)",
-                background: "var(--bg-card)",
-                color: "var(--text-main)",
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {b.label}
-            </button>
-          ))}
+                  { label: syncing ? "⌛ Синхронизация…" : "⚡ Сверить с iiko", hint: "подтянуть справочник", onClick: handleSyncIiko },
+                  { label: "📊 Экспорт CSV", hint: "текущая выборка", onClick: handleExportCsv },
+                ].map((item, i) => (
+                  <button
+                    key={item.label}
+                    className="touch-btn"
+                    disabled={syncing}
+                    onClick={() => { setMoreOpen(false); item.onClick(); }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      padding: "11px 14px", border: "none",
+                      borderTop: i ? "1px solid var(--border-color)" : "none",
+                      background: "transparent", cursor: "pointer", color: "var(--text-main)",
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{item.label}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{item.hint}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
-          <button
-            className="touch-btn"
-            onClick={() => setEditModalAsset({
-              inv_number: "",
-              name: "",
-              category: "Оборудование",
-              location: "Кухня",
-              responsible_person: "Шеф-повар",
-              initial_cost: "",
-              commissioning_date: new Date().toISOString().split("T")[0],
-              status: "in_use",
-              notes: ""
-            })}
+      {/* Плитки показывают то, с чем можно что-то сделать: незакрытые задачи,
+          а не статистику ради статистики */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
+        {[
+          { label: "Единиц", value: totalCount, sub: formatMoney(totalInitialCost), color: "var(--text-main)" },
+          {
+            label: "Без наклейки", value: withoutTag, sub: withoutTag ? "нужно оклеить" : "все оклеены",
+            color: withoutTag ? "#b45309" : "#10b981",
+            onClick: withoutTag ? () => setTagsOpen(true) : null,
+          },
+          {
+            label: "Без места", value: withoutPlace, sub: withoutPlace ? "не указано где стоит" : "все размещены",
+            color: withoutPlace ? "#b45309" : "#10b981",
+            onClick: withoutPlace ? () => setLocationFilter("none") : null,
+          },
+          {
+            label: "Не проверялись", value: neverAudited, sub: neverAudited ? "ни разу не сканировали" : "все проверены",
+            color: neverAudited ? "#6366f1" : "#10b981",
+            onClick: neverAudited ? () => setScanOpen(true) : null,
+          },
+        ].map((k) => (
+          <div
+            key={k.label}
+            onClick={k.onClick || undefined}
             style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "none",
-              background: "var(--color-primary, #10b981)",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)"
+              background: "var(--bg-card)", border: "1px solid var(--border-color)",
+              borderRadius: 12, padding: 14,
+              cursor: k.onClick ? "pointer" : "default",
             }}
           >
-            ➕ Добавить оборудование
-          </button>
-        </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".4px" }}>
+              {k.label}
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: k.color, marginTop: 4, lineHeight: 1.1 }}>
+              {k.value}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{k.sub}</div>
+          </div>
+        ))}
       </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 24 }}>
-        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Первоначальная стоимость оборудования
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-main)", marginTop: 6 }}>
-            {formatMoney(totalInitialCost)}
-          </div>
-          <div style={{ fontSize: 12, color: "#10b981", marginTop: 4 }}>
-            По всем {totalCount} выбранным позициям
-          </div>
-        </div>
-
-        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            В эксплуатации
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#10b981", marginTop: 6 }}>
-            {filteredAssets.filter(a => a.status === "in_use" || !a.status).length} шт.
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            Готово к работе в заведении
-          </div>
-        </div>
-
-        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            На обслуживании / В ремонте
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 6 }}>
-            {filteredAssets.filter(a => a.status === "repair" || a.status === "in_stock").length} шт.
-          </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            Требуют внимания или инспекции
-          </div>
-        </div>
-      </div>
 
       {/* Filter and Search Bar */}
       <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: 16, marginBottom: 20, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
@@ -17649,6 +17626,27 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             }}
           />
 
+
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-pill)",
+              color: "var(--text-main)",
+              fontSize: 14,
+              outline: "none",
+              cursor: "pointer"
+            }}
+          >
+            <option value="all">📍 Все места</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>📍 {l.name}</option>
+            ))}
+            <option value="none">⚠️ Без места</option>
+          </select>
 
           <select
             value={statusFilter}
