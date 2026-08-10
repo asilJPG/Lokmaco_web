@@ -158,3 +158,56 @@ button:hover {
     font-size: 16px !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Печать наклеек. Новое окно через window.open блокируется, если открывать
+   его после await — браузер не считает такое окно результатом клика.
+   Поэтому лист рендерится в саму страницу и печатается отсюда.
+   --------------------------------------------------------------------------- */
+#print-tags {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+  body.printing-tags > * {
+    display: none !important;
+  }
+  body.printing-tags > #print-tags {
+    display: block !important;
+  }
+  #print-tags .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4mm;
+  }
+  #print-tags .tag {
+    border: 1px dashed #999;
+    border-radius: 3mm;
+    padding: 3mm 2mm;
+    text-align: center;
+    page-break-inside: avoid;
+    color: #000;
+  }
+  #print-tags .qr {
+    width: 100%;
+    max-width: 34mm;
+    display: block;
+    margin: 0 auto 1.5mm;
+  }
+  #print-tags .code {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 11pt;
+    letter-spacing: 0.5px;
+  }
+  #print-tags .cap {
+    font-size: 5.5pt;
+    color: #444;
+    margin-top: 0.8mm;
+    line-height: 1.2;
+  }
+}

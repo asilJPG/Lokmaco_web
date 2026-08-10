@@ -16323,52 +16323,61 @@ function AssetLocationsModal({ headers, onClose, showToast, onChanged }) {
   );
 }
 
-/** Печать пачки наклеек: сетка QR со ссылкой вида /tag/LKM-0007. */
-function printTagSheet(tags) {
+/**
+ * Печать пачки наклеек: сетка QR со ссылкой вида /tag/LKM-0007.
+ *
+ * Лист рендерится прямо в страницу, а не в новое окно: window.open после
+ * await блокируется — браузер не считает такое окно результатом клика,
+ * возвращает null, и обращение к его document падает с ошибкой.
+ */
+async function printTagSheet(tags, showToast) {
+  if (!tags?.length) return;
+
   const origin = window.location.origin;
   const cells = tags
     .map((t) => {
       const url = `${origin}/tag/${t.code}`;
       const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=4&data=${encodeURIComponent(url)}`;
-      return `
-        <div class="tag">
-          <img class="qr" src="${qr}" />
-          <div class="code">${t.code}</div>
-          <div class="cap">Инвентарная наклейка оборудования</div>
-        </div>`;
+      return `<div class="tag"><img class="qr" src="${qr}" alt="" /><div class="code">${t.code}</div><div class="cap">Инвентарная наклейка оборудования</div></div>`;
     })
     .join("");
 
-  const w = window.open("", "_blank");
-  w.document.write(`
-    <html>
-      <head>
-        <title>Наклейки (${tags.length} шт.)</title>
-        <style>
-          @page { size: A4; margin: 8mm; }
-          body { font-family: -apple-system, sans-serif; margin: 0; }
-          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; }
-          .tag {
-            border: 1px dashed #999;
-            border-radius: 3mm;
-            padding: 3mm 2mm;
-            text-align: center;
-            page-break-inside: avoid;
-          }
-          .qr { width: 100%; max-width: 34mm; display: block; margin: 0 auto 1.5mm; }
-          .code { font-family: monospace; font-weight: 700; font-size: 11pt; letter-spacing: .5px; }
-          .cap { font-size: 5.5pt; color: #444; margin-top: .8mm; line-height: 1.2; }
-          @media print { .noprint { display: none; } }
-        </style>
-      </head>
-      <body>
-        <div class="noprint" style="padding:10px;text-align:center">
-          <button onclick="window.print()" style="padding:8px 18px;font-size:14px;cursor:pointer">🖨 Печать</button>
-        </div>
-        <div class="grid">${cells}</div>
-      </body>
-    </html>`);
-  w.document.close();
+  let host = document.getElementById("print-tags");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "print-tags";
+    document.body.appendChild(host);
+  }
+  host.innerHTML = `<div class="grid">${cells}</div>`;
+
+  // QR приходят с внешнего сервиса: без ожидания на лист уйдут пустые рамки
+  const images = Array.from(host.querySelectorAll("img"));
+  try {
+    await Promise.all(
+      images.map(
+        (img) =>
+          img.complete ||
+          new Promise((res) => {
+            img.onload = res;
+            img.onerror = res;
+          })
+      )
+    );
+  } catch {}
+
+  const broken = images.filter((i) => i.naturalWidth === 0).length;
+  if (broken) {
+    showToast?.(`Не загрузилось QR-картинок: ${broken}. Проверьте интернет`, "error");
+  }
+
+  document.body.classList.add("printing-tags");
+  window.print();
+
+  // Снимаем режим печати после закрытия диалога
+  setTimeout(() => {
+    document.body.classList.remove("printing-tags");
+    host.innerHTML = "";
+  }, 1000);
 }
 
 /**
@@ -16415,7 +16424,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
     setBusy(false);
     if (j.success) {
       await load();
-      printTagSheet(j.tags);
+      await printTagSheet(j.tags, showToast);
       showToast?.(`Создано наклеек: ${j.tags.length}`);
     } else showToast?.(j.error || "Не удалось создать", "error");
   };
@@ -16476,7 +16485,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
             <Btn
               outline
               style={{ flex: 1 }}
-              onClick={() => printTagSheet(tags.filter((t) => !t.asset_id))}
+              onClick={() => printTagSheet(tags.filter((t) => !t.asset_id), showToast)}
             >
               🖨 Печатать свободные ({stats.free})
             </Btn>
@@ -16551,7 +16560,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
                 )}
                 <button
                   className="touch-btn"
-                  onClick={() => printTagSheet([t])}
+                  onClick={() => printTagSheet([t], showToast)}
                   title="Печать этой наклейки"
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}
                 >
@@ -19567,6 +19576,12 @@ function QrStickerModal({ asset, onClose }) {
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
+    // Блокировщик попапов возвращает null — без проверки это падало с
+    // «Cannot read properties of null (reading 'document')»
+    if (!printWindow || !printWindow.document) {
+      alert("Браузер заблокировал окно печати. Разрешите всплывающие окна для этого сайта.");
+      return;
+    }
     printWindow.document.write(`
       <html>
         <head>
