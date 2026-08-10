@@ -14,7 +14,7 @@ export default async function AssetsPage() {
     <div className="grid">
       <div>
         <h1 className="page-title">Опись основных средств</h1>
-        <p className="page-subtitle">Учёт оборудования, мебели и техники: инвентаризация по стикерам и штрихкодам.</p>
+        <p className="page-subtitle">Наклейки, обход с камерой и акт инвентаризации.</p>
       </div>
       <AssetsClient />
     </div>

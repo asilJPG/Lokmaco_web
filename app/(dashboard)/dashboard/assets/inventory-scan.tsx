@@ -45,8 +45,9 @@ function buildBatches(assets: Asset[]): Batch[] {
  * делают с того, что уже в кармане.
  */
 export function InventoryScanModal({
-  assets, tags, locations, onFinish, onBound, onClose,
+  initialMode = 'audit', assets, tags, locations, onFinish, onBound, onClose,
 }: {
+  initialMode?: Mode;
   assets: Asset[];
   tags: AssetTag[];
   locations: AssetLocation[];
@@ -59,7 +60,7 @@ export function InventoryScanModal({
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef(0);
 
-  const [mode, setMode] = useState<Mode>('audit');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [placeId, setPlaceId] = useState('all');
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
   const [last, setLast] = useState<Feedback | null>(null);

@@ -1321,7 +1321,7 @@ tr[data-today="true"] td:first-child {
 }
 
 .scan-sheet {
-  background: var(--bg-card);
+  background: var(--surface);
   width: 100%;
   max-width: 560px;
   display: flex;
@@ -1368,7 +1368,7 @@ tr[data-today="true"] td:first-child {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg-pill, rgba(127, 127, 127, 0.08));
+  background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
 .scan-feedback--ok  { background: rgba(16, 185, 129, 0.14); }
@@ -1438,3 +1438,145 @@ tr[data-today="true"] td:first-child {
   body.printing-tags #print-tags { display: block; }
   body.printing-tags { background: #fff; }
 }
+
+/* ── Опись ОС ─────────────────────────────────────────────────────────────
+   Список идёт видами, а не карточками: двадцать одинаковых столов человек
+   ищет как «стол», а не как EQ-00745-13. Таблица тут не годится — половина
+   колонок в этой описи одинакова у всех позиций (категория, МОЛ, локация
+   текстом), а с телефона широкая таблица всё равно не читается. */
+.asset-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.asset-summary__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.asset-summary__value { font-size: 22px; font-weight: 800; }
+.asset-summary__of { font-size: 14px; color: var(--text-muted); }
+.asset-summary__facts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+
+.asset-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.asset-bar--thin { height: 4px; margin: 6px 0 2px; }
+.asset-bar__fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.2s; }
+
+/* Обход и оклейка — то, зачем сюда заходят с телефона: кнопки крупные и
+   первыми, остальное уходит в обычный ряд ниже. */
+.asset-actions { display: flex; gap: 10px; }
+.asset-actions__main { flex: 1; min-height: 52px; font-size: 15px; font-weight: 700; }
+
+.asset-list { display: flex; flex-direction: column; gap: 10px; }
+
+.asset-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.asset-card__head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.asset-card__head:hover { background: var(--surface-muted); }
+
+.asset-card__main { flex: 1; min-width: 0; }
+.asset-card__name { font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.asset-card__count {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.asset-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.asset-card__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.asset-card__chevron { color: var(--text-faint); font-size: 12px; padding-top: 2px; }
+
+.asset-card__body {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.asset-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.asset-unit:last-child { border-bottom: 0; }
+.asset-unit__inv { font-family: monospace; font-weight: 600; }
+.asset-unit__tag { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-faint); font-size: 12px; }
+.asset-unit__tag.is-bound { color: var(--success); }
+.asset-unit__seen { color: var(--text-muted); font-size: 12px; }
+.asset-unit .btn--icon { padding: 4px 8px; min-height: 32px; }
+
+@media (max-width: 767px) {
+  /* Двадцать экземпляров — двадцать строк: перенос превращал их в простыню. */
+  .asset-unit { font-size: 12px; gap: 6px; }
+  .asset-unit__seen { display: none; }
+}
+
+/* Поиск липнет к верху: список длинный, а искать начинают, уже пролистав. */
+.asset-search {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  background: var(--bg);
+}
+.asset-search .input { flex: 1; min-width: 0; }
+
+/* Второстепенное — лента чипов с прокруткой вбок, а не сетка кнопок во весь
+   экран: этими действиями пользуются раз в месяц, а место занимали всегда. */
+.asset-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.asset-chips::-webkit-scrollbar { display: none; }
+.asset-chips .btn { flex: 0 0 auto; white-space: nowrap; }
