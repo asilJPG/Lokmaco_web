@@ -4,6 +4,7 @@ import {
   createTags,
   updateTag,
   getLastTagCode,
+  deleteTag,
   updateAsset,
   logAction,
 } from "@/lib/supabase";
@@ -150,5 +151,42 @@ export async function PATCH(request) {
     rebound_from: tag.asset_id || null,
   });
 
+  return Response.json({ success: true });
+}
+
+/** Удаление наклейки. Привязанную не трогаем — сначала отвязать. */
+export async function DELETE(request) {
+  const g = guard(request);
+  if (g.error) return Response.json({ error: g.error }, { status: g.status });
+
+  const { searchParams } = new URL(request.url);
+  const code = normalizeTagCode(searchParams.get("code") || "");
+  const allFree = searchParams.get("free") === "1";
+
+  if (allFree) {
+    const free = await getTags({ onlyFree: true });
+    let removed = 0;
+    for (const t of free) {
+      if (await deleteTag(t.code)) removed++;
+    }
+    await logAction(g.userTgId, g.userName, "asset_tags_delete", "free", { removed });
+    return Response.json({ success: true, removed });
+  }
+
+  if (!code) return Response.json({ error: "Не указан код наклейки" }, { status: 400 });
+
+  const tag = await getTagByCode(code);
+  if (!tag) return Response.json({ error: "Наклейка не найдена" }, { status: 404 });
+  if (tag.asset_id) {
+    return Response.json(
+      { error: "Наклейка привязана к оборудованию — сначала отвяжите её" },
+      { status: 400 }
+    );
+  }
+
+  const ok = await deleteTag(code);
+  if (!ok) return Response.json({ error: "Не удалось удалить" }, { status: 500 });
+
+  await logAction(g.userTgId, g.userName, "asset_tags_delete", code, {});
   return Response.json({ success: true });
 }

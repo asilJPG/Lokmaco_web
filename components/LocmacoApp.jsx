@@ -16420,6 +16420,28 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
     } else showToast?.(j.error || "Не удалось создать", "error");
   };
 
+  const removeFree = async () => {
+    if (!confirm(`Удалить все свободные наклейки (${stats.free} шт.)? Напечатанные станут недействительными.`)) return;
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets/tags?free=1", { method: "DELETE", headers });
+    const j = await r.json();
+    setBusy(false);
+    if (j.success) {
+      await load();
+      showToast?.(`Удалено наклеек: ${j.removed}`);
+    } else showToast?.(j.error || "Не удалось удалить", "error");
+  };
+
+  const removeOne = async (code) => {
+    const r = await fetch(`/api/iiko/assets/tags?code=${encodeURIComponent(code)}`, {
+      method: "DELETE",
+      headers,
+    });
+    const j = await r.json();
+    if (j.success) await load();
+    else showToast?.(j.error || "Не удалось удалить", "error");
+  };
+
   const shown = tags.filter((t) =>
     filter === "free" ? !t.asset_id : filter === "bound" ? t.asset_id : true
   );
@@ -16448,6 +16470,19 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <Btn onClick={() => setScan({})} style={{ flex: 1 }}>📷 Привязать сканированием</Btn>
         </div>
+
+        {stats.free > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <Btn
+              outline
+              style={{ flex: 1 }}
+              onClick={() => printTagSheet(tags.filter((t) => !t.asset_id))}
+            >
+              🖨 Печатать свободные ({stats.free})
+            </Btn>
+            <Btn outline onClick={removeFree} disabled={busy}>🗑</Btn>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
           <input
@@ -16515,12 +16550,23 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
                   <span style={{ flex: 1, color: "#b45309", fontWeight: 600 }}>свободна</span>
                 )}
                 <button
+                  className="touch-btn"
                   onClick={() => printTagSheet([t])}
                   title="Печать этой наклейки"
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}
                 >
                   🖨
                 </button>
+                {!t.asset_id && (
+                  <button
+                    className="touch-btn"
+                    onClick={() => removeOne(t.code)}
+                    title="Удалить наклейку"
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}
+                  >
+                    🗑
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -16547,11 +16593,11 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
 }
 
 /** Скан наклейки → выбор оборудования и места → сохранение. */
-function TagBindModal({ headers, assets, locations, onClose, showToast, onBound, onAssetCreated, onLocationsChanged }) {
+function TagBindModal({ headers, assets, locations, onClose, showToast, onBound, onAssetCreated, onLocationsChanged, presetAsset }) {
   const [code, setCode] = useState("");
   const [tag, setTag] = useState(null);
-  const [assetId, setAssetId] = useState("");
-  const [locationId, setLocationId] = useState("");
+  const [assetId, setAssetId] = useState(presetAsset?.id || "");
+  const [locationId, setLocationId] = useState(presetAsset?.location_id || "");
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState([]);
@@ -16631,8 +16677,10 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
     if (navigator.vibrate) navigator.vibrate(60);
     setCode(c);
     setTag(j.tag);
-    setAssetId(j.tag.asset_id || "");
-    setLocationId(j.tag.asset?.location_id || "");
+    if (!presetAsset) {
+      setAssetId(j.tag.asset_id || "");
+      setLocationId(j.tag.asset?.location_id || "");
+    }
   };
 
   // Уже привязанные к другим наклейкам единицы в списке не нужны
@@ -16672,6 +16720,8 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
     await onBound?.();
 
     // готовимся к следующей наклейке
+    if (presetAsset) return onClose();
+
     setTag(null);
     setCode("");
     setAssetId("");
@@ -16683,7 +16733,9 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
     <div className="sheet-wrap-mobile" style={{ ...modalWrap, zIndex: 1400 }} onClick={onClose}>
       <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>📷 Привязка наклеек</h3>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
+            {presetAsset ? `🏷 Наклейка для «${presetAsset.name}»` : "📷 Привязка наклеек"}
+          </h3>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
         </div>
 
@@ -16691,7 +16743,9 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
           <>
             <CameraQrReader onCode={handleCode} />
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>
-              Наведите на наклейку, которую только что приклеили
+              {presetAsset
+                ? "Наведите на свободную наклейку — она привяжется к этой карточке"
+                : "Наведите на наклейку, которую только что приклеили"}
             </div>
           </>
         ) : (
@@ -16705,6 +16759,12 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
               )}
             </div>
 
+            {presetAsset ? (
+              <div style={{ marginBottom: 14, fontSize: 14 }}>
+                Будет привязана к: <b>{presetAsset.name}</b>
+              </div>
+            ) : (
+            <>
             <label style={lbl}>Что это за оборудование</label>
             <input
               value={search}
@@ -16797,6 +16857,9 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
               ))}
             </div>
 
+            </>
+            )}
+
             <label style={lbl}>Где стоит</label>
             {newPlace !== null ? (
               <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -16858,6 +16921,91 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
   );
 }
 
+/**
+ * «Что это за предмет» — сканируешь наклейку и видишь карточку. Публичная
+ * страница наклейки данных не показывает специально (её видит кто угодно
+ * с камерой), поэтому смотреть их можно только здесь, после входа.
+ */
+function AssetLookupModal({ headers, locationName, onClose, onEdit }) {
+  const [result, setResult] = useState(null);
+  const [notFound, setNotFound] = useState("");
+  const lastRef = useRef("");
+
+  const handleCode = async (raw) => {
+    const m = String(raw).match(/\/tag\/([A-Za-z0-9_-]+)/);
+    const c = (m ? m[1] : String(raw).trim()).toUpperCase();
+    if (!c || c === lastRef.current) return;
+    lastRef.current = c;
+
+    const r = await fetch(`/api/iiko/assets/tags?code=${encodeURIComponent(c)}`, { headers });
+    const j = await r.json();
+    if (!j.success) {
+      setNotFound(c);
+      setResult(null);
+      setTimeout(() => (lastRef.current = ""), 1500);
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(60);
+    setNotFound("");
+    setResult(j.tag);
+  };
+
+  const asset = result?.asset;
+
+  const row = (label, value) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--border-color)" }}>
+      <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, textAlign: "right" }}>{value || "—"}</span>
+    </div>
+  );
+
+  return (
+    <div className="sheet-wrap-mobile" style={{ ...modalWrap, zIndex: 1350 }} onClick={onClose}>
+      <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>🔍 Найти по QR</h3>
+          <button onClick={onClose} className="touch-btn" style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
+        </div>
+
+        <CameraQrReader onCode={handleCode} height={220} />
+
+        {notFound && (
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 13 }}>
+            Наклейка <b>{notFound}</b> в системе не числится
+          </div>
+        )}
+
+        {result && !asset && (
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 13 }}>
+            <b>{result.code}</b> — свободная наклейка, оборудование не привязано
+          </div>
+        )}
+
+        {asset && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 2 }}>{asset.name}</div>
+            <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+              {result.code} · {asset.inv_number}
+            </div>
+            {row("Место", locationName?.(asset))}
+            {row("Стоимость", formatMoney(asset.initial_cost))}
+            {row("Дата ввода", asset.commissioning_date)}
+            {row("МОЛ", asset.responsible_person)}
+            {row("Инвентаризация", asset.last_inventoried_at ? String(asset.last_inventoried_at).slice(0, 10) : "не проводилась")}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <Btn outline style={{ flex: 1 }} onClick={() => { setResult(null); lastRef.current = ""; }}>
+                Сканировать ещё
+              </Btn>
+              <Btn style={{ flex: 1 }} onClick={() => onEdit?.(asset)}>Изменить</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FixedAssetsView({ showToast, loggedInUser }) {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16872,6 +17020,8 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const [openGroups, setOpenGroups] = useState(() => new Set()); // раскрытые партии
   const isMobile = useIsMobile();
   const [locationsOpen, setLocationsOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
+  const [bindAsset, setBindAsset] = useState(null);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [locations, setLocations] = useState([]);
   const [tagByAsset, setTagByAsset] = useState({});
@@ -17280,6 +17430,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           </button>
 
           {[
+            { label: "🔍 Найти по QR", onClick: () => setLookupOpen(true) },
             { label: "📍 Места", onClick: () => setLocationsOpen(true) },
             {
               label: `🏷 Наклейки${
@@ -17505,18 +17656,18 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button
                       className="touch-btn"
-                      onClick={() => setQrModalAsset(asset)}
+                      onClick={() => setBindAsset(asset)}
                       style={{
                         flex: 1,
                         borderRadius: 10,
                         border: "1px solid var(--border-color)",
-                        background: "var(--bg-pill)",
-                        color: "var(--text-main)",
+                        background: tagByAsset[asset.id] ? "var(--bg-pill)" : "rgba(99,102,241,.12)",
+                        color: tagByAsset[asset.id] ? "var(--text-main)" : "#6366f1",
                         fontSize: 13,
                         fontWeight: 700,
                       }}
                     >
-                      📱 QR
+                      🏷 {tagByAsset[asset.id] ? "Переклеить" : "Привязать"}
                     </button>
                     <button
                       className="touch-btn"
@@ -17578,7 +17729,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                           </span>
                           <button
                             className="touch-btn"
-                            onClick={() => setQrModalAsset(u)}
+                            onClick={() => setBindAsset(u)}
                             style={{
                               borderRadius: 8,
                               border: "1px solid var(--border-color)",
@@ -17588,7 +17739,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                               padding: "0 12px",
                             }}
                           >
-                            QR
+                            🏷
                           </button>
                         </div>
                       ))}
@@ -17712,11 +17863,11 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                               <td style={{ padding: "10px 16px", textAlign: "center" }}>
                                 <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                                   <button
-                                    onClick={() => setQrModalAsset(u)}
-                                    title="QR-стикер этого экземпляра"
+                                    onClick={() => setBindAsset(u)}
+                                    title="Привязать наклейку сканированием"
                                     style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 11, cursor: "pointer" }}
                                   >
-                                    📱 QR
+                                    🏷 Наклейка
                                   </button>
                                   <button
                                     onClick={() => setEditModalAsset(u)}
@@ -17799,10 +17950,10 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
                       <td style={{ padding: "14px 16px", textAlign: "center" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-                          {/* QR Code Button */}
+                          {/* Привязка универсальной наклейки */}
                           <button
-                            onClick={() => setQrModalAsset(asset)}
-                            title="Сгенерировать QR-код для печати"
+                            onClick={() => setBindAsset(asset)}
+                            title="Привязать наклейку сканированием"
                             style={{
                               padding: "6px 12px",
                               borderRadius: 8,
@@ -17817,7 +17968,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                               gap: 4
                             }}
                           >
-                            📱 QR-код
+                            🏷 {tagByAsset[asset.id] ? "Переклеить" : "Привязать"}
                           </button>
 
                           {/* Split Button — только для позиций с количеством > 1 */}
@@ -17914,6 +18065,34 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           tagMap={Object.fromEntries(
             Object.entries(tagByAsset).map(([assetId, code]) => [code, assetId])
           )}
+        />
+      )}
+
+      {lookupOpen && (
+        <AssetLookupModal
+          headers={apiHeaders}
+          locationName={locationName}
+          onClose={() => setLookupOpen(false)}
+          onEdit={(a) => {
+            setLookupOpen(false);
+            setEditModalAsset(a);
+          }}
+        />
+      )}
+
+      {bindAsset && (
+        <TagBindModal
+          headers={apiHeaders}
+          assets={assets}
+          locations={locations}
+          presetAsset={bindAsset}
+          showToast={showToast}
+          onClose={() => setBindAsset(null)}
+          onLocationsChanged={loadSiteData}
+          onBound={async () => {
+            await loadSiteData();
+            await loadAssets();
+          }}
         />
       )}
 
