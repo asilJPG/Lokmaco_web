@@ -3,9 +3,21 @@ import { logAction } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+// Списание продуктов отключено для всех ролей: акты проводятся в самой iiko.
+// Проверка стоит первой — эндпоинт закрыт независимо от роли, чтобы правило
+// нельзя было обойти прямым запросом мимо интерфейса.
+const WRITEOFF_ENABLED = false;
+
 export async function POST(request) {
   let body = {};
   try {
+    if (!WRITEOFF_ENABLED) {
+      return Response.json(
+        { error: "Списание продуктов через сайт отключено" },
+        { status: 403 }
+      );
+    }
+
     const userId = request.headers.get("x-user-id");
     const userRole = request.headers.get("x-user-role") || "";
     const userTgId = request.headers.get("x-user-tg-id") || "";

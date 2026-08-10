@@ -1279,6 +1279,11 @@ export default function LocmacoApp() {
     if (tabId === "agent") {
       return role === "admin";
     }
+    // Списание продуктов закрыто для всех, включая админа: проверка стоит до
+    // общего доступа админа, иначе он бы её обошёл.
+    if (tabId === "writeoff") {
+      return false;
+    }
     if (role === "admin") return true;
     switch (tabId) {
       case "incoming":
@@ -1294,7 +1299,7 @@ export default function LocmacoApp() {
       case "production":
         return ["prep_chef", "bar"].includes(role);
       case "writeoff":
-        return role === "bar";
+        return false;
       case "employees":
         return role === "admin";
       case "cash":
