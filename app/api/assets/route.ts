@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -39,7 +39,15 @@ export async function GET(req: Request) {
     );
   }
 
-  return Response.json({ data: rows });
+  // Наклейки и места отдаём вместе со списком: сканеру нужен разбор кода
+  // наклейки в карточку, а грузить их отдельным запросом с телефона — лишний
+  // круг ожидания перед обходом.
+  const [tags, locations] = await Promise.all([
+    db.select().from(schema.assetTags),
+    db.select().from(schema.assetLocations).orderBy(schema.assetLocations.sortOrder, schema.assetLocations.name),
+  ]);
+
+  return Response.json({ data: rows, tags, locations });
 }
 
 export async function POST(req: Request) {
@@ -73,6 +81,10 @@ export async function POST(req: Request) {
     serialNumber: b.serial_number ? String(b.serial_number).trim() : '',
     notes: b.notes ? String(b.notes).trim() : '',
     photoUrl: b.photo_url || '',
+    locationId: b.location_id || null,
+    // ⚠️ Заведённого руками в справочнике iiko нет по определению — без этого
+    // признака сверка уводила бы такую карточку в архив на первом же проходе.
+    source: 'manual',
   }).returning();
 
   await logAssetAction('asset_create', created.invNumber, { name: created.name, location: created.location, responsible_person: created.responsiblePerson }, session);
@@ -86,12 +98,21 @@ export async function PUT(req: Request) {
 
   // Отметка «нашли при инвентаризации» доступна любой залогиненной роли:
   // обходят склад и сканируют стикеры не только админы.
+  //
+  // Отмечаем всю пачку одним запросом. Обход зала — это сотня-другая позиций;
+  // запрос на каждую превращал сохранение в минуту ожидания на телефоне, и
+  // любой обрыв связи посреди списка оставлял инвентаризацию наполовину
+  // сохранённой.
   if (b.action === 'audit') {
+    const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String).filter(Boolean) : (b.id ? [String(b.id)] : []);
+    if (ids.length === 0) return Response.json({ error: 'Нечего отмечать' }, { status: 400 });
+
+    const now = new Date();
     await db.update(schema.assets)
-      .set({ lastInventoriedAt: new Date(), updatedAt: new Date() })
-      .where(eq(schema.assets.id, b.id));
-    await logAssetAction('asset_audit', String(b.id), { action: 'inventory_audit' }, session);
-    return Response.json({ success: true });
+      .set({ lastInventoriedAt: now, updatedAt: now })
+      .where(inArray(schema.assets.id, ids));
+    await logAssetAction('asset_audit', String(ids.length), { action: 'inventory_audit', ids }, session);
+    return Response.json({ success: true, marked: ids.length });
   }
 
   if (!CAN_EDIT.includes(session.role.split(':')[0])) {
@@ -111,6 +132,7 @@ export async function PUT(req: Request) {
   if (b.serial_number !== undefined) patch.serialNumber = String(b.serial_number || '').trim();
   if (b.notes !== undefined) patch.notes = String(b.notes || '').trim();
   if (b.photo_url !== undefined) patch.photoUrl = b.photo_url || '';
+  if (b.location_id !== undefined) patch.locationId = b.location_id || null;
 
   await db.update(schema.assets).set(patch).where(eq(schema.assets.id, b.id));
   await logAssetAction('asset_update', String(b.id), patch as Record<string, unknown>, session);

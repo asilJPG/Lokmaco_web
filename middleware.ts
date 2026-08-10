@@ -36,7 +36,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next({ request: { headers: h } });
   }
 
-  if (path === '/login' || path === '/') return NextResponse.next();
+  // ⚠️ `/tag/<код>` открыт намеренно: этот адрес зашит в QR наклеек, висящих
+  // в зале и на кухне. Их сканирует обычная камера телефона, без входа на
+  // сайт. Страница поэтому и не показывает ничего, кроме самого кода.
+  if (path === '/login' || path === '/' || path.startsWith('/tag/')) return NextResponse.next();
 
   const session = await verifySession(req.cookies.get('session_token')?.value);
   if (!session) {

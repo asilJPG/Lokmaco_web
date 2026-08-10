@@ -1306,3 +1306,100 @@ tr[data-today="true"] td:first-child {
   flex-direction: column;
   gap: 2px;
 }
+
+/* ── Сканер инвентаризации ОС ─────────────────────────────────────────────
+   Обход делают с телефона в руках, поэтому лист занимает весь экран, а не
+   висит маленькой модалкой посередине: попадать пальцем по мелким кнопкам,
+   держа камеру на весу, невозможно. */
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+}
+
+.scan-sheet {
+  background: var(--bg-card);
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.scan-sheet__head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scan-sheet__video {
+  position: relative;
+  background: #000;
+  aspect-ratio: 3 / 4;
+  max-height: 46vh;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Рамка прицела: подсказывает, куда подносить наклейку, и затемняет остальное,
+   иначе в кадр лезут соседние стикеры и засчитывается не тот предмет. */
+.scan-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-radius: 20px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.scan-feedback {
+  padding: 10px 18px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-pill, rgba(127, 127, 127, 0.08));
+  border-bottom: 1px solid var(--border);
+}
+.scan-feedback--ok  { background: rgba(16, 185, 129, 0.14); }
+.scan-feedback--dup { background: rgba(245, 158, 11, 0.16); }
+.scan-feedback--bad { background: rgba(239, 68, 68, 0.14); }
+
+.scan-sheet__body {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.scan-missing {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.scan-sheet__foot {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Тач-таргеты не меньше 44px и 16px в полях: иначе iOS зумит страницу при
+   фокусе, и кадр камеры уезжает вместе с вёрсткой. */
+@media (max-width: 767px) {
+  .scan-sheet__foot .btn { flex: 1; min-height: 44px; }
+  .scan-sheet input, .scan-sheet select { font-size: 16px; min-height: 44px; }
+}

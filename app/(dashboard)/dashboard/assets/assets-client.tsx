@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Asset } from '@/db/schema';
-import { AssetFormModal, InventoryScanModal, QrStickerModal, STATUS, CATEGORIES, emptyForm, toForm, type AssetForm } from './asset-modals';
+import { AssetFormModal, QrStickerModal, STATUS, CATEGORIES, emptyForm, toForm, type AssetForm } from './asset-modals';
+import { InventoryScanModal } from './inventory-scan';
+import type { AssetLocation, AssetTag } from '@/db/schema';
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU');
 
@@ -11,6 +13,8 @@ const td: React.CSSProperties = { padding: '8px', borderBottom: '1px solid var(-
 
 export function AssetsClient() {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [tags, setTags] = useState<AssetTag[]>([]);
+  const [locations, setLocations] = useState<AssetLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -18,6 +22,7 @@ export function AssetsClient() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [status, setStatus] = useState('all');
+  const [place, setPlace] = useState('all');
 
   const [editing, setEditing] = useState<AssetForm | null>(null);
   const [qrAsset, setQrAsset] = useState<Asset | null>(null);
@@ -28,6 +33,8 @@ export function AssetsClient() {
       const res = await fetch('/api/assets');
       const json = await res.json();
       setAssets(json.data || []);
+      setTags(json.tags || []);
+      setLocations(json.locations || []);
     } catch {
       setMsg({ ok: false, text: 'Не удалось загрузить опись' });
     } finally {
@@ -41,11 +48,20 @@ export function AssetsClient() {
     const q = search.trim().toLowerCase();
     return assets.filter((a) => {
       if (category !== 'all' && a.category !== category) return false;
+      if (place !== 'all' && a.locationId !== place) return false;
       if (status !== 'all' && a.status !== status) return false;
       if (!q) return true;
       return [a.name, a.invNumber, a.responsiblePerson, a.location].some((v) => (v || '').toLowerCase().includes(q));
     });
-  }, [assets, search, category, status]);
+  }, [assets, search, category, status, place]);
+
+  // Наклейка в строке нужна, чтобы найти предмет глазами: инв. номер написан
+  // в учёте, а на самом холодильнике наклеено «LKM-0021».
+  const tagByAsset = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tags) if (t.assetId) m.set(t.assetId, t.code);
+    return m;
+  }, [tags]);
 
   const totalCost = filtered.reduce((s, a) => s + (Number(a.initialCost) || 0), 0);
   const neverAudited = filtered.filter((a) => !a.lastInventoriedAt).length;
@@ -71,15 +87,19 @@ export function AssetsClient() {
     await load();
   }
 
+  /** Весь обход уходит одним запросом — см. комментарий в /api/assets. */
   async function audit(ids: string[]) {
-    for (const id of ids) {
-      await fetch('/api/assets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'audit' }),
-      });
-    }
+    const res = await fetch('/api/assets', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'audit', ids }),
+    });
     setScanOpen(false);
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      setMsg({ ok: false, text: json.error || 'Не удалось сохранить инвентаризацию' });
+      return;
+    }
     setMsg({ ok: true, text: `Отмечено при инвентаризации: ${ids.length} шт.` });
     await load();
   }
@@ -142,6 +162,12 @@ export function AssetsClient() {
             <option value="all">Все категории</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          {locations.length > 0 && (
+            <select className="select" value={place} onChange={(e) => setPlace(e.target.value)} style={{ width: 'auto' }}>
+              <option value="all">Все места</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
           <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 'auto' }}>
             <option value="all">Все статусы</option>
             {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -180,7 +206,12 @@ export function AssetsClient() {
                   const st = STATUS[a.status || 'in_use'] || STATUS.in_use;
                   return (
                     <tr key={a.id}>
-                      <td style={{ ...td, fontFamily: 'monospace', fontWeight: 600 }}>{a.invNumber}</td>
+                      <td style={{ ...td, fontFamily: 'monospace', fontWeight: 600 }}>
+                        {a.invNumber}
+                        {tagByAsset.get(a.id) && (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>🏷 {tagByAsset.get(a.id)}</div>
+                        )}
+                      </td>
                       <td style={td}>{a.name}</td>
                       <td style={{ ...td, color: 'var(--text-muted)' }}>{a.category}</td>
                       <td style={{ ...td, color: 'var(--text-muted)' }}>{a.location}</td>
@@ -207,7 +238,16 @@ export function AssetsClient() {
 
       {editing && <AssetFormModal initial={editing} onSave={save} onClose={() => setEditing(null)} />}
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
-      {scanOpen && <InventoryScanModal assets={assets} onFinish={audit} onClose={() => setScanOpen(false)} />}
+      {scanOpen && (
+        <InventoryScanModal
+          assets={assets}
+          tags={tags}
+          locations={locations}
+          onFinish={audit}
+          onBound={load}
+          onClose={() => setScanOpen(false)}
+        />
+      )}
     </div>
   );
 }

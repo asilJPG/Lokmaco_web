@@ -112,8 +112,42 @@ export const assets = pgTable('assets', {
   notes: text('notes'),
   photoUrl: text('photo_url'),
   lastInventoriedAt: timestamp('last_inventoried_at', { withTimezone: true }),
+  /** Место размещения. Текстовое `location` остаётся: в него пишет легаси-бот. */
+  locationId: uuid('location_id'),
+  /**
+   * Откуда карточка: `iiko` — из справочника, `manual` — завели на сайте.
+   * Сверка архивирует только импортные: заведённого руками в iiko нет по
+   * определению, и без признака оно уезжало бы в архив на первой же сверке.
+   */
+  source: text('source').notNull().default('iiko'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+/** Места размещения ОС. Плоский список: «Кухня», «Бар», «Зал». */
+export const assetLocations = pgTable('asset_locations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  note: text('note').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Универсальные QR-наклейки.
+ *
+ * Печатаются пачкой **пустыми** (`LKM-0001…`) и клеятся на что угодно;
+ * привязка к единице происходит потом, когда предмет уже перед глазами.
+ * Обратный порядок — «сгенерил под позицию → пошёл искать, к чему приклеить» —
+ * и рождает путаницу, которую потом не выловить.
+ */
+export const assetTags = pgTable('asset_tags', {
+  code: text('code').primaryKey(),
+  assetId: uuid('asset_id'),
+  batch: text('batch').notNull().default(''),
+  boundAt: timestamp('bound_at', { withTimezone: true }),
+  boundBy: text('bound_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
@@ -172,6 +206,8 @@ export const scanInbox = pgTable('scan_inbox', {
 }));
 
 export type Asset = typeof assets.$inferSelect;
+export type AssetLocation = typeof assetLocations.$inferSelect;
+export type AssetTag = typeof assetTags.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type BotAction = typeof botActions.$inferSelect;
