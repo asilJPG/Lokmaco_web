@@ -29,7 +29,7 @@ export function InventoryScanModal({
   assets: Asset[];
   tags: AssetTag[];
   locations: AssetLocation[];
-  onFinish: (ids: string[]) => Promise<void>;
+  onFinish: (auditId: string, ids: string[]) => Promise<void>;
   onBound: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -48,13 +48,19 @@ export function InventoryScanModal({
   const [saving, setSaving] = useState(false);
   /** Код непривязанной наклейки, которую предлагаем оформить прямо на месте. */
   const [binding, setBinding] = useState<string | null>(null);
+  /** Открытый обход. Пока его нет, сканирование не начинается. */
+  const [audit, setAudit] = useState<{ id: string; locationId: string | null } | null>(null);
+  const [starting, setStarting] = useState(false);
 
   // Обходят по одному помещению за раз, поэтому и «осталось» должно считаться
   // по нему же: иначе после полного обхода кухни счётчик показывает 12 из 88 и
   // выглядит как незаконченная работа.
+  // Пока обход не начат, местом управляет селект; после старта — сам обход:
+  // менять охват на ходу нельзя, иначе акт не сойдётся с тем, что обходили.
+  const activePlace = audit ? (audit.locationId || 'all') : placeId;
   const scope = useMemo(
-    () => (placeId === 'all' ? assets : assets.filter((a) => a.locationId === placeId)),
-    [assets, placeId]
+    () => (activePlace === 'all' ? assets : assets.filter((a) => a.locationId === activePlace)),
+    [assets, activePlace]
   );
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
@@ -124,6 +130,54 @@ export function InventoryScanModal({
     // Вибрация — единственная обратная связь, когда телефон в вытянутой руке
     // и на экран не смотришь. Повтор отличается ритмом.
     if (navigator.vibrate) navigator.vibrate(already ? [40, 60, 40] : 60);
+  }
+
+  /**
+   * Буфер обхода в localStorage.
+   *
+   * ⚠️ Обход идёт по подвалу и кухне, где связь пропадает, а телефон садится.
+   * Без буфера потеря страницы посреди зала означала обход заново — час работы
+   * впустую. Ключ привязан к обходу: чужой обход не подхватится.
+   */
+  useEffect(() => {
+    if (!audit) return;
+    try {
+      const saved = localStorage.getItem(`asset-audit-${audit.id}`);
+      if (saved) setScannedIds(new Set(JSON.parse(saved) as string[]));
+    } catch { /* сломанный буфер лучше молча пропустить, чем ронять обход */ }
+  }, [audit]);
+
+  useEffect(() => {
+    if (!audit) return;
+    try {
+      localStorage.setItem(`asset-audit-${audit.id}`, JSON.stringify(Array.from(scannedIds)));
+    } catch { /* приватный режим — переживём, обход просто не восстановится */ }
+  }, [audit, scannedIds]);
+
+  /** Найти незакрытый обход или начать новый. */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/assets/audits');
+        const json = await res.json();
+        if (json.open) setAudit({ id: json.open.id, locationId: json.open.locationId });
+      } catch { /* без истории просто начнём новый */ }
+    })();
+  }, []);
+
+  async function startAudit() {
+    setStarting(true);
+    try {
+      const res = await fetch('/api/assets/audits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location_id: placeId === 'all' ? null : placeId }),
+      });
+      const json = await res.json();
+      if (json.audit) setAudit({ id: json.audit.id, locationId: json.audit.locationId });
+    } finally {
+      setStarting(false);
+    }
   }
 
   useEffect(() => {
@@ -272,7 +326,7 @@ export function InventoryScanModal({
         </div>
 
         <div className="scan-sheet__body">
-          {locations.length > 0 && (
+          {locations.length > 0 && !audit && (
             <select className="select" value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
               <option value="all">Всё оборудование ({assets.length})</option>
               {locations.map((l) => (
@@ -320,18 +374,28 @@ export function InventoryScanModal({
         </div>
 
         <div className="scan-sheet__foot">
-          <button type="button" className="btn" onClick={onClose}>Отмена</button>
-          <button
-            type="button"
-            className="btn btn--primary"
-            disabled={scannedIds.size === 0 || saving}
-            onClick={async () => {
-              setSaving(true);
-              try { await onFinish(Array.from(scannedIds)); } finally { setSaving(false); }
-            }}
-          >
-            {saving ? 'Сохраняю…' : `Отметить ${scannedIds.size} шт.`}
-          </button>
+          <button type="button" className="btn" onClick={onClose}>Свернуть</button>
+          {audit ? (
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={saving}
+              onClick={async () => {
+                if (!confirm(`Закрыть обход? Ненайденных — ${missing.length}, они попадут в акт.`)) return;
+                setSaving(true);
+                try {
+                  await onFinish(audit.id, Array.from(scannedIds));
+                  localStorage.removeItem(`asset-audit-${audit.id}`);
+                } finally { setSaving(false); }
+              }}
+            >
+              {saving ? 'Закрываю…' : `Закрыть обход · ${scannedIds.size}`}
+            </button>
+          ) : (
+            <button type="button" className="btn btn--primary" disabled={starting} onClick={startAudit}>
+              {starting ? 'Начинаю…' : '▶️ Начать обход'}
+            </button>
+          )}
         </div>
       </div>
 

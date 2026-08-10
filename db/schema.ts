@@ -151,6 +151,30 @@ export const assetTags = pgTable('asset_tags', {
 });
 
 /**
+ * Обход инвентаризации ОС как документ: кто, когда, где, что нашёл и чего нет.
+ *
+ * ⚠️ Без этого от обхода оставалась только отметка `last_inventoried_at` в
+ * карточке. Из неё не ответить, кто проводил и **чего не нашли**: список
+ * ненайденного жил в браузере до нажатия кнопки, и закрытая вкладка стирала
+ * недостачу бесследно.
+ */
+export const assetAudits = pgTable('asset_audits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  filialId: integer('filial_id').notNull(),
+  /** Обходят по одному помещению за раз. NULL — обход всего сразу. */
+  locationId: uuid('location_id'),
+  startedBy: text('started_by').notNull().default(''),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  /** Фиксируются в момент закрытия — это и есть акт. */
+  scanned: jsonb('scanned').notNull().default([]),
+  missing: jsonb('missing').notNull().default([]),
+  note: text('note').notNull().default(''),
+}, (t) => ({
+  byFilial: index('asset_audits_filial_idx').on(t.filialId, t.startedAt),
+}));
+
+/**
  * Счётчик неудачных входов, общий для всех инстансов (см. lib/rate-limit.ts).
  * Таблица наша, легаси о ней не знает — своих вставок туда нет.
  */
@@ -208,6 +232,7 @@ export const scanInbox = pgTable('scan_inbox', {
 export type Asset = typeof assets.$inferSelect;
 export type AssetLocation = typeof assetLocations.$inferSelect;
 export type AssetTag = typeof assetTags.$inferSelect;
+export type AssetAudit = typeof assetAudits.$inferSelect;
 export type Filial = typeof filials.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type BotAction = typeof botActions.$inferSelect;

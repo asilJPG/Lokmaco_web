@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Asset } from '@/db/schema';
 import { AssetFormModal, QrStickerModal, STATUS, CATEGORIES, emptyForm, toForm, type AssetForm } from './asset-modals';
 import { InventoryScanModal } from './inventory-scan';
+import { TagsModal } from './tags-modal';
+import { AuditsModal } from './audits-modal';
 import type { AssetLocation, AssetTag } from '@/db/schema';
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -27,6 +29,8 @@ export function AssetsClient() {
   const [editing, setEditing] = useState<AssetForm | null>(null);
   const [qrAsset, setQrAsset] = useState<Asset | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [auditsOpen, setAuditsOpen] = useState(false);
 
   async function load() {
     try {
@@ -87,20 +91,29 @@ export function AssetsClient() {
     await load();
   }
 
-  /** Весь обход уходит одним запросом — см. комментарий в /api/assets. */
-  async function audit(ids: string[]) {
-    const res = await fetch('/api/assets', {
-      method: 'PUT',
+  /**
+   * Закрытие обхода. Одним запросом: и отметки в карточках, и сам акт —
+   * ненайденное сервер считает сам, чтобы список не зависел от того, что
+   * успело подгрузиться в телефон.
+   */
+  async function audit(auditId: string, ids: string[]) {
+    const res = await fetch('/api/assets/audits', {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'audit', ids }),
+      body: JSON.stringify({ id: auditId, scanned: ids }),
     });
+    const json = await res.json().catch(() => ({}));
     setScanOpen(false);
     if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      setMsg({ ok: false, text: json.error || 'Не удалось сохранить инвентаризацию' });
+      setMsg({ ok: false, text: json.error || 'Не удалось закрыть обход' });
       return;
     }
-    setMsg({ ok: true, text: `Отмечено при инвентаризации: ${ids.length} шт.` });
+    setMsg({
+      ok: json.missing === 0,
+      text: json.missing === 0
+        ? `Обход закрыт: всё на месте, ${json.scanned} шт.`
+        : `Обход закрыт: нашли ${json.scanned}, не нашли ${json.missing} — список в истории обходов.`,
+    });
     await load();
   }
 
@@ -175,6 +188,8 @@ export function AssetsClient() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn--sm" onClick={() => setScanOpen(true)}>📷 Инвентаризация</button>
+          <button type="button" className="btn btn--sm" onClick={() => setTagsOpen(true)}>🏷 Наклейки</button>
+          <button type="button" className="btn btn--sm" onClick={() => setAuditsOpen(true)}>📋 Обходы</button>
           <button type="button" className="btn btn--sm" onClick={exportCsv}>📥 CSV</button>
           <button type="button" className="btn btn--sm" onClick={sync} disabled={syncing}>{syncing ? 'Импорт…' : '🔄 Из iiko'}</button>
           <button type="button" className="btn btn--primary btn--sm" onClick={() => setEditing(emptyForm())}>➕ Добавить</button>
@@ -238,6 +253,8 @@ export function AssetsClient() {
 
       {editing && <AssetFormModal initial={editing} onSave={save} onClose={() => setEditing(null)} />}
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
+      {auditsOpen && <AuditsModal locations={locations} onClose={() => setAuditsOpen(false)} />}
+      {tagsOpen && <TagsModal locations={locations} onClose={() => setTagsOpen(false)} onChanged={load} />}
       {scanOpen && (
         <InventoryScanModal
           assets={assets}

@@ -1403,3 +1403,38 @@ tr[data-today="true"] td:first-child {
   .scan-sheet__foot .btn { flex: 1; min-height: 44px; }
   .scan-sheet input, .scan-sheet select { font-size: 16px; min-height: 44px; }
 }
+
+/* ── Лист наклеек на печать ───────────────────────────────────────────────
+   Лист живёт прямо в странице: window.open после await браузер не считает
+   результатом клика и возвращает null. Поэтому на экране он скрыт, а при
+   печати прячется всё остальное. */
+#print-tags { display: none; }
+
+.tag-sheet {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6mm;
+}
+
+.tag-cell {
+  border: 1px dashed #999;      /* линия реза */
+  border-radius: 3mm;
+  padding: 3mm;
+  text-align: center;
+  break-inside: avoid;          /* наклейка не должна разрываться страницей */
+  page-break-inside: avoid;
+  color: #000;
+  background: #fff;
+}
+
+.tag-cell img { width: 100%; height: auto; display: block; }
+.tag-cell__code { font-family: monospace; font-weight: 700; font-size: 11pt; margin-top: 1.5mm; }
+.tag-cell__cap  { font-size: 6pt; color: #555; margin-top: 0.5mm; line-height: 1.2; }
+
+@media print {
+  @page { size: A4; margin: 8mm; }
+
+  body.printing-tags > *:not(#print-tags) { display: none !important; }
+  body.printing-tags #print-tags { display: block; }
+  body.printing-tags { background: #fff; }
+}
