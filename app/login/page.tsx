@@ -77,7 +77,13 @@ export default function LoginPage() {
             <input
               autoFocus
               type="password"
-              inputMode="numeric"
+              // ⚠️ Не `inputMode="numeric"`. Пока коды были из четырёх цифр,
+              // цифровая клавиатура экономила пару касаний; с буквенным кодом
+              // она просто не даёт войти с телефона — на буквы не переключиться.
+              autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="код"
               value={code}
               onChange={(e) => setCode(e.target.value)}

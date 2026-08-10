@@ -6,6 +6,7 @@ import { AssetFormModal, QrStickerModal, STATUS, CATEGORIES, emptyForm, toForm, 
 import { InventoryScanModal } from './inventory-scan';
 import { TagsModal } from './tags-modal';
 import { AuditsModal } from './audits-modal';
+import { baseInvNumber, unitLabel } from '@/lib/inv-number';
 import type { AssetLocation, AssetTag } from '@/db/schema';
 
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -31,6 +32,8 @@ export function AssetsClient() {
   const [scanOpen, setScanOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [auditsOpen, setAuditsOpen] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -66,6 +69,74 @@ export function AssetsClient() {
     for (const t of tags) if (t.assetId) m.set(t.assetId, t.code);
     return m;
   }, [tags]);
+
+  /**
+   * Разбитая партия — одна строка списка.
+   *
+   * Четыре одинаковых стола на складе учитываются поштучно (иначе не понять,
+   * какой пропал), но в списке это один вид, а не четыре позиции. Ключ —
+   * базовый инв. номер плюс название, чтобы разные виды с похожей нумерацией
+   * не слиплись.
+   */
+  const groups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; units: Asset[] }>();
+    for (const a of filtered) {
+      const key = `${baseInvNumber(a.invNumber)}|${a.name}`;
+      if (!map.has(key)) map.set(key, { key, name: a.name, units: [] });
+      map.get(key)!.units.push(a);
+    }
+    return Array.from(map.values()).map((g) => {
+      g.units.sort((x, y) => String(x.invNumber).localeCompare(String(y.invNumber)));
+      // «Отсканировано» — по последней дате обхода в этой партии: экземпляры с
+      // той же датой попали в последний обход, остальные пропущены.
+      const days = g.units.map((u) => (u.lastInventoriedAt ? new Date(u.lastInventoriedAt).toISOString().slice(0, 10) : '')).filter(Boolean);
+      const lastDay = days.sort().slice(-1)[0] || null;
+      return {
+        ...g,
+        head: g.units[0],
+        total: g.units.length,
+        lastDay,
+        scanned: lastDay ? g.units.filter((u) => u.lastInventoriedAt && new Date(u.lastInventoriedAt).toISOString().slice(0, 10) === lastDay).length : 0,
+        cost: g.units.reduce((s, u) => s + (Number(u.initialCost) || 0), 0),
+      };
+    });
+  }, [filtered]);
+
+  /** Позиции, которые ещё лежат одной карточкой на несколько штук. */
+  const splittable = useMemo(() => assets.filter((a) => (a.quantity || 1) > 1 && baseInvNumber(a.invNumber) === a.invNumber), [assets]);
+
+  async function split(a: Asset) {
+    if (!confirm(`Разбить «${a.name}» на ${a.quantity} экземпляров? У каждого будет своя наклейка. Обратно не схлопнуть.`)) return;
+    const res = await fetch('/api/assets/split', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: a.id }),
+    });
+    const json = await res.json();
+    setMsg({ ok: res.ok, text: res.ok ? json.message : json.error || 'Не удалось разбить' });
+    await load();
+  }
+
+  /** Развернуть все партии разом: по одной их щёлкать — на час работы. */
+  async function splitAll() {
+    if (!confirm(`Развернуть ${splittable.length} партий на ${splittable.reduce((n, a) => n + (a.quantity || 1), 0)} карточек? Обратно не схлопнуть.`)) return;
+    setSplitting(true);
+    let done = 0;
+    try {
+      for (const a of splittable) {
+        const res = await fetch('/api/assets/split', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: a.id }),
+        });
+        if (res.ok) done++;
+      }
+      setMsg({ ok: true, text: `Развёрнуто партий: ${done} из ${splittable.length}` });
+      await load();
+    } finally {
+      setSplitting(false);
+    }
+  }
 
   const totalCost = filtered.reduce((s, a) => s + (Number(a.initialCost) || 0), 0);
   const neverAudited = filtered.filter((a) => !a.lastInventoriedAt).length;
@@ -190,6 +261,11 @@ export function AssetsClient() {
           <button type="button" className="btn btn--sm" onClick={() => setScanOpen(true)}>📷 Инвентаризация</button>
           <button type="button" className="btn btn--sm" onClick={() => setTagsOpen(true)}>🏷 Наклейки</button>
           <button type="button" className="btn btn--sm" onClick={() => setAuditsOpen(true)}>📋 Обходы</button>
+          {splittable.length > 0 && (
+            <button type="button" className="btn btn--sm" onClick={splitAll} disabled={splitting}>
+              {splitting ? 'Разбиваю…' : `✂️ Развернуть партии (${splittable.length})`}
+            </button>
+          )}
           <button type="button" className="btn btn--sm" onClick={exportCsv}>📥 CSV</button>
           <button type="button" className="btn btn--sm" onClick={sync} disabled={syncing}>{syncing ? 'Импорт…' : '🔄 Из iiko'}</button>
           <button type="button" className="btn btn--primary btn--sm" onClick={() => setEditing(emptyForm())}>➕ Добавить</button>
@@ -217,30 +293,80 @@ export function AssetsClient() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((a) => {
+                {groups.map((g) => {
+                  const a = g.head;
                   const st = STATUS[a.status || 'in_use'] || STATUS.in_use;
+                  const batch = g.total > 1;
+                  const open = openGroup === g.key;
                   return (
-                    <tr key={a.id}>
+                    <tr key={g.key} style={{ verticalAlign: 'top' }}>
                       <td style={{ ...td, fontFamily: 'monospace', fontWeight: 600 }}>
-                        {a.invNumber}
-                        {tagByAsset.get(a.id) && (
+                        {batch ? baseInvNumber(a.invNumber) : a.invNumber}
+                        {!batch && tagByAsset.get(a.id) && (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>🏷 {tagByAsset.get(a.id)}</div>
                         )}
+                        {batch && (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            {g.units.filter((u) => tagByAsset.get(u.id)).length} из {g.total} с наклейкой
+                          </div>
+                        )}
                       </td>
-                      <td style={td}>{a.name}</td>
+                      <td style={td}>
+                        {g.name}
+                        {batch && (
+                          <button type="button" className="btn btn--sm" style={{ marginLeft: 8 }} onClick={() => setOpenGroup(open ? null : g.key)}>
+                            {open ? 'свернуть' : `${g.total} шт`}
+                          </button>
+                        )}
+                        {open && (
+                          /* Экземпляры партии: здесь и видно, какой именно
+                             из четырёх столов не попал в последний обход. */
+                          <div style={{ marginTop: 6 }}>
+                            {g.units.map((u) => {
+                              const seen = g.lastDay && u.lastInventoriedAt
+                                && new Date(u.lastInventoriedAt).toISOString().slice(0, 10) === g.lastDay;
+                              return (
+                                <div key={u.id} style={{ fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <b style={{ fontFamily: 'monospace' }}>{u.invNumber}</b>
+                                  <span style={{ color: 'var(--text-muted)' }}>{unitLabel(u, assets)}</span>
+                                  <span style={{ color: 'var(--text-muted)' }}>{tagByAsset.get(u.id) ? `🏷 ${tagByAsset.get(u.id)}` : 'без наклейки'}</span>
+                                  <span style={{ marginLeft: 'auto', color: seen ? 'var(--success)' : 'var(--text-faint)' }}>
+                                    {seen ? '✅ в последнем обходе' : '—'}
+                                  </span>
+                                  <button type="button" className="btn btn--sm" onClick={() => setEditing(toForm(u))}>✎</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ ...td, color: 'var(--text-muted)' }}>{a.category}</td>
-                      <td style={{ ...td, color: 'var(--text-muted)' }}>{a.location}</td>
+                      <td style={{ ...td, color: 'var(--text-muted)' }}>
+                        {(a.locationId && locations.find((l) => l.id === a.locationId)?.name) || a.location}
+                      </td>
                       <td style={{ ...td, color: 'var(--text-muted)' }}>{a.responsiblePerson}</td>
-                      <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{a.quantity}</td>
-                      <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(Number(a.initialCost) || 0)}</td>
+                      <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {batch ? g.total : a.quantity}
+                        {batch && g.lastDay && (
+                          <div style={{ fontSize: 11, color: g.scanned === g.total ? 'var(--success)' : 'var(--warning)' }}>
+                            обход: {g.scanned}/{g.total}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(g.cost)}</td>
                       <td style={{ ...td, color: st.color, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.label}</td>
                       <td style={{ ...td, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {a.lastInventoriedAt ? new Date(a.lastInventoriedAt).toLocaleDateString('ru-RU') : '—'}
+                        {g.lastDay ? new Date(g.lastDay).toLocaleDateString('ru-RU') : '—'}
                       </td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                        {!batch && (a.quantity || 1) > 1 && (
+                          <>
+                            <button type="button" className="btn btn--sm" onClick={() => split(a)} title="Разбить на экземпляры">✂️</button>{' '}
+                          </>
+                        )}
                         <button type="button" className="btn btn--sm" onClick={() => setQrAsset(a)} title="Стикер">🏷</button>{' '}
                         <button type="button" className="btn btn--sm" onClick={() => setEditing(toForm(a))} title="Изменить">✎</button>{' '}
-                        <button type="button" className="btn btn--sm btn--danger" onClick={() => remove(a)} title="Удалить">✕</button>
+                        {!batch && <button type="button" className="btn btn--sm btn--danger" onClick={() => remove(a)} title="Удалить">✕</button>}
                       </td>
                     </tr>
                   );

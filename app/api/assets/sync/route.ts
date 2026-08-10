@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { withIikoSession, iikoGet, type IikoCreds } from '@/lib/iiko';
+import { baseInvNumber } from '@/lib/inv-number';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -31,6 +32,14 @@ export async function POST() {
   const existing = await db.select().from(schema.assets);
   const byInv = new Map(existing.filter((a) => a.invNumber).map((a) => [a.invNumber, a]));
   const bySerial = new Map(existing.filter((a) => a.serialNumber).map((a) => [a.serialNumber as string, a]));
+  // ⚠️ Разбитая партия лежит как EQ-00745-01…04, а из iiko приходит EQ-00745 —
+  // по полному номеру она не находится, и сверка каждый раз заводила бы
+  // позицию заново. Поэтому ищем ещё и по базовому номеру.
+  const byBase = new Map<string, typeof existing[number]>();
+  for (const a of existing) {
+    const base = baseInvNumber(a.invNumber);
+    if (base && !byBase.has(base)) byBase.set(base, a);
+  }
 
   let added = 0;
   let updated = 0;
@@ -46,7 +55,7 @@ export async function POST() {
 
     // В таблице нет колонки под iiko-id, поэтому сверяемся по инвентарному
     // номеру (он детерминирован) и по коду iiko, который лежит в serial_number.
-    const found = byInv.get(invNumber) || (p.code ? bySerial.get(p.code) : undefined);
+    const found = byInv.get(invNumber) || byBase.get(invNumber) || (p.code ? bySerial.get(p.code) : undefined);
 
     if (found) {
       const patch: Partial<typeof schema.assets.$inferInsert> = {};
