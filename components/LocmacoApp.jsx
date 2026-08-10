@@ -16521,6 +16521,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
           locations={locations}
           showToast={showToast}
           onClose={() => setScan(null)}
+          onAssetCreated={onChanged}
           onBound={async () => {
             await load();
             onChanged?.();
@@ -16532,7 +16533,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
 }
 
 /** Скан наклейки → выбор оборудования и места → сохранение. */
-function TagBindModal({ headers, assets, locations, onClose, showToast, onBound }) {
+function TagBindModal({ headers, assets, locations, onClose, showToast, onBound, onAssetCreated }) {
   const [code, setCode] = useState("");
   const [tag, setTag] = useState(null);
   const [assetId, setAssetId] = useState("");
@@ -16540,7 +16541,45 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound 
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState([]);
+  const [creating, setCreating] = useState(null); // форма нового оборудования
   const lastRef = useRef("");
+
+  /**
+   * Нужного оборудования может не быть в списке — например, привезли новое,
+   * а в iiko его ещё не завели. Заводим карточку прямо здесь и сразу клеим
+   * на неё наклейку, чтобы не прерывать обход.
+   */
+  const createAsset = async () => {
+    const name = String(creating.name || "").trim();
+    if (!name) return showToast?.("Укажите название", "error");
+
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        category: "Оборудование",
+        location: "—",
+        responsible_person: creating.responsible || "Материально-ответственное лицо",
+        initial_cost: parseFloat(creating.cost) || 0,
+        quantity: 1,
+        status: "in_use",
+        location_id: locationId || null,
+      }),
+    });
+    const j = await r.json();
+    setBusy(false);
+
+    if (!j.success || !j.data?.id) {
+      return showToast?.(j.error || "Не удалось создать оборудование", "error");
+    }
+
+    await onAssetCreated?.(j.data);
+    setAssetId(j.data.id);
+    setCreating(null);
+    showToast?.(`Создано: ${name}`);
+  };
 
   const handleCode = async (raw) => {
     const m = String(raw).match(/\/tag\/([A-Za-z0-9_-]+)/);
@@ -16639,6 +16678,65 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound 
               placeholder="Поиск по названию или инв. номеру"
               style={inp}
             />
+            {creating ? (
+              <div
+                style={{
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 14,
+                  background: "var(--bg-hover)",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
+                  Новое оборудование
+                </div>
+                <input
+                  autoFocus
+                  value={creating.name}
+                  onChange={(e) => setCreating({ ...creating, name: e.target.value })}
+                  placeholder="Название, например «Морозильный ларь»"
+                  style={inp}
+                />
+                <input
+                  type="number"
+                  value={creating.cost}
+                  onChange={(e) => setCreating({ ...creating, cost: e.target.value })}
+                  placeholder="Стоимость, сум (можно позже)"
+                  style={inp}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                  Карточка появится только на сайте. Если потом заведёшь её же в
+                  iiko — получится две записи, см. подсказку ниже.
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <Btn outline onClick={() => setCreating(null)}>Отмена</Btn>
+                  <Btn onClick={createAsset} disabled={busy || !creating.name.trim()}>
+                    {busy ? "Создание..." : "Создать и выбрать"}
+                  </Btn>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCreating({ name: search, cost: "", responsible: "" })}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  marginBottom: 8,
+                  borderRadius: 10,
+                  border: "1px dashed var(--border-color)",
+                  background: "transparent",
+                  color: "var(--text-main)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                ➕ Нет в списке — создать новое
+              </button>
+            )}
+
             <div style={{ maxHeight: 190, overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: 10, marginBottom: 14 }}>
               {list.slice(0, 100).map((a, i) => (
                 <button
@@ -17452,6 +17550,20 @@ function FixedAssetsView({ showToast, loggedInUser }) {
                     <tr key={asset.id} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s" }}>
                       <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--color-primary, #6366f1)" }}>
                         {asset.inv_number || `EQ-${asset.id ? String(asset.id).slice(0, 6) : "0000"}`}
+                        {asset.source === "manual" && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: "#8b5cf6",
+                              fontFamily: "system-ui",
+                              marginTop: 2,
+                            }}
+                            title="Карточка заведена на сайте, в справочнике iiko её нет"
+                          >
+                            создано на сайте
+                          </div>
+                        )}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>

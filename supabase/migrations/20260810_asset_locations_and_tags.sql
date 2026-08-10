@@ -24,7 +24,16 @@ alter table assets
 
 create index if not exists assets_location_id_idx on assets (location_id);
 
--- 3. Универсальные наклейки. Печатаются пачкой пустыми, привязка к
+-- 3. Откуда взялась карточка. Сверка с iiko архивирует только то, что
+-- пришло из справочника: заведённое руками на сайте в iiko отсутствует
+-- по определению, и без этого признака оно уезжало бы в архив на первой
+-- же сверке. Существующие карточки все импортные, отсюда default.
+alter table assets
+  add column if not exists source text not null default 'iiko';
+
+create index if not exists assets_source_idx on assets (source);
+
+-- 4. Универсальные наклейки. Печатаются пачкой пустыми, привязка к
 -- конкретной единице происходит при сканировании на месте.
 create table if not exists asset_tags (
   code        text primary key,

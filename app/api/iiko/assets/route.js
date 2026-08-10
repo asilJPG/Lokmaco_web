@@ -105,7 +105,9 @@ export async function POST(request) {
       notes: notes ? notes.trim() : "",
       photo_url: photo_url || "",
       // место из справочника сайта; в iiko такого понятия нет
-      location_id: body.location_id || null
+      location_id: body.location_id || null,
+      // заведено руками — сверка с iiko такие карточки не архивирует
+      source: "manual"
     };
 
     const newAsset = await createAsset(assetData);

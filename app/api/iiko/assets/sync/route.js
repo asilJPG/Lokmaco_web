@@ -247,6 +247,9 @@ export async function POST(request) {
         if (!base || seenBases.has(base)) continue;
         for (const row of rows) {
           if (row.status === "archived" || row.status === "written_off") continue;
+          // Заведённое руками на сайте в iiko отсутствует по определению —
+          // архивировать его по итогам сверки нельзя.
+          if (row.source && row.source !== "iiko") continue;
           const ok = await updateAsset(row.id, { status: "archived" });
           if (ok) {
             archivedCount++;
