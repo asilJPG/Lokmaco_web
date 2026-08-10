@@ -3,25 +3,46 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Asset, AssetLocation, AssetTag } from '@/db/schema';
 import { looksLikeTag, normalizeTagCode } from '@/lib/asset-tags';
-import { unitLabel } from '@/lib/inv-number';
+import { baseInvNumber, unitLabel } from '@/lib/inv-number';
 
 type Feedback = {
-  ok: boolean;
-  duplicate?: boolean;
-  unbound?: boolean;
+  tone: 'ok' | 'dup' | 'bad';
   code: string;
-  name: string;
-  unit?: string;
-  location?: string;
-  serial?: string;
+  title: string;
+  /** «в обходе 4 из 20» — прогресс именно по этой партии. */
+  progress?: string;
+  sub?: string;
+  unbound?: boolean;
 };
 
+type Mode = 'audit' | 'bind';
+
+/** Партия: 20 одинаковых столов — один вид и двадцать экземпляров. */
+type Batch = { key: string; name: string; units: Asset[] };
+
+function buildBatches(assets: Asset[]): Batch[] {
+  const map = new Map<string, Batch>();
+  for (const a of assets) {
+    const key = `${baseInvNumber(a.invNumber)}|${a.name}`;
+    if (!map.has(key)) map.set(key, { key, name: a.name, units: [] });
+    map.get(key)!.units.push(a);
+  }
+  for (const b of map.values()) {
+    b.units.sort((x, y) => String(x.invNumber).localeCompare(String(y.invNumber)));
+  }
+  return Array.from(map.values());
+}
+
 /**
- * Обход с камерой: наводишь на наклейку — единица засчитана.
+ * Камера в двух режимах: обход инвентаризации и оклейка наклейками.
  *
- * Сканируем **в браузере телефона**, без отдельного приложения: обход делают
- * с того, что уже в кармане. Отсюда два требования, которые и определяют весь
- * код ниже — работать на iPhone и не сажать батарею за десять минут.
+ * Режимы разделены намеренно. При обходе скан **засчитывает** предмет, при
+ * оклейке — **привязывает** наклейку к следующему свободному экземпляру. Одно
+ * действие камерой не может значить и то и другое: перепутав, человек либо
+ * переклеит учёт, либо не досчитается половины зала.
+ *
+ * Сканируем в браузере телефона, без отдельного приложения — обход и оклейку
+ * делают с того, что уже в кармане.
  */
 export function InventoryScanModal({
   assets, tags, locations, onFinish, onBound, onClose,
@@ -38,6 +59,7 @@ export function InventoryScanModal({
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef(0);
 
+  const [mode, setMode] = useState<Mode>('audit');
   const [placeId, setPlaceId] = useState('all');
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
   const [last, setLast] = useState<Feedback | null>(null);
@@ -46,17 +68,34 @@ export function InventoryScanModal({
   const [showMissing, setShowMissing] = useState(false);
   const [manual, setManual] = useState('');
   const [saving, setSaving] = useState(false);
-  /** Код непривязанной наклейки, которую предлагаем оформить прямо на месте. */
   const [binding, setBinding] = useState<string | null>(null);
-  /** Открытый обход. Пока его нет, сканирование не начинается. */
   const [audit, setAudit] = useState<{ id: string; locationId: string | null } | null>(null);
   const [starting, setStarting] = useState(false);
 
-  // Обходят по одному помещению за раз, поэтому и «осталось» должно считаться
-  // по нему же: иначе после полного обхода кухни счётчик показывает 12 из 88 и
-  // выглядит как незаконченная работа.
-  // Пока обход не начат, местом управляет селект; после старта — сам обход:
-  // менять охват на ходу нельзя, иначе акт не сойдётся с тем, что обходили.
+  /** Что клеим в режиме оклейки. */
+  const [batchKey, setBatchKey] = useState('');
+  const [bindPlace, setBindPlace] = useState('');
+
+  /**
+   * Наклейки держим в своём состоянии, а не только в пропсах: при оклейке они
+   * меняются каждые несколько секунд, и перезагружать весь список ОС после
+   * каждой наклейки — значит клеить двадцать штук полчаса.
+   */
+  const [tagList, setTagList] = useState<AssetTag[]>(tags);
+  useEffect(() => { setTagList(tags); }, [tags]);
+
+  // ⚠️ Зеркала состояния для обработчика сканов. Камера может вернуть два кода
+  // в одном кадре, а привязка ещё и уходит на сервер — оба обработчика успеют
+  // отработать до перерисовки и прочитают устаревшее состояние: второй скан
+  // потеряет первый, а две наклейки уедут на один и тот же экземпляр.
+  const scannedRef = useRef(scannedIds);
+  scannedRef.current = scannedIds;
+  const tagListRef = useRef(tagList);
+  tagListRef.current = tagList;
+
+  const batches = useMemo(() => buildBatches(assets), [assets]);
+  const batch = batches.find((b) => b.key === batchKey);
+
   const activePlace = audit ? (audit.locationId || 'all') : placeId;
   const scope = useMemo(
     () => (activePlace === 'all' ? assets : assets.filter((a) => a.locationId === activePlace)),
@@ -69,12 +108,25 @@ export function InventoryScanModal({
     for (const a of assets) if (a.invNumber) m.set(a.invNumber.trim().toUpperCase(), a);
     return m;
   }, [assets]);
-  const tagMap = useMemo(() => {
+  const tagByCode = useMemo(() => new Map(tagList.map((t) => [t.code, t])), [tagList]);
+  const tagByAsset = useMemo(() => {
     const m = new Map<string, string>();
-    for (const t of tags) if (t.assetId) m.set(t.code, t.assetId);
+    for (const t of tagList) if (t.assetId) m.set(t.assetId, t.code);
     return m;
-  }, [tags]);
+  }, [tagList]);
   const placeName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations]);
+
+  /** Наклейки по экземплярам — на момент последнего скана, а не рендера. */
+  function boundNow(): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const t of tagListRef.current) if (t.assetId) m.set(t.assetId, t.code);
+    return m;
+  }
+
+  /** Сколько экземпляров партии уже оклеено — «7 из 20». */
+  function boundCount(b: Batch): number {
+    return b.units.filter((u) => tagByAsset.has(u.id)).length;
+  }
 
   /**
    * В обходе встречаются оба вида QR: универсальная наклейка (ссылка вида
@@ -82,8 +134,8 @@ export function InventoryScanModal({
    */
   function resolve(raw: string): { asset: Asset | null; code: string; unbound?: boolean } | null {
     const code = normalizeTagCode(raw);
-    if (code && tagMap.has(code)) {
-      const asset = byId.get(tagMap.get(code)!);
+    if (code && tagByCode.get(code)?.assetId) {
+      const asset = byId.get(tagByCode.get(code)!.assetId!);
       if (asset) return { asset, code };
     }
     // Наклейка наша, но ни к чему не привязана — это не «не найдено»,
@@ -97,64 +149,145 @@ export function InventoryScanModal({
     return { asset: byInv.get(inv) || null, code: inv };
   }
 
-  function register(raw: string) {
+  function buzz(pattern: number | number[]) {
+    // Единственная обратная связь, когда телефон в вытянутой руке и на экран
+    // не смотришь. Ошибка и повтор отличаются ритмом.
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  }
+
+  /** Обход: скан засчитывает предмет. */
+  function registerAudit(raw: string) {
     const hit = resolve(raw);
     if (!hit) return;
 
     if (hit.unbound) {
-      setLast({ ok: false, unbound: true, code: hit.code, name: 'Наклейка ни к чему не привязана' });
+      setLast({ tone: 'bad', code: hit.code, title: 'Наклейка ни к чему не привязана', unbound: true });
+      buzz([120]);
       return;
     }
     if (!hit.asset) {
-      setLast({ ok: false, code: hit.code, name: 'Не найдено в базе' });
+      setLast({ tone: 'bad', code: hit.code, title: 'Не найдено в базе' });
+      buzz([120]);
       return;
     }
 
     const asset = hit.asset;
-    let already = false;
-    setScannedIds((prev) => {
-      if (prev.has(asset.id)) { already = true; return prev; }
-      const next = new Set(prev);
-      next.add(asset.id);
-      return next;
-    });
+    const already = scannedRef.current.has(asset.id);
+    const next = new Set(scannedRef.current);
+    if (!already) next.add(asset.id);
+    scannedRef.current = next;
+    setScannedIds(next);
+
+    // ⚠️ Прогресс по партии — то, ради чего всё и затевалось: «отсканил 1 из
+    // 20». Общий счётчик по залу на этот вопрос не отвечает.
+    const b = batches.find((x) => x.key === `${baseInvNumber(asset.invNumber)}|${asset.name}`);
+    const inBatch = b ? b.units.filter((u) => next.has(u.id)).length : 0;
+
     setLast({
-      ok: !already,
-      duplicate: already,
+      tone: already ? 'dup' : 'ok',
       code: hit.code,
-      name: asset.name,
-      unit: unitLabel(asset, assets),
-      location: (asset.locationId && placeName.get(asset.locationId)) || asset.location || '',
-      serial: asset.serialNumber || '',
+      title: `${asset.name}${unitLabel(asset, assets) ? ` · ${unitLabel(asset, assets)}` : ''}`,
+      progress: b && b.units.length > 1 ? `в обходе ${inBatch} из ${b.units.length}` : undefined,
+      sub: [
+        already ? 'уже отсканирован' : '',
+        (asset.locationId && placeName.get(asset.locationId)) || asset.location || '',
+        asset.serialNumber ? `№ ${asset.serialNumber}` : '',
+      ].filter(Boolean).join(' · '),
     });
-    // Вибрация — единственная обратная связь, когда телефон в вытянутой руке
-    // и на экран не смотришь. Повтор отличается ритмом.
-    if (navigator.vibrate) navigator.vibrate(already ? [40, 60, 40] : 60);
+    buzz(already ? [40, 60, 40] : 60);
   }
 
-  /**
-   * Буфер обхода в localStorage.
-   *
-   * ⚠️ Обход идёт по подвалу и кухне, где связь пропадает, а телефон садится.
-   * Без буфера потеря страницы посреди зала означала обход заново — час работы
-   * впустую. Ключ привязан к обходу: чужой обход не подхватится.
-   */
+  /** Оклейка: скан привязывает наклейку к следующему экземпляру партии. */
+  async function registerBind(raw: string) {
+    const code = normalizeTagCode(raw);
+    if (!code || !looksLikeTag(raw)) return;
+    if (!batch) {
+      setLast({ tone: 'bad', code, title: 'Сначала выберите, что клеим' });
+      return;
+    }
+
+    const known = tagListRef.current.find((t) => t.code === code);
+    if (!known) {
+      setLast({ tone: 'bad', code, title: 'Такой наклейки нет в системе' });
+      buzz([120]);
+      return;
+    }
+    if (known.assetId) {
+      const on = byId.get(known.assetId);
+      const mine = on && batch.units.some((u) => u.id === on.id);
+      setLast({
+        tone: 'dup',
+        code,
+        title: mine ? `Уже на ${unitLabel(on!, assets) || on!.invNumber}` : `Занята: ${on?.name || 'другое оборудование'}`,
+        progress: `оклеено ${boundCount(batch)} из ${batch.units.length}`,
+      });
+      buzz([40, 60, 40]);
+      return;
+    }
+
+    // Следующий экземпляр без наклейки. Порядок по инв. номеру, чтобы
+    // оклеивание шло предсказуемо: 01, 02, 03…
+    const bound = boundNow();
+    const target = batch.units.find((u) => !bound.has(u.id));
+    if (!target) {
+      setLast({ tone: 'dup', code, title: `У всех ${batch.units.length} уже есть наклейки` });
+      buzz([40, 60, 40]);
+      return;
+    }
+
+    // Оптимистично: рука уже тянется к следующей наклейке, ждать ответ сервера
+    // на каждой — терять секунды двадцать раз подряд.
+    tagListRef.current = tagListRef.current.map((t) => (t.code === code ? { ...t, assetId: target.id } : t));
+    setTagList(tagListRef.current);
+    const done = batch.units.filter((u) => boundNow().has(u.id)).length;
+    setLast({
+      tone: 'ok',
+      code,
+      title: `${target.name} · ${unitLabel(target, assets) || target.invNumber}`,
+      progress: `оклеено ${done} из ${batch.units.length}`,
+    });
+    buzz(60);
+
+    try {
+      const res = await fetch('/api/assets/tags', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, asset_id: target.id, location_id: bindPlace || undefined }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // Откатываем: наклейка физически уже наклеена, но в учёте её нет —
+      // человек должен это увидеть сразу, а не при следующей инвентаризации.
+      tagListRef.current = tagListRef.current.map((t) => (t.code === code ? { ...t, assetId: null } : t));
+      setTagList(tagListRef.current);
+      setLast({ tone: 'bad', code, title: 'Не сохранилось — отсканируйте ещё раз' });
+      buzz([120, 60, 120]);
+    }
+  }
+
+  // ⚠️ Цикл распознавания захватывает функцию один раз при запуске камеры, а
+  // состояние с тех пор меняется каждым сканом. Без ref он звал бы обработчик
+  // из первого рендера и не видел ни отсканированного, ни привязанного.
+  const handleRef = useRef<(raw: string) => void>(() => {});
+  handleRef.current = (raw: string) => { if (mode === 'bind') void registerBind(raw); else registerAudit(raw); };
+
+  /** Буфер обхода: связь в подвале пропадает, телефон садится. */
   useEffect(() => {
     if (!audit) return;
     try {
       const saved = localStorage.getItem(`asset-audit-${audit.id}`);
       if (saved) setScannedIds(new Set(JSON.parse(saved) as string[]));
-    } catch { /* сломанный буфер лучше молча пропустить, чем ронять обход */ }
+    } catch { /* сломанный буфер лучше пропустить, чем ронять обход */ }
   }, [audit]);
 
   useEffect(() => {
     if (!audit) return;
     try {
       localStorage.setItem(`asset-audit-${audit.id}`, JSON.stringify(Array.from(scannedIds)));
-    } catch { /* приватный режим — переживём, обход просто не восстановится */ }
+    } catch { /* приватный режим — переживём */ }
   }, [audit, scannedIds]);
 
-  /** Найти незакрытый обход или начать новый. */
+  /** Найти незакрытый обход. */
   useEffect(() => {
     (async () => {
       try {
@@ -190,7 +323,7 @@ export function InventoryScanModal({
         return;
       }
       // ⚠️ getUserMedia не работает в незащищённом контексте — по http сканер
-      // не откроется вообще, и это надо сказать словами, а не «ошибка камеры».
+      // не откроется вообще, и это надо сказать словами.
       if (!window.isSecureContext) {
         setSupported(false);
         setError('Камера работает только по https. Откройте сайт по защищённой ссылке.');
@@ -201,8 +334,7 @@ export function InventoryScanModal({
         /**
          * ⚠️ `BarcodeDetector` есть **только в Chromium**. В WebKit его нет ни
          * в одной версии Safari, а на iPhone все браузеры (включая Chrome и
-         * Яндекс) — это WebKit. Раньше сканер там просто не работал. Поэтому
-         * запасной путь — jsQR: медленнее, но работает везде, где есть камера.
+         * Яндекс) — это WebKit. Запасной путь — jsQR: медленнее, но везде.
          */
         let detect: (v: HTMLVideoElement) => Promise<string[]> | string[];
         const Detector = (window as unknown as {
@@ -247,7 +379,7 @@ export function InventoryScanModal({
           if (now - lastRun >= 100) {
             lastRun = now;
             try {
-              for (const raw of await detect(videoRef.current)) register(raw);
+              for (const raw of await detect(videoRef.current)) handleRef.current(raw);
             } catch { /* кадр не распознался — не страшно */ }
           }
           rafRef.current = requestAnimationFrame(loop);
@@ -275,8 +407,12 @@ export function InventoryScanModal({
       <div className="scan-sheet">
         <div className="scan-sheet__head">
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>📷 Инвентаризация</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Наведите камеру на наклейку</div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>
+              {mode === 'bind' ? '🏷 Оклейка' : '📷 Инвентаризация'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              {mode === 'bind' ? 'Наклей и наведи камеру — привяжется само' : 'Наведите камеру на наклейку'}
+            </div>
           </div>
           <button type="button" className="btn btn--sm" onClick={onClose}>✕</button>
         </div>
@@ -296,28 +432,22 @@ export function InventoryScanModal({
           )}
         </div>
 
-        <div className={`scan-feedback ${last ? (last.ok ? 'scan-feedback--ok' : last.duplicate ? 'scan-feedback--dup' : 'scan-feedback--bad') : ''}`}>
+        <div className={`scan-feedback ${last ? `scan-feedback--${last.tone}` : ''}`}>
           {last ? (
             <>
-              <span style={{ fontSize: 18 }}>{last.ok ? '✅' : last.duplicate ? '🔁' : '⚠️'}</span>
-              <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-                <b style={{ fontFamily: 'monospace' }}>{last.code}</b> — {last.name}
-                {last.unit && <b style={{ color: 'var(--accent)' }}> · {last.unit}</b>}
-                {last.duplicate && <span style={{ color: 'var(--warning)', fontWeight: 700 }}> · уже отсканирован</span>}
-                {last.unbound && (
-                  /* Наклейка наша, но пустая. Отправлять человека за этим на
-                     другой экран — значит бросить обход на середине. */
+              <span style={{ fontSize: 18 }}>{last.tone === 'ok' ? '✅' : last.tone === 'dup' ? '🔁' : '⚠️'}</span>
+              <div style={{ fontSize: 13, lineHeight: 1.4, flex: 1 }}>
+                <b style={{ fontFamily: 'monospace' }}>{last.code}</b> — {last.title}
+                {last.unbound && mode === 'audit' && (
                   <button type="button" className="btn btn--sm" style={{ marginLeft: 8 }} onClick={() => setBinding(last.code)}>
                     Привязать
                   </button>
                 )}
-                {(last.location || last.serial) && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    {last.location ? `📍 ${last.location}` : ''}
-                    {last.location && last.serial ? ' · ' : ''}
-                    {last.serial ? `№ ${last.serial}` : ''}
-                  </div>
+                {/* Крупно и отдельной строкой: на это смотрят, не останавливаясь. */}
+                {last.progress && (
+                  <div style={{ fontSize: 15, fontWeight: 800, marginTop: 2 }}>{last.progress}</div>
                 )}
+                {last.sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{last.sub}</div>}
               </div>
             </>
           ) : (
@@ -326,56 +456,118 @@ export function InventoryScanModal({
         </div>
 
         <div className="scan-sheet__body">
-          {locations.length > 0 && !audit && (
-            <select className="select" value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
-              <option value="all">Всё оборудование ({assets.length})</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name} ({assets.filter((a) => a.locationId === l.id).length})</option>
-              ))}
-            </select>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Отсканировано</span>
-            <span style={{ fontSize: 20, fontWeight: 800 }}>
-              {scannedInScope} <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>из {scope.length}</span>
-            </span>
-          </div>
-
-          {/* Наклейка бывает залеплена или содрана — тогда номер вбивают руками,
-              иначе единица останется «не найденной» без всякой вины обходчика. */}
           <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              className="input"
-              value={manual}
-              placeholder="Код наклейки или инв. номер"
-              onChange={(e) => setManual(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { register(manual); setManual(''); } }}
-            />
-            <button type="button" className="btn btn--sm" onClick={() => { register(manual); setManual(''); }}>Добавить</button>
+            {(['audit', 'bind'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn btn--sm ${mode === m ? 'btn--primary' : ''}`}
+                style={{ flex: 1 }}
+                onClick={() => { setMode(m); setLast(null); }}
+              >
+                {m === 'audit' ? '📷 Обход' : '🏷 Оклейка'}
+              </button>
+            ))}
           </div>
 
-          <button type="button" className="btn btn--sm" onClick={() => setShowMissing((v) => !v)}>
-            {showMissing ? 'Скрыть ненайденное' : `Не найдено: ${missing.length}`}
-          </button>
+          {mode === 'bind' ? (
+            <>
+              <select className="select" value={batchKey} onChange={(e) => { setBatchKey(e.target.value); setLast(null); }}>
+                <option value="">Что клеим?</option>
+                {batches.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.name} — {boundCount(b)} из {b.units.length}
+                  </option>
+                ))}
+              </select>
 
-          {showMissing && (
-            <div className="scan-missing">
-              {missing.length === 0 ? (
-                <div className="empty-state">Всё на месте</div>
-              ) : missing.map((a) => (
-                <div key={a.id} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                  <b style={{ fontFamily: 'monospace' }}>{a.invNumber}</b> · {a.name}
-                  {unitLabel(a, assets) && <span style={{ color: 'var(--text-muted)' }}> · {unitLabel(a, assets)}</span>}
+              {locations.length > 0 && (
+                <select className="select" value={bindPlace} onChange={(e) => setBindPlace(e.target.value)}>
+                  <option value="">Место не менять</option>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              )}
+
+              {batch && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Оклеено</span>
+                    <span style={{ fontSize: 20, fontWeight: 800 }}>
+                      {boundCount(batch)} <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>из {batch.units.length}</span>
+                    </span>
+                  </div>
+                  <div className="scan-missing">
+                    {batch.units.map((u) => (
+                      <div key={u.id} style={{ display: 'flex', gap: 8, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                        <b style={{ fontFamily: 'monospace' }}>{u.invNumber}</b>
+                        <span style={{ color: 'var(--text-muted)' }}>{unitLabel(u, assets)}</span>
+                        <span style={{ marginLeft: 'auto', color: tagByAsset.has(u.id) ? 'var(--success)' : 'var(--text-faint)' }}>
+                          {tagByAsset.get(u.id) || 'без наклейки'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {locations.length > 0 && !audit && (
+                <select className="select" value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
+                  <option value="all">Всё оборудование ({assets.length})</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name} ({assets.filter((a) => a.locationId === l.id).length})</option>
+                  ))}
+                </select>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Отсканировано</span>
+                <span style={{ fontSize: 20, fontWeight: 800 }}>
+                  {scannedInScope} <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>из {scope.length}</span>
+                </span>
+              </div>
+
+              {/* Наклейка бывает залеплена или содрана — тогда номер вбивают
+                  руками, иначе единица «не найдена» без вины обходчика. */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input"
+                  value={manual}
+                  placeholder="Код наклейки или инв. номер"
+                  onChange={(e) => setManual(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { handleRef.current(manual); setManual(''); } }}
+                />
+                <button type="button" className="btn btn--sm" onClick={() => { handleRef.current(manual); setManual(''); }}>Добавить</button>
+              </div>
+
+              <button type="button" className="btn btn--sm" onClick={() => setShowMissing((v) => !v)}>
+                {showMissing ? 'Скрыть ненайденное' : `Не найдено: ${missing.length}`}
+              </button>
+
+              {showMissing && (
+                <div className="scan-missing">
+                  {missing.length === 0 ? (
+                    <div className="empty-state">Всё на месте</div>
+                  ) : missing.map((a) => (
+                    <div key={a.id} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <b style={{ fontFamily: 'monospace' }}>{a.invNumber}</b> · {a.name}
+                      {unitLabel(a, assets) && <span style={{ color: 'var(--text-muted)' }}> · {unitLabel(a, assets)}</span>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
 
         <div className="scan-sheet__foot">
           <button type="button" className="btn" onClick={onClose}>Свернуть</button>
-          {audit ? (
+          {mode === 'bind' ? (
+            <button type="button" className="btn btn--primary" onClick={async () => { await onBound(); onClose(); }}>
+              Готово
+            </button>
+          ) : audit ? (
             <button
               type="button"
               className="btn btn--primary"
@@ -417,12 +609,11 @@ export function InventoryScanModal({
 }
 
 /**
- * «Подошёл, отсканировал, выбрал что это» — привязка пустой наклейки к единице.
+ * Привязка одиночной наклейки — когда предмет один, а не партия из двадцати.
  *
  * Порядок намеренно обратный привычному: сначала клеим пустые наклейки, а
- * выбираем оборудование, когда предмет уже перед глазами. Ошибиться так почти
- * невозможно, а вот наклейку, напечатанную «под морозилку», легко налепить не
- * на ту морозилку — и потом это уже не выловить.
+ * выбираем оборудование, когда предмет уже перед глазами. Наклейку,
+ * напечатанную «под морозилку», легко налепить не на ту морозилку.
  */
 function BindTagModal({ code, assets, locations, onClose, onDone }: {
   code: string;
