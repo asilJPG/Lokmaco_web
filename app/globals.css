@@ -114,3 +114,47 @@ button:hover {
   }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Пальцевые размеры для раздела ОС. Инлайновые стили медиазапросов не умеют,
+   поэтому крупные элементы навешиваются классами.
+   --------------------------------------------------------------------------- */
+.touch-btn {
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  /* Кнопки-строки: на телефоне ряд не помещается, разворачиваем в колонку */
+  .stack-mobile {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .stack-mobile > * {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Модалка занимает экран целиком — так удобнее целиться и листать */
+  .sheet-mobile {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    padding: 16px !important;
+  }
+  .sheet-wrap-mobile {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+
+  /* Поля не должны вызывать зум при фокусе — iOS зумит всё, что мельче 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

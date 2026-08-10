@@ -3768,6 +3768,19 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
 //  INCOMING — поставщик → склад → товары (поиск + кол-во + сумма) → провести
 // ═══════════════════════════════════════════════════════════════
 
+/** Телефон или нет. Порог тот же, что у медиазапросов в globals.css. */
+function useIsMobile(bp = 767) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia(`(max-width:${bp}px)`);
+    const apply = () => setMobile(q.matches);
+    apply();
+    q.addEventListener("change", apply);
+    return () => q.removeEventListener("change", apply);
+  }, [bp]);
+  return mobile;
+}
+
 function makeDraftId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -16233,8 +16246,8 @@ function AssetLocationsModal({ headers, onClose, showToast, onChanged }) {
   };
 
   return (
-    <div style={modalWrap} onClick={onClose}>
-      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-wrap-mobile" style={modalWrap} onClick={onClose}>
+      <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>📍 Места размещения</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
@@ -16412,8 +16425,8 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
   );
 
   return (
-    <div style={modalWrap} onClick={onClose}>
-      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-wrap-mobile" style={modalWrap} onClick={onClose}>
+      <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>🏷 Наклейки</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
@@ -16522,6 +16535,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
           showToast={showToast}
           onClose={() => setScan(null)}
           onAssetCreated={onChanged}
+          onLocationsChanged={onChanged}
           onBound={async () => {
             await load();
             onChanged?.();
@@ -16533,7 +16547,7 @@ function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChan
 }
 
 /** Скан наклейки → выбор оборудования и места → сохранение. */
-function TagBindModal({ headers, assets, locations, onClose, showToast, onBound, onAssetCreated }) {
+function TagBindModal({ headers, assets, locations, onClose, showToast, onBound, onAssetCreated, onLocationsChanged }) {
   const [code, setCode] = useState("");
   const [tag, setTag] = useState(null);
   const [assetId, setAssetId] = useState("");
@@ -16542,7 +16556,27 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState([]);
   const [creating, setCreating] = useState(null); // форма нового оборудования
+  const [newPlace, setNewPlace] = useState(null); // форма нового места
   const lastRef = useRef("");
+
+  /** Место можно завести не выходя из обхода — «поставили в новый цех». */
+  const createPlace = async () => {
+    const name = String(newPlace || "").trim();
+    if (!name) return;
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets/locations", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!j.success) return showToast?.(j.error || "Не удалось создать место", "error");
+    await onLocationsChanged?.();
+    setLocationId(j.location.id);
+    setNewPlace(null);
+    showToast?.(`Место добавлено: ${name}`);
+  };
 
   /**
    * Нужного оборудования может не быть в списке — например, привезли новое,
@@ -16646,8 +16680,8 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
   };
 
   return (
-    <div style={{ ...modalWrap, zIndex: 1400 }} onClick={onClose}>
-      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-wrap-mobile" style={{ ...modalWrap, zIndex: 1400 }} onClick={onClose}>
+      <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>📷 Привязка наклеек</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
@@ -16764,16 +16798,36 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
             </div>
 
             <label style={lbl}>Где стоит</label>
-            <select
-              value={locationId}
-              onChange={(e) => setLocationId(e.target.value)}
-              style={{ ...inp, cursor: "pointer" }}
-            >
-              <option value="">— место не указано —</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
+            {newPlace !== null ? (
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <input
+                  autoFocus
+                  value={newPlace}
+                  onChange={(e) => setNewPlace(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createPlace()}
+                  placeholder="Название места"
+                  style={{ ...inp, marginBottom: 0, flex: 1 }}
+                />
+                <Btn onClick={createPlace} disabled={busy || !String(newPlace).trim()}>
+                  ОК
+                </Btn>
+                <Btn outline onClick={() => setNewPlace(null)}>✕</Btn>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <select
+                  value={locationId}
+                  onChange={(e) => setLocationId(e.target.value)}
+                  style={{ ...inp, marginBottom: 0, flex: 1, cursor: "pointer" }}
+                >
+                  <option value="">— место не указано —</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <Btn outline onClick={() => setNewPlace("")}>➕ Место</Btn>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
               <Btn outline onClick={() => { setTag(null); setCode(""); lastRef.current = ""; }}>
@@ -16809,7 +16863,6 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   
   // Modals
@@ -16817,6 +16870,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const [qrModalAsset, setQrModalAsset] = useState(null); // Asset object for QR sticker print
   const [scanOpen, setScanOpen] = useState(false); // Camera-based inventory scanner
   const [openGroups, setOpenGroups] = useState(() => new Set()); // раскрытые партии
+  const isMobile = useIsMobile();
   const [locationsOpen, setLocationsOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [locations, setLocations] = useState([]);
@@ -17029,7 +17083,6 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
   // Calculations for financial summary
   const filteredAssets = assets.filter(a => {
-    if (categoryFilter !== "all" && a.category !== categoryFilter) return false;
     // «Действующие» — всё, кроме архива: убранное из справочника iiko лежит
     // в базе ради наклеек и истории, но в рабочем списке только мешает.
     if (statusFilter === "all") {
@@ -17085,13 +17138,13 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
   const handleExportCsv = () => {
     const rows = [[
-      "Инв. №", "Наименование", "Категория", "Дата прихода",
+      "Инв. №", "Наименование", "Дата прихода",
       "Первоначальная стоимость", "Количество", "Локация", "МОЛ",
       "Серийный код", "Статус", "Последняя инвентаризация"
     ]];
     filteredAssets.forEach(a => {
       rows.push([
-        a.inv_number || "", a.name || "", a.category || "",
+        a.inv_number || "", a.name || "",
         a.commissioning_date || "",
         a.initial_cost != null ? String(a.initial_cost) : "",
         a.quantity != null ? String(a.quantity) : "",
@@ -17161,8 +17214,9 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="stack-mobile" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
+            className="touch-btn"
             onClick={() => setScanOpen(true)}
             style={{
               padding: "10px 18px",
@@ -17183,6 +17237,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           </button>
 
           <button
+            className="touch-btn"
             onClick={handleExportCsv}
             style={{
               padding: "10px 18px",
@@ -17202,6 +17257,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           </button>
 
           <button
+            className="touch-btn"
             onClick={handleSyncIiko}
             disabled={syncing}
             style={{
@@ -17234,6 +17290,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           ].map((b) => (
             <button
               key={b.label}
+              className="touch-btn"
               onClick={b.onClick}
               style={{
                 padding: "10px 18px",
@@ -17251,6 +17308,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           ))}
 
           <button
+            className="touch-btn"
             onClick={() => setEditModalAsset({
               inv_number: "",
               name: "",
@@ -17342,26 +17400,6 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             }}
           />
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid var(--border-color)",
-              background: "var(--bg-pill)",
-              color: "var(--text-main)",
-              fontSize: 14,
-              outline: "none",
-              cursor: "pointer"
-            }}
-          >
-            <option value="all">📁 Все категории</option>
-            <option value="Оборудование">🍳 Оборудование</option>
-            <option value="Инвентарь">📦 Инвентарь</option>
-            <option value="IT/Кассы">💻 IT / Кассы / Роутеры</option>
-            <option value="Мебель">🪑 Мебель</option>
-          </select>
 
           <select
             value={statusFilter}
@@ -17399,6 +17437,166 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             <div style={{ fontSize: 36, marginBottom: 10 }}>📦</div>
             <div>Оборудование не найдено</div>
             <div style={{ fontSize: 13, marginTop: 4 }}>Нажмите «⚡ Импортировать приходы из iiko», чтобы загрузить оборудование из накладных</div>
+          </div>
+        ) : isMobile ? (
+          /* Таблица из семи колонок на телефоне нечитаема — показываем карточки */
+          <div>
+            {groupedAssets.map((group) => {
+              const asset = group.units[0];
+              const many = group.units.length > 1;
+              const open = openGroups.has(group.key);
+              const st =
+                {
+                  in_use: { bg: "rgba(16,185,129,.1)", color: "#10b981", label: "🟢 В работе" },
+                  repair: { bg: "rgba(245,158,11,.1)", color: "#f59e0b", label: "🟡 Ремонт" },
+                  in_stock: { bg: "rgba(59,130,246,.1)", color: "#3b82f6", label: "🔵 На складе" },
+                  written_off: { bg: "rgba(239,68,68,.1)", color: "#ef4444", label: "🔴 Списан" },
+                  archived: { bg: "rgba(100,116,139,.12)", color: "#64748b", label: "📦 Нет в iiko" },
+                }[asset.status] || { bg: "rgba(16,185,129,.1)", color: "#10b981", label: "🟢 В работе" };
+
+              return (
+                <div
+                  key={group.key}
+                  style={{
+                    padding: "14px 16px",
+                    borderBottom: "1px solid var(--border-color)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>
+                        {asset.name}
+                        {many && (
+                          <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+                            {" "}× {group.units.length}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--color-primary, #6366f1)", marginTop: 2 }}>
+                        {group.base}
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 12,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: st.bg,
+                        color: st.color,
+                        height: "fit-content",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {st.label}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                    <span>📍 {locationName(asset) || "место не указано"}</span>
+                    <span>{formatMoney(asset.initial_cost)}</span>
+                    {tagByAsset[asset.id] ? (
+                      <span style={{ color: "#10b981", fontFamily: "monospace" }}>🏷 {tagByAsset[asset.id]}</span>
+                    ) : (
+                      <span style={{ color: "#b45309" }}>🏷 без наклейки</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button
+                      className="touch-btn"
+                      onClick={() => setQrModalAsset(asset)}
+                      style={{
+                        flex: 1,
+                        borderRadius: 10,
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-pill)",
+                        color: "var(--text-main)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      📱 QR
+                    </button>
+                    <button
+                      className="touch-btn"
+                      onClick={() => setEditModalAsset(asset)}
+                      style={{
+                        flex: 1,
+                        borderRadius: 10,
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-pill)",
+                        color: "var(--text-main)",
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ✏️ Изменить
+                    </button>
+                    {many && (
+                      <button
+                        className="touch-btn"
+                        onClick={() =>
+                          setOpenGroups((prev) => {
+                            const next = new Set(prev);
+                            next.has(group.key) ? next.delete(group.key) : next.add(group.key);
+                            return next;
+                          })
+                        }
+                        style={{
+                          flex: 1,
+                          borderRadius: 10,
+                          border: "1px solid var(--border-color)",
+                          background: "var(--bg-pill)",
+                          color: "var(--text-main)",
+                          fontSize: 13,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {open ? "▲ Скрыть" : `▼ ${group.units.length} шт.`}
+                      </button>
+                    )}
+                  </div>
+
+                  {many && open && (
+                    <div style={{ marginTop: 10, borderTop: "1px dashed var(--border-color)", paddingTop: 8 }}>
+                      {group.units.map((u) => (
+                        <div
+                          key={u.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "8px 0",
+                            fontSize: 12,
+                          }}
+                        >
+                          <span style={{ fontFamily: "monospace" }}>{u.inv_number}</span>
+                          <span style={{ color: "var(--text-muted)" }}>
+                            {tagByAsset[u.id] || "без наклейки"}
+                          </span>
+                          <button
+                            className="touch-btn"
+                            onClick={() => setQrModalAsset(u)}
+                            style={{
+                              borderRadius: 8,
+                              border: "1px solid var(--border-color)",
+                              background: "var(--bg-pill)",
+                              color: "var(--text-main)",
+                              fontSize: 12,
+                              padding: "0 12px",
+                            }}
+                          >
+                            QR
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -19065,21 +19263,6 @@ function AssetFormModal({ asset, onClose, onSave, locations }) {
               />
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
-                Категория
-              </label>
-              <select
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
-              >
-                <option value="Оборудование">Оборудование</option>
-                <option value="Инвентарь">Инвентарь</option>
-                <option value="IT/Кассы">IT / Кассы</option>
-                <option value="Мебель">Мебель</option>
-              </select>
-            </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -19190,7 +19373,6 @@ function QrStickerModal({ asset, onClose }) {
   const qrText = [
     `Инв. №: ${invNum}`,
     `Наименование: ${asset.name || "—"}`,
-    asset.category ? `Категория: ${asset.category}` : null,
     `Дата прихода: ${asset.commissioning_date || "—"}`,
     `Стоимость: ${formatMoney(asset.initial_cost)}`,
     asset.quantity ? `Кол-во: ${asset.quantity}` : null,

@@ -149,7 +149,6 @@ export default async function TagPublicPage({ params }) {
         <div>
           {row("Место", place)}
           {row("Инв. №", asset.inv_number)}
-          {row("Категория", asset.category)}
           {row("Дата ввода", asset.commissioning_date)}
           {row("Стоимость", fmtMoney(asset.initial_cost))}
           {row("МОЛ", asset.responsible_person)}

@@ -73,8 +73,7 @@ export default async function AssetPublicPage({ params }) {
           </div>
 
           <div>
-            {row("Категория", asset.category)}
-            {row("Дата прихода", asset.commissioning_date)}
+              {row("Дата прихода", asset.commissioning_date)}
             {row("Первоначальная стоимость", fmtMoney(asset.initial_cost))}
             {row("Количество", asset.quantity)}
             {row("Локация", asset.location)}
