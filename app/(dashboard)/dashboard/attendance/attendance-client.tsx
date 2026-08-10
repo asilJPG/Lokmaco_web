@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type Shift = { dateFrom: string; dateTo: string; departmentName: string; attendanceType: string; comment: string };
 type Employee = { id: string; name: string; role: string; shifts: Shift[] };
@@ -53,7 +54,7 @@ export function AttendanceClient({ from, to }: { from: string; to: string }) {
             <div className="stat-card"><div className="stat-card__label">🕒 Смен</div><div className="stat-card__value">{totalShifts}</div></div>
           </div>
           <section className="card">
-            <div style={{ overflowX: 'auto' }}>
+            <StackTable>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -80,7 +81,7 @@ export function AttendanceClient({ from, to }: { from: string; to: string }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </StackTable>
           </section>
         </>
       )}

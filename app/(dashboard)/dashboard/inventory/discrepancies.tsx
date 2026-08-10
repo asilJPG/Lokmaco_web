@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type Item = {
   date: string;
@@ -90,7 +91,7 @@ export function DiscrepanciesReport() {
       )}
 
       <section className="card" style={{ padding: 0 }}>
-        <div style={{ overflowX: 'auto' }}>
+        <StackTable>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
             <thead>
               <tr>
@@ -131,7 +132,7 @@ export function DiscrepanciesReport() {
               </tfoot>
             )}
           </table>
-        </div>
+        </StackTable>
       </section>
 
       <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>

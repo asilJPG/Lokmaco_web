@@ -41,7 +41,10 @@ export function UsersClient({ users, filials, currentUserId }: { users: User[]; 
       name: form.name,
       role: form.role,
       accessCode: form.accessCode || null,
-      tgId: form.tgId ? Number(form.tgId) : null,
+      // ⚠️ Пустое поле — это «не менять», а не «стереть»: `tg_id` в базе NOT
+      // NULL, и попытка записать туда null роняла сохранение целиком. Так у
+      // сотрудника с `tg_id = 0` не сохранялся даже филиал.
+      tgId: form.tgId.trim() === '' ? undefined : Number(form.tgId),
       filialIds: form.filialIds,
     };
     const res = await fetch('/api/admin/users', {
@@ -49,8 +52,10 @@ export function UsersClient({ users, filials, currentUserId }: { users: User[]; 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (!res.ok) return alert(data.error || 'Ошибка');
+    // ⚠️ На 500 Next отдаёт не JSON, и `res.json()` тут падал молча: кнопка
+    // «Сохранить» просто ничего не делала, а причина не показывалась нигде.
+    const data = await res.json().catch(() => ({} as { error?: string }));
+    if (!res.ok) return alert(data.error || `Не удалось сохранить (${res.status})`);
     setEditing(null);
     router.refresh();
   }
@@ -77,58 +82,47 @@ export function UsersClient({ users, filials, currentUserId }: { users: User[]; 
         </div>
       )}
 
-      <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', background: 'var(--surface-muted)' }}>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Имя</th>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Роль</th>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Код</th>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Филиалы</th>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Passkey</th>
-                <th style={{ padding: '12px 14px', textAlign: 'left' }}>Последний вход</th>
-                <th style={{ padding: '12px 14px', width: 100 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((u) => (
-                <tr key={u.id}>
-                  {editing === u.id ? (
-                    <td colSpan={7} style={{ padding: 16 }}>
-                      <UserForm initial={u} filials={filials} onSubmit={save} onCancel={() => setEditing(null)} />
-                    </td>
-                  ) : (
-                    <>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
-                        {u.name} {u.id === currentUserId && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>(вы)</span>}
-                      </td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>{u.role}</td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', fontFamily: 'monospace' }}>{u.accessCode ? <Copyable value={u.accessCode} /> : '—'}</td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
-                        {u.filialIds.length === 0 ? <span style={{ color: 'var(--text-faint)' }}>—</span> : u.filialIds.map((fid) => filials.find((f) => f.id === fid)?.name || fid).join(', ')}
-                      </td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>{u.passkeyCount}</td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 12 }}>
-                        {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ru-RU') : '—'}
-                      </td>
-                      <td style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
-                        <button type="button" className="btn btn--sm" onClick={() => setEditing(u.id)}>✎</button>
-                        {u.id !== currentUserId && (
-                          <button type="button" className="btn btn--sm btn--danger" onClick={() => del(u.id)} style={{ marginLeft: 4 }}>×</button>
-                        )}
-                      </td>
-                    </>
+      {/* ⚠️ Не таблица. Семь колонок не помещались на телефон, и страницу
+          приходилось листать вбок — по отзыву это самое неприятное место в
+          интерфейсе. Карточка показывает то же самое и сама переносится. */}
+      <div className="user-list">
+        {filteredUsers.map((u) => (
+          editing === u.id ? (
+            <UserForm key={u.id} initial={u} filials={filials} onSubmit={save} onCancel={() => setEditing(null)} />
+          ) : (
+            <div key={u.id} className="user-card">
+              <div className="user-card__top">
+                <div className="user-card__name">
+                  {u.name}
+                  {u.id === currentUserId && <span className="user-card__you">вы</span>}
+                </div>
+                <div className="user-card__buttons">
+                  <button type="button" className="btn btn--sm" onClick={() => setEditing(u.id)}>✎</button>
+                  {u.id !== currentUserId && (
+                    <button type="button" className="btn btn--sm btn--danger" onClick={() => del(u.id)}>×</button>
                   )}
-                </tr>
-              ))}
-              {users.length === 0 && (
-                <tr><td colSpan={7} className="empty-state">Пользователей нет</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </div>
+              </div>
+
+              <div className="user-card__rows">
+                <div><span>Роль</span><b>{u.role.split(':')[0]}</b></div>
+                <div>
+                  <span>Филиалы</span>
+                  <b>
+                    {u.filialIds.length === 0
+                      ? <em style={{ color: 'var(--warning)', fontStyle: 'normal' }}>не назначены</em>
+                      : u.filialIds.map((fid) => filials.find((f) => f.id === fid)?.name || fid).join(', ')}
+                  </b>
+                </div>
+                <div><span>Код</span><b>{u.accessCode ? <Copyable value={u.accessCode} /> : '—'}</b></div>
+                <div><span>Passkey</span><b>{u.passkeyCount || '—'}</b></div>
+                <div><span>Вход</span><b>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('ru-RU') : '—'}</b></div>
+              </div>
+            </div>
+          )
+        ))}
+        {filteredUsers.length === 0 && <div className="card"><div className="empty-state">Пользователей нет</div></div>}
+      </div>
     </div>
   );
 }
@@ -142,7 +136,9 @@ function UserForm({ initial, filials, onSubmit, onCancel }: {
   const [name, setName] = useState(initial?.name || '');
   const [role, setRole] = useState(initial?.role || 'cashier');
   const [accessCode, setAccessCode] = useState(initial?.accessCode || '');
-  const [tgId, setTgId] = useState(initial?.tgId ? String(initial.tgId) : '');
+  // Ноль — реальный id в этой базе, поэтому сравниваем с null, а не по
+  // «правдивости»: иначе поле показывалось пустым и затирало значение.
+  const [tgId, setTgId] = useState(initial?.tgId != null ? String(initial.tgId) : '');
   const [filialIds, setFilialIds] = useState<number[]>(initial?.filialIds || []);
   const [busy, setBusy] = useState(false);
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CashierExpensesReport } from './cashier-expenses';
 import type { MonthlyCashDay, MonthlyCashTotals } from '@/app/api/iiko/reports/monthly-cash/route';
+import { StackTable } from '@/components/stack-table';
 
 type Data = { month: string; days: MonthlyCashDay[]; totals: MonthlyCashTotals };
 
@@ -109,7 +110,7 @@ export function ReconciliationClient({ initialMonth }: { initialMonth: string })
         ) : !data ? (
           <div className="empty-state" style={{ padding: 60 }}>Нет данных</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -170,7 +171,7 @@ export function ReconciliationClient({ initialMonth }: { initialMonth: string })
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </StackTable>
         )}
       </section>
 

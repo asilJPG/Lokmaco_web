@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 
@@ -21,7 +22,7 @@ function renderMarkdown(text: string): React.ReactNode {
     if (table.length === 0) return;
     const [head, ...rows] = table;
     out.push(
-      <div key={`t${key}`} style={{ overflowX: 'auto', margin: '8px 0' }}>
+      <StackTable key={`t${key}`} className="table-stack--gap">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
@@ -44,7 +45,7 @@ function renderMarkdown(text: string): React.ReactNode {
             ))}
           </tbody>
         </table>
-      </div>
+      </StackTable>
     );
     table = [];
   };

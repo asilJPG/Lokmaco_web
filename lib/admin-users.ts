@@ -77,7 +77,9 @@ export async function updateUser(id: number, patch: Partial<{ name: string; role
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.role !== undefined) update.role = patch.role;
   if (patch.accessCode !== undefined) update.accessCode = patch.accessCode;
-  if (patch.tgId !== undefined) update.tgId = patch.tgId;
+  // ⚠️ Последний рубеж: `bot_users.tg_id` NOT NULL. Null сюда роняет весь
+  // апдейт, включая привязку филиалов, которая идёт следом.
+  if (patch.tgId !== undefined && patch.tgId !== null) update.tgId = patch.tgId;
   if (Object.keys(update).length > 0) {
     await db.update(schema.users).set(update).where(eq(schema.users.id, id));
   }

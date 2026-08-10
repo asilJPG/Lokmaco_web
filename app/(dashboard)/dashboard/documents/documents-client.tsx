@@ -5,6 +5,7 @@ import { Pagination } from '@/components/pagination';
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate } from '@/lib/period';
 import { Copyable } from '@/components/copy-button';
+import { StackTable } from '@/components/stack-table';
 
 type Doc = {
   id?: string;
@@ -206,7 +207,7 @@ export function DocumentsClient() {
         ) : filtered.length === 0 ? (
           <div className="empty-state">Документов нет</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -272,7 +273,7 @@ export function DocumentsClient() {
                 })}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
         <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />
       </section>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Pagination } from '@/components/pagination';
+import { StackTable } from '@/components/stack-table';
 
 type BalanceItem = {
   product?: { id?: string; name?: string; num?: string };
@@ -168,7 +169,7 @@ export function BalancesClient() {
         ) : filtered.length === 0 ? (
           <div className="empty-state">{query ? 'Ничего не найдено' : 'Остатков нет'}</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -189,7 +190,7 @@ export function BalancesClient() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
         <Pagination page={page} total={sorted.length} pageSize={PAGE_SIZE} onPage={(p) => {
           setPage(p);

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type Dish = { name: string; amount: number; revenue: number };
 type Category = { name: string; totalRevenue: number; totalAmount: number; dishes: Dish[] };
@@ -204,7 +205,7 @@ export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: Iik
           {waiters.length === 0 ? (
             <div className="empty-state">Данных нет</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <StackTable>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -227,7 +228,7 @@ export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: Iik
                   ))}
                 </tbody>
               </table>
-            </div>
+            </StackTable>
           )}
         </section>
       )}

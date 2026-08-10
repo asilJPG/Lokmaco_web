@@ -1580,3 +1580,90 @@ tr[data-today="true"] td:first-child {
 }
 .asset-chips::-webkit-scrollbar { display: none; }
 .asset-chips .btn { flex: 0 0 auto; white-space: nowrap; }
+
+/* ── Пользователи ─────────────────────────────────────────────────────────
+   Семь колонок в таблице не помещались на телефон, и страницу листали вбок.
+   Карточка переносится сама, а роль/склад в ролях вида `bar:<uuid>` больше
+   не растягивает строку на пол-экрана. */
+.user-list { display: flex; flex-direction: column; gap: 10px; }
+
+.user-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.user-card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.user-card__name { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.user-card__you { font-size: 11px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
+.user-card__buttons { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.user-card__rows {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 4px 16px;
+  font-size: 13px;
+}
+.user-card__rows > div { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
+.user-card__rows span { color: var(--text-muted); }
+.user-card__rows b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+/* ── Таблицы без боковой прокрутки ────────────────────────────────────────
+   На широком экране обычная таблица; на телефоне строка разворачивается в
+   карточку «подпись → значение». Подписи проставляет `components/stack-table`
+   из шапки таблицы. Листать страницу вбок больше не нужно нигде. */
+.table-stack { overflow-x: auto; }
+
+@media (max-width: 767px) {
+  .table-stack { overflow-x: visible; }
+  .table-stack table { width: 100%; }
+  .table-stack thead { display: none; }
+
+  .table-stack tbody tr {
+    display: block;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--border);
+    /* Полосатые строки красились инлайновым фоном под ширину таблицы —
+       в столбик это выглядит рваным прямоугольником. */
+    background: none !important;
+  }
+  .table-stack tbody tr:last-child { border-bottom: 0; }
+
+  .table-stack tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0 !important;
+    border: 0 !important;
+    text-align: right !important;
+    min-width: 0;
+  }
+
+  /* Подпись слева, значение справа. Пустые ячейки не занимают строку. */
+  .table-stack tbody td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    text-align: left;
+  }
+
+  /* Первая ячейка — заголовок карточки: подпись ей не нужна. */
+  .table-stack tbody td:first-child {
+    font-weight: 700;
+    font-size: 14px;
+    padding-bottom: 6px !important;
+  }
+  .table-stack tbody td:first-child::before { display: none; }
+
+  .table-stack tbody td > * { min-width: 0; overflow-wrap: anywhere; }
+  .table-stack tfoot { display: block; }
+  .table-stack tfoot td { display: flex; justify-content: space-between; }
+}
+.table-stack--gap { margin: 8px 0; }
+.table-stack--sep { border-top: 1px solid var(--border); }

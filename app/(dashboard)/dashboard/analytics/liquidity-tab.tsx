@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { SegmentBar, StatusBadge } from '@/components/charts';
+import { StackTable } from '@/components/stack-table';
 
 type Status = 'liquid' | 'slow' | 'dead' | 'idle';
 
@@ -169,7 +170,7 @@ export function LiquidityTab() {
           </div>
           <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>{visible.length} позиций</span>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <StackTable>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -210,7 +211,7 @@ export function LiquidityTab() {
               {visible.length === 0 && <tr><td colSpan={7}><div className="empty-state">Ничего не найдено</div></td></tr>}
             </tbody>
           </table>
-        </div>
+        </StackTable>
       </div>
     </div>
   );

@@ -37,7 +37,9 @@ export async function PATCH(req: Request) {
     name: b.name !== undefined ? String(b.name) : undefined,
     role: b.role !== undefined ? String(b.role) : undefined,
     accessCode: b.accessCode !== undefined ? (b.accessCode ? String(b.accessCode) : null) : undefined,
-    tgId: b.tgId !== undefined ? (b.tgId ? Number(b.tgId) : null) : undefined,
+    // `tg_id` в базе NOT NULL — null сюда писать нельзя ни при каких данных.
+    // Не пришло поле или пришло пустым — просто не трогаем.
+    tgId: b.tgId === undefined || b.tgId === null || b.tgId === '' ? undefined : Number(b.tgId),
     filialIds: Array.isArray(b.filialIds) ? b.filialIds.map(Number).filter(Boolean) : undefined,
   });
   return Response.json({ success: true });

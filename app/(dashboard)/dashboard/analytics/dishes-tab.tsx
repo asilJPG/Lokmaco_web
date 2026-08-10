@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type AbcClass = 'A' | 'B' | 'C';
 type Severity = 'ok' | 'above' | 'critical' | 'urgent';
@@ -220,7 +221,7 @@ export function DishesTab({ from, to }: { from: string; to: string }) {
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <StackTable>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -265,7 +266,7 @@ export function DishesTab({ from, to }: { from: string; to: string }) {
               )}
             </tbody>
           </table>
-        </div>
+        </StackTable>
       </div>
     </div>
   );

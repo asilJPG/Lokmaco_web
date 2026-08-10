@@ -8,6 +8,7 @@ import { parsePeriod, fmtMoney, fmtDate, todayTashkent } from '@/lib/period';
 import { PeriodPicker } from '@/components/period-picker';
 import { Copyable } from '@/components/copy-button';
 import { InlineSearch } from '@/components/inline-search';
+import { StackTable } from '@/components/stack-table';
 
 export const metadata = { title: 'История' };
 export const dynamic = 'force-dynamic';
@@ -97,7 +98,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: { [k
         {rows.length === 0 ? (
           <div className="empty-state">Смен нет</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -130,7 +131,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: { [k
                 ))}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
 
         {totalPages > 1 && (

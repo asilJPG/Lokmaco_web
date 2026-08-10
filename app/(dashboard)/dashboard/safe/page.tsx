@@ -7,6 +7,7 @@ import { getSafeStats } from '@/lib/safe';
 import { listAdminExpenses } from '@/lib/admin-expense';
 import { PeriodPicker } from '@/components/period-picker';
 import { AdminExpenseForm, DeleteExpenseButton } from '@/components/admin-expense-form';
+import { StackTable } from '@/components/stack-table';
 
 export const metadata = { title: 'Сейф' };
 export const dynamic = 'force-dynamic';
@@ -58,7 +59,7 @@ export default async function SafePage({ searchParams }: { searchParams: { [k: s
         {expenses.length === 0 ? (
           <div className="empty-state">За период расходов нет</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -81,7 +82,7 @@ export default async function SafePage({ searchParams }: { searchParams: { [k: s
                 ))}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
       </section>
 
@@ -90,7 +91,7 @@ export default async function SafePage({ searchParams }: { searchParams: { [k: s
         {stats.daily.length === 0 ? (
           <div className="empty-state">За выбранный период данных нет</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -109,7 +110,7 @@ export default async function SafePage({ searchParams }: { searchParams: { [k: s
                 ))}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
       </section>
     </div>

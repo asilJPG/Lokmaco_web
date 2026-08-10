@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { DonutChart } from '@/components/charts';
+import { StackTable } from '@/components/stack-table';
 
 type PricePoint = { date: string; price: number; amount: number; documentNumber: string; supplierId: string };
 
@@ -220,7 +221,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
           <div style={{ padding: '16px 16px 4px' }}>
             <DonutChart items={data.supplierSpend.map((s) => ({ name: s.name, value: s.total, share: s.share }))} />
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -243,7 +244,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         </section>
       )}
 
@@ -262,7 +263,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
         {data.alerts.length === 0 ? (
           <div className="empty-state">Нет изменений цен выше порога за период</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -278,7 +279,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
                 {data.alerts.map((a) => <AlertRow key={a.productId} a={a} />)}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
       </section>
 
@@ -295,7 +296,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
             </div>
           </button>
           {showSuspicious && (
-            <div style={{ overflowX: 'auto', borderTop: '1px solid var(--border)' }}>
+            <StackTable className="table-stack--sep">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -311,7 +312,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
                   {data.suspicious.map((a) => <AlertRow key={a.productId} a={a} />)}
                 </tbody>
               </table>
-            </div>
+            </StackTable>
           )}
         </section>
       )}
@@ -321,7 +322,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
           <b style={{ fontSize: 14 }}>📈 Динамика цен</b>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Топ-20 ингредиентов по затратам за период</div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <StackTable>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -354,7 +355,7 @@ export function PricesTab({ from, to }: { from: string; to: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </StackTable>
       </section>
     </div>
   );

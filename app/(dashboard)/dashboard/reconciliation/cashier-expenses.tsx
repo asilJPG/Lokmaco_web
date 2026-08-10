@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import { StackTable } from '@/components/stack-table';
 
 type Entry = { date: string; amount: number; cashier: string | null };
 type Item = { name: string; byMonth: Record<string, number>; total: number; entries: Entry[] };
@@ -100,7 +101,7 @@ export function CashierExpensesReport() {
           <span className="card__title-text">💸 Расходы кассира по месяцам</span>
           <button type="button" className="btn btn--sm" onClick={exportCsv}>⬇ CSV</button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <StackTable>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
             <thead>
               <tr>
@@ -153,7 +154,7 @@ export function CashierExpensesReport() {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </StackTable>
       </section>
 
       <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>

@@ -5,6 +5,7 @@ import { toURLSearchParams } from '@/lib/search-params';
 import { parsePeriod, fmtMoney, fmtDate, todayTashkent } from '@/lib/period';
 import { getPnLStats } from '@/lib/pnl';
 import { PeriodPicker } from '@/components/period-picker';
+import { StackTable } from '@/components/stack-table';
 
 export const metadata = { title: 'P&L' };
 export const dynamic = 'force-dynamic';
@@ -55,7 +56,7 @@ export default async function PnLPage({ searchParams }: { searchParams: { [k: st
         {stats.daily.length === 0 ? (
           <div className="empty-state">За выбранный период данных нет</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <StackTable>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
@@ -83,7 +84,7 @@ export default async function PnLPage({ searchParams }: { searchParams: { [k: st
                 })}
               </tbody>
             </table>
-          </div>
+          </StackTable>
         )}
       </section>
     </div>

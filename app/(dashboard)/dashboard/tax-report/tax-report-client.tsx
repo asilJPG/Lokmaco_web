@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { TaxReport } from '@/lib/tax-report';
+import { StackTable } from '@/components/stack-table';
 
 type SubTab = 'sales' | 'ingredients' | 'writeoffs';
 
@@ -115,7 +116,7 @@ export function TaxReportClient({ from, to }: { from: string; to: string }) {
           </div>
 
           <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
+            <StackTable>
               {tab === 'sales' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr><th style={th}>Артикул</th><th style={th}>Блюдо</th><th style={thR}>Продано</th></tr></thead>
@@ -161,7 +162,7 @@ export function TaxReportClient({ from, to }: { from: string; to: string }) {
                   </tbody>
                 </table>
               )}
-            </div>
+            </StackTable>
           </section>
 
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
