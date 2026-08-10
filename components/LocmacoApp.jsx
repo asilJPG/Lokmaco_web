@@ -3769,6 +3769,22 @@ function IikoHistoryList({ type, showToast, stores = [], products = [] }) {
 // ═══════════════════════════════════════════════════════════════
 
 /** Телефон или нет. Порог тот же, что у медиазапросов в globals.css. */
+/**
+ * Подпись экземпляра партии: EQ-00745-03 среди семи карточек той же базы
+ * читается как «№3 из 7». Именно это нужно видеть при скане — какой
+ * конкретно стол из двадцати перед тобой.
+ */
+function unitLabel(asset, allAssets) {
+  const inv = String(asset?.inv_number || "");
+  const parts = inv.split("-");
+  if (parts.length < 3) return "";
+  const index = parseInt(parts[parts.length - 1], 10);
+  if (!Number.isFinite(index)) return "";
+  const base = baseInvNumber(inv);
+  const total = (allAssets || []).filter((a) => baseInvNumber(a.inv_number) === base).length;
+  return total > 1 ? `№${index} из ${total}` : `№${index}`;
+}
+
 function useIsMobile(bp = 767) {
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
@@ -16935,7 +16951,7 @@ function TagBindModal({ headers, assets, locations, onClose, showToast, onBound,
  * страница наклейки данных не показывает специально (её видит кто угодно
  * с камерой), поэтому смотреть их можно только здесь, после входа.
  */
-function AssetLookupModal({ headers, locationName, onClose, onEdit }) {
+function AssetLookupModal({ headers, locationName, assets, onClose, onEdit }) {
   const [result, setResult] = useState(null);
   const [notFound, setNotFound] = useState("");
   const lastRef = useRef("");
@@ -16992,7 +17008,14 @@ function AssetLookupModal({ headers, locationName, onClose, onEdit }) {
 
         {asset && (
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 2 }}>{asset.name}</div>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 2 }}>
+              {asset.name}
+              {unitLabel(asset, assets) && (
+                <span style={{ color: "var(--color-primary, #6366f1)" }}>
+                  {" "}· {unitLabel(asset, assets)}
+                </span>
+              )}
+            </div>
             <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
               {result.code} · {asset.inv_number}
             </div>
@@ -17178,6 +17201,59 @@ function FixedAssetsView({ showToast, loggedInUser }) {
       console.error("[FixedAssetsView] save error:", e);
       showToast?.("Ошибка сохранения данных", "error");
     }
+  };
+
+  /**
+   * Позиции, пришедшие из iiko пачкой, до сих пор лежат одной строкой:
+   * разворот срабатывает только при первом создании карточки. Кнопка
+   * разворачивает всё разом — операция необратимая, поэтому с цифрами
+   * и подтверждением.
+   */
+  const pendingSplits = assets.filter((a) => (parseInt(a.quantity, 10) || 1) > 1);
+  const pendingUnits = pendingSplits.reduce(
+    (sum, a) => sum + (parseInt(a.quantity, 10) || 1),
+    0
+  );
+
+  const handleSplitAll = async () => {
+    if (pendingSplits.length === 0) return;
+    const ok = confirm(
+      `Развернуть ${pendingSplits.length} позиц. в ${pendingUnits} отдельных карточек?\n\n` +
+        pendingSplits
+          .slice(0, 12)
+          .map((a) => `• ${a.name} — ${a.quantity} шт.`)
+          .join("\n") +
+        (pendingSplits.length > 12 ? `\n…и ещё ${pendingSplits.length - 12}` : "") +
+        `\n\nКаждая получит свой номер и свою наклейку. Схлопнуть обратно нельзя.`
+    );
+    if (!ok) return;
+
+    setSyncing(true);
+    let done = 0;
+    let failed = 0;
+    for (const a of pendingSplits) {
+      try {
+        const res = await fetch("/api/iiko/assets/split", {
+          method: "POST",
+          headers: { ...apiHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ id: a.id, count: parseInt(a.quantity, 10) }),
+        });
+        const j = await res.json();
+        if (j.success) done += j.count || 0;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setSyncing(false);
+    await loadAssets();
+    await loadSiteData();
+    showToast?.(
+      failed
+        ? `Создано карточек: ${done}, не удалось развернуть позиций: ${failed}`
+        : `Создано карточек: ${done}`,
+      failed ? "error" : "success"
+    );
   };
 
   const handleSplitAsset = async (asset) => {
@@ -17439,6 +17515,14 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           </button>
 
           {[
+            ...(pendingSplits.length
+              ? [
+                  {
+                    label: `✂️ Развернуть партии (${pendingUnits})`,
+                    onClick: handleSplitAll,
+                  },
+                ]
+              : []),
             { label: "🔍 Найти по QR", onClick: () => setLookupOpen(true) },
             { label: "📍 Места", onClick: () => setLocationsOpen(true) },
             {
@@ -18099,6 +18183,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
         <AssetLookupModal
           headers={apiHeaders}
           locationName={locationName}
+          assets={assets}
           onClose={() => setLookupOpen(false)}
           onEdit={(a) => {
             setLookupOpen(false);
@@ -19254,6 +19339,7 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast, tagMap = {},
                     duplicate: already,
                     inv,
                     name: asset.name,
+                    unit: unitLabel(asset, assets),
                     location: locationName?.(asset) || asset.location,
                     serial: asset.serial_number,
                   });
@@ -19334,6 +19420,9 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast, tagMap = {},
               <span style={{ fontSize: 18 }}>{lastScan.ok ? "✅" : lastScan.duplicate ? "🔁" : "⚠️"}</span>
               <div style={{ fontSize: 13, color: "var(--text-main)", lineHeight: 1.4 }}>
                 <b>{lastScan.inv}</b> — {lastScan.name}
+                {lastScan.unit && (
+                  <b style={{ color: "#6366f1" }}> · {lastScan.unit}</b>
+                )}
                 {lastScan.duplicate && (
                   <span style={{ color: "#b45309", fontWeight: 700 }}> · уже отсканирован, не засчитан</span>
                 )}
