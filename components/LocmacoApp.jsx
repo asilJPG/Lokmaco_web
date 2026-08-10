@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { baseInvNumber } from "@/lib/inv-number";
+import { normalizeTagCode, looksLikeTag } from "@/lib/asset-tags";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -16033,6 +16034,678 @@ function TaxReportView({ showToast, loggedInUser }) {
   );
 }
 
+/**
+ * Камера + чтение QR. BarcodeDetector есть только в Chromium, поэтому в
+ * WebKit (весь iPhone) кадры декодирует jsQR — см. раздел 3.9 в context.md.
+ */
+function CameraQrReader({ onCode, height = 260 }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError("Камера недоступна в этом браузере");
+          return;
+        }
+        if (!window.isSecureContext) {
+          setError("Камера работает только по https");
+          return;
+        }
+
+        let detect;
+        if ("BarcodeDetector" in window) {
+          const d = new window.BarcodeDetector({ formats: ["qr_code"] });
+          detect = async (video) => (await d.detect(video)).map((c) => c.rawValue || "");
+        } else {
+          const { default: jsQR } = await import("jsqr");
+          detect = (video) => {
+            const canvas = canvasRef.current;
+            if (!canvas || !video.videoWidth) return [];
+            const scale = Math.min(1, 640 / video.videoWidth);
+            const w = Math.round(video.videoWidth * scale);
+            const h = Math.round(video.videoHeight * scale);
+            if (canvas.width !== w || canvas.height !== h) {
+              canvas.width = w;
+              canvas.height = h;
+            }
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            ctx.drawImage(video, 0, 0, w, h);
+            const { data } = ctx.getImageData(0, 0, w, h);
+            const code = jsQR(data, w, h, { inversionAttempts: "dontInvert" });
+            return code?.data ? [code.data] : [];
+          };
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+
+        let lastRun = 0;
+        const loop = async () => {
+          if (cancelled || !videoRef.current) return;
+          const now = performance.now();
+          if (now - lastRun >= 100) {
+            lastRun = now;
+            try {
+              const values = await detect(videoRef.current);
+              for (const v of values) if (v) onCode(v);
+            } catch {}
+          }
+          rafRef.current = requestAnimationFrame(loop);
+        };
+        rafRef.current = requestAnimationFrame(loop);
+      } catch (e) {
+        setError(e.message || "Не удалось открыть камеру");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (error) {
+    return (
+      <div style={{ padding: 24, textAlign: "center", background: "#000", color: "#fff", borderRadius: 12 }}>
+        <div style={{ fontSize: 34, marginBottom: 8 }}>📷</div>
+        <div style={{ fontSize: 13 }}>{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "relative", background: "#000", height, borderRadius: 12, overflow: "hidden" }}>
+      <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ width: "58%", aspectRatio: "1/1", border: "3px solid rgba(255,255,255,.85)", borderRadius: 18, boxShadow: "0 0 0 9999px rgba(0,0,0,.35)" }} />
+      </div>
+    </div>
+  );
+}
+
+const modalWrap = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,.6)",
+  zIndex: 1300,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+};
+
+const modalCard = {
+  background: "var(--bg-card)",
+  borderRadius: 16,
+  width: "min(560px, 100%)",
+  maxHeight: "90vh",
+  overflowY: "auto",
+  padding: 22,
+  boxShadow: "0 24px 60px rgba(0,0,0,.28)",
+};
+
+/** Справочник мест — плоский список, живёт только на сайте, в iiko его нет. */
+function AssetLocationsModal({ headers, onClose, showToast, onChanged }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/iiko/assets/locations", { headers });
+      const j = await r.json();
+      setRows(j.success ? j.data : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const add = async () => {
+    const clean = name.trim();
+    if (!clean) return;
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets/locations", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: clean }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (j.success) {
+      setName("");
+      await load();
+      onChanged?.();
+    } else showToast?.(j.error || "Не удалось создать", "error");
+  };
+
+  const rename = async (row) => {
+    const clean = String(editing?.name || "").trim();
+    if (!clean || clean === row.name) return setEditing(null);
+    const r = await fetch("/api/iiko/assets/locations", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: row.id, name: clean }),
+    });
+    const j = await r.json();
+    setEditing(null);
+    if (j.success) {
+      await load();
+      onChanged?.();
+    } else showToast?.(j.error || "Не удалось сохранить", "error");
+  };
+
+  const remove = async (row) => {
+    if (!confirm(`Удалить место «${row.name}»?`)) return;
+    const r = await fetch(`/api/iiko/assets/locations?id=${row.id}`, { method: "DELETE", headers });
+    const j = await r.json();
+    if (j.success) {
+      await load();
+      onChanged?.();
+    } else showToast?.(j.error || "Не удалось удалить", "error");
+  };
+
+  return (
+    <div style={modalWrap} onClick={onClose}>
+      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>📍 Места размещения</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="Например: Горячий цех"
+            style={{ ...inp, marginBottom: 0, flex: 1 }}
+          />
+          <Btn onClick={add} disabled={busy || !name.trim()}>Добавить</Btn>
+        </div>
+
+        {loading ? (
+          <LoadingBlock text="Загрузка мест..." />
+        ) : rows.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
+            Мест пока нет. Добавьте первое — например «Кухня» или «Бар».
+          </div>
+        ) : (
+          <div style={{ border: "1px solid var(--border-color)", borderRadius: 10, overflow: "hidden" }}>
+            {rows.map((row, i) => (
+              <div
+                key={row.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderTop: i ? "1px solid var(--border-color)" : "none",
+                }}
+              >
+                {editing?.id === row.id ? (
+                  <input
+                    autoFocus
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    onKeyDown={(e) => e.key === "Enter" && rename(row)}
+                    onBlur={() => rename(row)}
+                    style={{ ...inp, marginBottom: 0, flex: 1 }}
+                  />
+                ) : (
+                  <>
+                    <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{row.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {row.assets_count} шт.
+                    </span>
+                    <button
+                      onClick={() => setEditing({ id: row.id, name: row.name })}
+                      title="Переименовать"
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => remove(row)}
+                      title="Удалить"
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15 }}
+                    >
+                      🗑
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Печать пачки наклеек: сетка QR со ссылкой вида /tag/LKM-0007. */
+function printTagSheet(tags) {
+  const origin = window.location.origin;
+  const cells = tags
+    .map((t) => {
+      const url = `${origin}/tag/${t.code}`;
+      const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=4&data=${encodeURIComponent(url)}`;
+      return `
+        <div class="tag">
+          <img class="qr" src="${qr}" />
+          <div class="code">${t.code}</div>
+          <div class="cap">Инвентарная наклейка оборудования</div>
+        </div>`;
+    })
+    .join("");
+
+  const w = window.open("", "_blank");
+  w.document.write(`
+    <html>
+      <head>
+        <title>Наклейки (${tags.length} шт.)</title>
+        <style>
+          @page { size: A4; margin: 8mm; }
+          body { font-family: -apple-system, sans-serif; margin: 0; }
+          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; }
+          .tag {
+            border: 1px dashed #999;
+            border-radius: 3mm;
+            padding: 3mm 2mm;
+            text-align: center;
+            page-break-inside: avoid;
+          }
+          .qr { width: 100%; max-width: 34mm; display: block; margin: 0 auto 1.5mm; }
+          .code { font-family: monospace; font-weight: 700; font-size: 11pt; letter-spacing: .5px; }
+          .cap { font-size: 5.5pt; color: #444; margin-top: .8mm; line-height: 1.2; }
+          @media print { .noprint { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="noprint" style="padding:10px;text-align:center">
+          <button onclick="window.print()" style="padding:8px 18px;font-size:14px;cursor:pointer">🖨 Печать</button>
+        </div>
+        <div class="grid">${cells}</div>
+      </body>
+    </html>`);
+  w.document.close();
+}
+
+/**
+ * Универсальные наклейки: печатаются пустой пачкой, привязка к конкретной
+ * единице делается сканированием на месте. Так исключается путаница «наклеил
+ * ярлык от одной морозилки на другую» — выбор идёт, когда предмет перед глазами.
+ */
+function AssetTagsModal({ headers, assets, locations, onClose, showToast, onChanged }) {
+  const [tags, setTags] = useState([]);
+  const [stats, setStats] = useState({ total: 0, free: 0 });
+  const [loading, setLoading] = useState(true);
+  const [count, setCount] = useState("24");
+  const [busy, setBusy] = useState(false);
+  const [scan, setScan] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/iiko/assets/tags", { headers });
+      const j = await r.json();
+      setTags(j.success ? j.data : []);
+      setStats(j.stats || { total: 0, free: 0 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const generate = async () => {
+    const n = parseInt(count, 10);
+    if (!Number.isFinite(n) || n < 1) return showToast?.("Укажите количество", "error");
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets/tags", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ count: n }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (j.success) {
+      await load();
+      printTagSheet(j.tags);
+      showToast?.(`Создано наклеек: ${j.tags.length}`);
+    } else showToast?.(j.error || "Не удалось создать", "error");
+  };
+
+  const shown = tags.filter((t) =>
+    filter === "free" ? !t.asset_id : filter === "bound" ? t.asset_id : true
+  );
+
+  return (
+    <div style={modalWrap} onClick={onClose}>
+      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>🏷 Наклейки</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          {[
+            { label: "Всего", value: stats.total, color: "var(--text-main)" },
+            { label: "Свободных", value: stats.free, color: "#f59e0b" },
+            { label: "Привязано", value: stats.total - stats.free, color: "#10b981" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, background: "var(--bg-hover)", borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <Btn onClick={() => setScan({})} style={{ flex: 1 }}>📷 Привязать сканированием</Btn>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+          <input
+            type="number"
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            style={{ ...inp, marginBottom: 0, width: 90 }}
+          />
+          <Btn outline onClick={generate} disabled={busy} style={{ flex: 1 }}>
+            {busy ? "Создание..." : "🖨 Напечатать новую пачку"}
+          </Btn>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {[
+            { id: "all", label: "Все" },
+            { id: "free", label: "Свободные" },
+            { id: "bound", label: "Привязанные" },
+          ].map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              style={{
+                padding: "5px 12px",
+                borderRadius: 8,
+                border: filter === f.id ? "none" : "1px solid var(--border-color)",
+                background: filter === f.id ? "var(--bg-pill)" : "transparent",
+                color: filter === f.id ? "var(--text-main)" : "var(--text-muted)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <LoadingBlock text="Загрузка наклеек..." />
+        ) : shown.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 22, color: "var(--text-muted)", fontSize: 13 }}>
+            {stats.total === 0
+              ? "Наклеек пока нет. Напечатайте первую пачку — коды выдаются автоматически."
+              : "В этой выборке пусто"}
+          </div>
+        ) : (
+          <div style={{ border: "1px solid var(--border-color)", borderRadius: 10, overflow: "hidden" }}>
+            {shown.slice(0, 200).map((t, i) => (
+              <div
+                key={t.code}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "9px 12px",
+                  borderTop: i ? "1px solid var(--border-color)" : "none",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ fontFamily: "monospace", fontWeight: 700, minWidth: 88 }}>{t.code}</span>
+                {t.asset ? (
+                  <span style={{ flex: 1 }}>{t.asset.name}</span>
+                ) : (
+                  <span style={{ flex: 1, color: "#b45309", fontWeight: 600 }}>свободна</span>
+                )}
+                <button
+                  onClick={() => printTagSheet([t])}
+                  title="Печать этой наклейки"
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14 }}
+                >
+                  🖨
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {scan && (
+        <TagBindModal
+          headers={headers}
+          assets={assets}
+          locations={locations}
+          showToast={showToast}
+          onClose={() => setScan(null)}
+          onBound={async () => {
+            await load();
+            onChanged?.();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Скан наклейки → выбор оборудования и места → сохранение. */
+function TagBindModal({ headers, assets, locations, onClose, showToast, onBound }) {
+  const [code, setCode] = useState("");
+  const [tag, setTag] = useState(null);
+  const [assetId, setAssetId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [search, setSearch] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState([]);
+  const lastRef = useRef("");
+
+  const handleCode = async (raw) => {
+    const m = String(raw).match(/\/tag\/([A-Za-z0-9_-]+)/);
+    const c = (m ? m[1] : String(raw).trim()).toUpperCase();
+    if (!c || c === lastRef.current) return;
+    lastRef.current = c;
+
+    const r = await fetch(`/api/iiko/assets/tags?code=${encodeURIComponent(c)}`, { headers });
+    const j = await r.json();
+    if (!j.success) {
+      showToast?.(j.error || "Наклейка не найдена", "error");
+      setTimeout(() => (lastRef.current = ""), 1500);
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(60);
+    setCode(c);
+    setTag(j.tag);
+    setAssetId(j.tag.asset_id || "");
+    setLocationId(j.tag.asset?.location_id || "");
+  };
+
+  // Уже привязанные к другим наклейкам единицы в списке не нужны
+  const boundElsewhere = new Set();
+  const free = assets.filter((a) => a.status !== "archived");
+  const list = free.filter((a) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      (a.name || "").toLowerCase().includes(q) ||
+      (a.inv_number || "").toLowerCase().includes(q)
+    );
+  });
+
+  const save = async (force = false) => {
+    if (!assetId) return showToast?.("Выберите оборудование", "error");
+    setBusy(true);
+    const r = await fetch("/api/iiko/assets/tags", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ code, asset_id: assetId, location_id: locationId || null, force }),
+    });
+    const j = await r.json();
+    setBusy(false);
+
+    if (j.conflict) {
+      if (confirm(`Наклейка ${code} уже привязана к «${j.current?.name}». Переклеить на выбранное?`)) {
+        return save(true);
+      }
+      return;
+    }
+    if (!j.success) return showToast?.(j.error || "Не удалось сохранить", "error");
+
+    const name = assets.find((a) => a.id === assetId)?.name || "";
+    setDone((d) => [{ code, name }, ...d]);
+    showToast?.(`${code} → ${name}`);
+    await onBound?.();
+
+    // готовимся к следующей наклейке
+    setTag(null);
+    setCode("");
+    setAssetId("");
+    setSearch("");
+    lastRef.current = "";
+  };
+
+  return (
+    <div style={{ ...modalWrap, zIndex: 1400 }} onClick={onClose}>
+      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>📷 Привязка наклеек</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)" }}>×</button>
+        </div>
+
+        {!tag ? (
+          <>
+            <CameraQrReader onCode={handleCode} />
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>
+              Наведите на наклейку, которую только что приклеили
+            </div>
+          </>
+        ) : (
+          <div>
+            <div style={{ background: "var(--bg-hover)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 800 }}>{code}</div>
+              {tag.asset && (
+                <div style={{ fontSize: 12, color: "#b45309", marginTop: 4, fontWeight: 600 }}>
+                  Уже привязана к «{tag.asset.name}» — можно переклеить
+                </div>
+              )}
+            </div>
+
+            <label style={lbl}>Что это за оборудование</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по названию или инв. номеру"
+              style={inp}
+            />
+            <div style={{ maxHeight: 190, overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: 10, marginBottom: 14 }}>
+              {list.slice(0, 100).map((a, i) => (
+                <button
+                  key={a.id}
+                  onClick={() => setAssetId(a.id)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "9px 12px",
+                    border: "none",
+                    borderTop: i ? "1px solid var(--border-color)" : "none",
+                    background: assetId === a.id ? "var(--bg-pill)" : "transparent",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: "var(--text-main)",
+                  }}
+                >
+                  <div style={{ fontWeight: assetId === a.id ? 800 : 500 }}>{a.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                    {a.inv_number}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <label style={lbl}>Где стоит</label>
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              style={{ ...inp, cursor: "pointer" }}
+            >
+              <option value="">— место не указано —</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+              <Btn outline onClick={() => { setTag(null); setCode(""); lastRef.current = ""; }}>
+                ← Сканировать другую
+              </Btn>
+              <Btn onClick={() => save(false)} disabled={busy || !assetId}>
+                {busy ? "Сохранение..." : "Привязать"}
+              </Btn>
+            </div>
+          </div>
+        )}
+
+        {done.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color)", paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, marginBottom: 6 }}>
+              ПРИВЯЗАНО В ЭТОТ ЗАХОД: {done.length}
+            </div>
+            {done.slice(0, 8).map((d) => (
+              <div key={d.code} style={{ fontSize: 12, display: "flex", gap: 8, padding: "2px 0" }}>
+                <span style={{ fontFamily: "monospace", color: "var(--text-muted)" }}>{d.code}</span>
+                <span>{d.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FixedAssetsView({ showToast, loggedInUser }) {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16046,6 +16719,42 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   const [qrModalAsset, setQrModalAsset] = useState(null); // Asset object for QR sticker print
   const [scanOpen, setScanOpen] = useState(false); // Camera-based inventory scanner
   const [openGroups, setOpenGroups] = useState(() => new Set()); // раскрытые партии
+  const [locationsOpen, setLocationsOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [locations, setLocations] = useState([]);
+  const [tagByAsset, setTagByAsset] = useState({});
+
+  const apiHeaders = {
+    "x-user-id": loggedInUser?.id || "admin",
+    "x-user-role": loggedInUser?.baseRole || "admin",
+    "x-user-name": encodeURIComponent(loggedInUser?.name || "Админ"),
+  };
+
+  const locationName = (a) =>
+    locations.find((l) => l.id === a.location_id)?.name || "";
+
+  /** Места и наклейки живут только на сайте, поэтому грузятся отдельно. */
+  const loadSiteData = async () => {
+    try {
+      const [lr, tr] = await Promise.all([
+        fetch("/api/iiko/assets/locations", { headers: apiHeaders }),
+        fetch("/api/iiko/assets/tags", { headers: apiHeaders }),
+      ]);
+      const lj = await lr.json();
+      const tj = await tr.json();
+      if (lj.success) setLocations(lj.data);
+      if (tj.success) {
+        const map = {};
+        tj.data.forEach((t) => {
+          if (t.asset_id) map[t.asset_id] = t.code;
+        });
+        setTagByAsset(map);
+      }
+    } catch (e) {
+      // Таблиц может ещё не быть — миграция выполняется руками в Supabase
+      console.error("[FixedAssetsView] места/наклейки:", e);
+    }
+  };
 
   const loadAssets = async () => {
     setLoading(true);
@@ -16072,6 +16781,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
   useEffect(() => {
     (async () => {
       await loadAssets();
+      await loadSiteData();
 
       // Тихая сверка с iiko при открытии раздела: справочник там — источник
       // истины, руками кнопку жать не нужно. Сервер сам пропустит запуск,
@@ -16415,6 +17125,33 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             {syncing ? "⌛ Синхронизация с iiko..." : "⚡ Импортировать приходы из iiko"}
           </button>
 
+          {[
+            { label: "📍 Места", onClick: () => setLocationsOpen(true) },
+            {
+              label: `🏷 Наклейки${
+                Object.keys(tagByAsset).length ? ` (${Object.keys(tagByAsset).length})` : ""
+              }`,
+              onClick: () => setTagsOpen(true),
+            },
+          ].map((b) => (
+            <button
+              key={b.label}
+              onClick={b.onClick}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 10,
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-card)",
+                color: "var(--text-main)",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {b.label}
+            </button>
+          ))}
+
           <button
             onClick={() => setEditModalAsset({
               inv_number: "",
@@ -16732,7 +17469,16 @@ function FixedAssetsView({ showToast, loggedInUser }) {
 
                       <td style={{ padding: "14px 16px" }}>
                         <div style={{ fontWeight: 600 }}>👤 {asset.responsible_person || "Не указан"}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>📍 {asset.location || "Кухня"}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          📍 {locationName(asset) || "место не указано"}
+                        </div>
+                        {tagByAsset[asset.id] ? (
+                          <div style={{ fontSize: 11, color: "#10b981", fontFamily: "monospace", marginTop: 2 }}>
+                            🏷 {tagByAsset[asset.id]}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>🏷 без наклейки</div>
+                        )}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>
@@ -16833,6 +17579,7 @@ function FixedAssetsView({ showToast, loggedInUser }) {
       {editModalAsset && (
         <AssetFormModal
           asset={editModalAsset}
+          locations={locations}
           onClose={() => setEditModalAsset(null)}
           onSave={handleSaveAsset}
         />
@@ -16853,6 +17600,33 @@ function FixedAssetsView({ showToast, loggedInUser }) {
           onClose={() => setScanOpen(false)}
           onFinish={handleFinishScanAudit}
           showToast={showToast}
+          locationName={locationName}
+          tagMap={Object.fromEntries(
+            Object.entries(tagByAsset).map(([assetId, code]) => [code, assetId])
+          )}
+        />
+      )}
+
+      {locationsOpen && (
+        <AssetLocationsModal
+          headers={apiHeaders}
+          showToast={showToast}
+          onClose={() => setLocationsOpen(false)}
+          onChanged={loadSiteData}
+        />
+      )}
+
+      {tagsOpen && (
+        <AssetTagsModal
+          headers={apiHeaders}
+          assets={assets}
+          locations={locations}
+          showToast={showToast}
+          onClose={() => setTagsOpen(false)}
+          onChanged={async () => {
+            await loadSiteData();
+            await loadAssets();
+          }}
         />
       )}
     </div>
@@ -17807,7 +18581,7 @@ function MonthlyReportsView({ showToast, loggedInUser }) {
   );
 }
 
-function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
+function InventoryScanModal({ assets, onClose, onFinish, showToast, tagMap = {}, locationName }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -17828,6 +18602,12 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
     return m;
   }, [assets]);
 
+  const byId = useMemo(() => {
+    const m = new Map();
+    assets.forEach((a) => m.set(a.id, a));
+    return m;
+  }, [assets]);
+
   const parseInv = (text) => {
     if (!text) return null;
     const m = text.match(/Инв\.\s*№\s*[:：]?\s*([A-Za-zА-Яа-я0-9\-_]+)/i);
@@ -17836,6 +18616,25 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
     const t = text.trim();
     if (/^[A-Z0-9\-_]{3,}$/i.test(t)) return t.toUpperCase();
     return null;
+  };
+
+  /**
+   * В обходе встречаются оба вида QR: универсальная наклейка (ссылка вида
+   * /tag/LKM-0007) и старый стикер с инвентарным номером в тексте.
+   */
+  const resolve = (raw) => {
+    const tagCode = normalizeTagCode(raw);
+    if (tagCode && tagMap[tagCode]) {
+      const asset = byId.get(tagMap[tagCode]);
+      if (asset) return { asset, label: tagCode };
+    }
+    if (tagCode && looksLikeTag(raw)) {
+      // наклейка есть, но ни к чему не привязана
+      return { asset: null, label: tagCode, unbound: true };
+    }
+    const inv = parseInv(raw);
+    if (!inv) return null;
+    return { asset: byInv.get(inv) || null, label: inv };
   };
 
   const stopCamera = () => {
@@ -17920,10 +18719,13 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
             const values = await detect(videoRef.current);
             if (values.length > 0) {
               for (const raw of values) {
-                const inv = parseInv(raw);
-                if (!inv) continue;
-                const asset = byInv.get(inv);
-                if (asset) {
+                const hit = resolve(raw);
+                if (!hit) continue;
+                const inv = hit.label;
+                const asset = hit.asset;
+                if (hit.unbound) {
+                  setLastScan({ ok: false, inv, name: "Наклейка ни к чему не привязана" });
+                } else if (asset) {
                   let already = false;
                   setScannedIds(prev => {
                     if (prev.has(asset.id)) { already = true; return prev; }
@@ -17936,7 +18738,7 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
                     duplicate: already,
                     inv,
                     name: asset.name,
-                    location: asset.location,
+                    location: locationName?.(asset) || asset.location,
                     serial: asset.serial_number,
                   });
                   if (navigator.vibrate) navigator.vibrate(already ? [40, 60, 40] : 60);
@@ -18091,13 +18893,14 @@ function InventoryScanModal({ assets, onClose, onFinish, showToast }) {
   );
 }
 
-function AssetFormModal({ asset, onClose, onSave }) {
+function AssetFormModal({ asset, onClose, onSave, locations }) {
   const [form, setForm] = useState({
     id: asset.id || null,
     inv_number: asset.inv_number || "",
     name: asset.name || "",
     category: asset.category || "Оборудование",
     location: asset.location || "Кухня",
+    location_id: asset.location_id || null,
     responsible_person: asset.responsible_person || "Материально-ответственное лицо",
     initial_cost: asset.initial_cost || 0,
     commissioning_date: asset.commissioning_date || new Date().toISOString().split("T")[0],
@@ -18210,15 +19013,23 @@ function AssetFormModal({ asset, onClose, onSave }) {
 
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
-                Локация
+                Место
               </label>
-              <input
-                type="text"
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-                placeholder="Кухня, Бар, Зал"
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14 }}
-              />
+              <select
+                value={form.location_id || ""}
+                onChange={(e) => setForm({ ...form, location_id: e.target.value || null })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-pill)", color: "var(--text-main)", fontSize: 14, cursor: "pointer" }}
+              >
+                <option value="">— не указано —</option>
+                {(locations || []).map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+              {(locations || []).length === 0 && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                  Список пуст — заведите места кнопкой «📍 Места»
+                </div>
+              )}
             </div>
           </div>
 

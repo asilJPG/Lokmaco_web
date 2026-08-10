@@ -103,7 +103,9 @@ export async function POST(request) {
       status: status || "in_use",
       serial_number: serial_number ? serial_number.trim() : "",
       notes: notes ? notes.trim() : "",
-      photo_url: photo_url || ""
+      photo_url: photo_url || "",
+      // место из справочника сайта; в iiko такого понятия нет
+      location_id: body.location_id || null
     };
 
     const newAsset = await createAsset(assetData);
