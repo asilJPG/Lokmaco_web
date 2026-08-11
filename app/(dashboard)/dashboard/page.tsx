@@ -3,7 +3,7 @@ import { db, schema } from '@/db/client';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getSession } from '@/lib/auth-session';
 import { canAccess, sectionForHref } from '@/lib/access';
-import { getCurrentFilialIds } from '@/lib/current-filial';
+import { getCurrentFilialIds, getUserFilialIds } from '@/lib/current-filial';
 import { fmtMoney, todayTashkent, yesterdayTashkent } from '@/lib/period';
 import { RevenueSparkline, type SparkPoint } from '@/components/revenue-sparkline';
 
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardHome() {
   const session = await getSession();
   const filialIds = await getCurrentFilialIds();
-  const sessionFilialIds = session?.filialIds ?? [];
+  const sessionFilialIds = await getUserFilialIds();
   const today = todayTashkent();
   const yesterday = yesterdayTashkent();
 

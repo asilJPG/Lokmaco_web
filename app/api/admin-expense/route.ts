@@ -1,5 +1,6 @@
 import { requireSession } from '@/lib/auth-session';
 import { createAdminExpense, deleteAdminExpense } from '@/lib/admin-expense';
+import { getUserFilialIds } from '@/lib/current-filial';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,8 +10,9 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
-  const filialId = Number(body.filialId ?? session.filialIds[0]);
-  if (!filialId || !session.filialIds.includes(filialId)) {
+  const allowed = await getUserFilialIds();
+  const filialId = Number(body.filialId ?? allowed[0]);
+  if (!filialId || !allowed.includes(filialId)) {
     return Response.json({ error: 'Filial access denied' }, { status: 403 });
   }
   if (!body.date || !body.name || !body.amount) {
@@ -39,6 +41,6 @@ export async function DELETE(req: Request) {
   }
   const id = Number(new URL(req.url).searchParams.get('id'));
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
-  const deleted = await deleteAdminExpense(id, session.filialIds);
+  const deleted = await deleteAdminExpense(id, await getUserFilialIds());
   return Response.json({ success: deleted > 0 });
 }

@@ -1,5 +1,5 @@
 import { requireSession } from '@/lib/auth-session';
-import { getCurrentFilialIds } from '@/lib/current-filial';
+import { getCurrentFilialIds, getUserFilialIds } from '@/lib/current-filial';
 import { canAccess } from '@/lib/access';
 import { isPathAllowed } from '@/lib/storage';
 import { parseInvoicePhoto } from '@/lib/parse-invoice-photo';
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const path = String(body?.path || '');
   if (!path) return Response.json({ error: 'Сначала приложи фото накладной' }, { status: 400 });
-  if (!isPathAllowed(path, session.filialIds)) {
+  if (!isPathAllowed(path, await getUserFilialIds())) {
     return Response.json({ error: 'Not found' }, { status: 404 });
   }
 

@@ -1,5 +1,5 @@
 import { requireSession } from '@/lib/auth-session';
-import { getCurrentFilialIds } from '@/lib/current-filial';
+import { getCurrentFilialIds, getUserFilialIds } from '@/lib/current-filial';
 import { resolveIikoCreds } from '@/lib/filial-iiko';
 import { submitDocument } from '@/lib/iiko-web-docs';
 import { logAction as logBotAction } from '@/lib/log-action';
@@ -134,7 +134,7 @@ async function handlePost(req: Request, b: any) {
   if (!id) return Response.json({ error: 'id required' }, { status: 400 });
   const doc = await getPendingTransferById(id);
   if (!doc) return Response.json({ error: 'not found' }, { status: 404 });
-  if (!isAdmin && !session.filialIds.includes(doc.filialId)) {
+  if (!isAdmin && !(await getUserFilialIds()).includes(doc.filialId)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

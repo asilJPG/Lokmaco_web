@@ -2,13 +2,14 @@ import { and, inArray, or, eq, sql } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { getSession } from '@/lib/auth-session';
 import { CategoryGrid } from '@/components/category-grid';
+import { getUserFilialIds } from '@/lib/current-filial';
 
 export const metadata = { title: 'Смена' };
 export const dynamic = 'force-dynamic';
 
 export default async function OperationsPage() {
   const session = await getSession();
-  const filialIds = session?.filialIds ?? [];
+  const filialIds = await getUserFilialIds();
 
   const inbox = filialIds.length === 0 ? 0 : Number((await db
     .select({ c: sql<number>`count(*)::int` })

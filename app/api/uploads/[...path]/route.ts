@@ -1,5 +1,6 @@
 import { requireSession } from '@/lib/auth-session';
 import { deletePhoto, downloadPhoto, isPathAllowed } from '@/lib/storage';
+import { getUserFilialIds } from '@/lib/current-filial';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ const ALLOWED_ROLES = ['admin', 'director', 'supplier'];
 export async function GET(_req: Request, { params }: { params: { path: string[] } }) {
   const session = await requireSession();
   const path = params.path.join('/');
-  if (!isPathAllowed(path, session.filialIds)) {
+  if (!isPathAllowed(path, await getUserFilialIds())) {
     return new Response('Not found', { status: 404 });
   }
 
@@ -40,7 +41,7 @@ export async function DELETE(_req: Request, { params }: { params: { path: string
     return Response.json({ error: 'Доступ запрещен для вашей роли' }, { status: 403 });
   }
   const path = params.path.join('/');
-  if (!isPathAllowed(path, session.filialIds)) {
+  if (!isPathAllowed(path, await getUserFilialIds())) {
     return Response.json({ error: 'Not found' }, { status: 404 });
   }
   const ok = await deletePhoto(path);

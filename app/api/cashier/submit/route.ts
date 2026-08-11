@@ -1,5 +1,6 @@
 import { requireSession } from '@/lib/auth-session';
 import { submitCashReport } from '@/lib/cashier';
+import { getUserFilialIds } from '@/lib/current-filial';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +11,11 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const filialId = Number(body.filialId ?? session.filialIds[0]);
-  if (!filialId || !session.filialIds.includes(filialId)) {
+  // ⚠️ Список филиалов — живой, а не из токена: иначе кассир не смог бы
+  // закрыть смену по филиалу, назначенному ему сегодня (см. lib/current-filial).
+  const allowed = await getUserFilialIds();
+  const filialId = Number(body.filialId ?? allowed[0]);
+  if (!filialId || !allowed.includes(filialId)) {
     return Response.json({ error: 'Filial access denied' }, { status: 403 });
   }
   if (!body.date) return Response.json({ error: 'date required' }, { status: 400 });
