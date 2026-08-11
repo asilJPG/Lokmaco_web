@@ -124,7 +124,10 @@ export function MobileTopBar({
   const [busy, setBusy] = useState(false);
   const [, start] = useTransition();
 
-  const canSwitch = filials.length > 1 || (allowAll && filials.length > 1);
+  // Переключать есть что только когда филиалов больше одного: «Все филиалы»
+  // поверх единственного — то же самое. (Раньше здесь стояло условие с двумя
+  // одинаковыми половинами, и вторая никогда ничего не добавляла.)
+  const canSwitch = filials.length > 1;
   const currentName = current === 'all'
     ? 'Все филиалы'
     : filials.find((f) => f.id === current)?.name || 'Филиал';
@@ -132,11 +135,18 @@ export function MobileTopBar({
   async function switchTo(value: string) {
     setBusy(true);
     try {
-      await fetch('/api/current-filial', {
+      const res = await fetch('/api/current-filial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: value }),
       });
+      if (!res.ok) {
+        // Молчаливый отказ на телефоне ещё заметнее: шторка закрывается, а
+        // филиал прежний — выглядит как «кнопка не нажалась».
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        alert(data.error || `Не удалось переключить филиал (${res.status})`);
+        return;
+      }
       setOpen(false);
       start(() => router.refresh());
     } finally {

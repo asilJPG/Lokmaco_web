@@ -14,12 +14,19 @@ export function FilialSwitcher({ filials, current, allowAll }: { filials: Filial
 
   async function switchTo(value: string) {
     setBusy(true);
-    await fetch('/api/current-filial', {
+    const res = await fetch('/api/current-filial', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: value }),
     });
     setBusy(false);
+    if (!res.ok) {
+      // Молчаливый отказ выглядел как «переключатель не работает»: список
+      // возвращался к прежнему значению без единого слова.
+      const data = await res.json().catch(() => ({} as { error?: string }));
+      alert(data.error || `Не удалось переключить филиал (${res.status})`);
+      return;
+    }
     start(() => router.refresh());
   }
 

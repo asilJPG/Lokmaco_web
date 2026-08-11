@@ -1,5 +1,6 @@
 import { requireSession } from '@/lib/auth-session';
 import { createUser, deleteUser, updateUser } from '@/lib/admin-users';
+import { invalidateUserFilials } from '@/lib/current-filial';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,8 @@ export async function PATCH(req: Request) {
     tgId: b.tgId === undefined || b.tgId === null || b.tgId === '' ? undefined : Number(b.tgId),
     filialIds: Array.isArray(b.filialIds) ? b.filialIds.map(Number).filter(Boolean) : undefined,
   });
+  // Чтобы переключатель филиалов у человека обновился сразу, а не через минуту.
+  invalidateUserFilials(id);
   return Response.json({ success: true });
 }
 

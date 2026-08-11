@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-session';
-import { getCurrentFilialId } from '@/lib/current-filial';
+import { getCurrentFilialId, getUserFilialIds } from '@/lib/current-filial';
 import { SidebarNav } from '@/components/nav';
 import { FilialSwitcher } from '@/components/filial-switcher';
 import { LogoutButton } from '@/components/logout-button';
@@ -16,20 +16,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const baseRole = session.role.split(':')[0];
   const allowAll = baseRole === 'admin' || baseRole === 'director';
 
+  // ⚠️ Членство в филиалах берём живым, а не из токена: список в JWT
+  // фиксируется при входе и живёт неделю, поэтому добавленный сотруднику
+  // филиал не появлялся до перелогина — на одной машине переключатель был,
+  // на другой нет.
+  const filialIds = await getUserFilialIds();
+
   // Оба запроса шли последовательно, а до пулера каждый круг ~200 мс — на
   // загрузке любой страницы это лишние полсекунды. Ходим за ними разом.
   const [filials, inboxRows, current] = await Promise.all([
-    session.filialIds.length > 0
+    filialIds.length > 0
       ? db.select({ id: schema.filials.id, name: schema.filials.name })
           .from(schema.filials)
-          .where(inArray(schema.filials.id, session.filialIds))
+          .where(inArray(schema.filials.id, filialIds))
       : Promise.resolve([]),
-    session.filialIds.length === 0
+    filialIds.length === 0
       ? Promise.resolve([{ c: 0 }])
       : db.select({ c: sql<number>`count(*)::int` })
           .from(schema.pendingTransfers)
           .where(and(
-            inArray(schema.pendingTransfers.filialId, session.filialIds),
+            inArray(schema.pendingTransfers.filialId, filialIds),
             or(
               eq(schema.pendingTransfers.status, 'pending_receiver'),
               eq(schema.pendingTransfers.status, 'pending_sender'),
