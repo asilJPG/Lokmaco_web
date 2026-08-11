@@ -1427,7 +1427,10 @@ tr[data-today="true"] td:first-child {
   background: #fff;
 }
 
-.tag-cell img { width: 100%; height: auto; display: block; }
+/* QR — встроенный SVG. У него нет собственных размеров, поэтому задаём их
+   здесь; квадрат обязателен, иначе код растянется и перестанет читаться. */
+.tag-cell svg { width: 100%; height: auto; display: block; aspect-ratio: 1 / 1; }
+.tag-cell svg rect[fill="#ffffff"], .tag-cell svg path[fill="#ffffff"] { fill: #fff; }
 .tag-cell__code { font-family: monospace; font-weight: 700; font-size: 11pt; margin-top: 1.5mm; }
 .tag-cell__cap  { font-size: 6pt; color: #555; margin-top: 0.5mm; line-height: 1.2; }
 
@@ -1667,3 +1670,4 @@ tr[data-today="true"] td:first-child {
 }
 .table-stack--gap { margin: 8px 0; }
 .table-stack--sep { border-top: 1px solid var(--border); }
+.tag-sheet--one { grid-template-columns: 60mm; }

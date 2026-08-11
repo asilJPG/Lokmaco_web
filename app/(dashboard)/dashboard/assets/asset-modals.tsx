@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Asset } from '@/db/schema';
 
 export const STATUS: Record<string, { label: string; color: string }> = {
@@ -134,51 +134,59 @@ export function AssetFormModal({ initial, onSave, onClose }: { initial: AssetFor
 
 export function QrStickerModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
   const invNum = asset.invNumber || `EQ-${asset.id.slice(0, 6)}`;
+  const [svg, setSvg] = useState('');
 
-  // QR несёт данные текстом: при сканировании обычной камерой всё видно сразу,
-  // без перехода на сайт и без интернета на телефоне.
-  const qrText = [
-    `Инв. №: ${invNum}`,
-    `Наименование: ${asset.name || '—'}`,
-    asset.category ? `Категория: ${asset.category}` : null,
-    `Дата прихода: ${asset.commissioningDate || '—'}`,
-    `Стоимость: ${Number(asset.initialCost ?? 0).toLocaleString('ru-RU')} сум`,
-    asset.quantity ? `Кол-во: ${asset.quantity}` : null,
-    `Локация: ${asset.location || '—'}`,
-    `МОЛ: ${asset.responsiblePerson || '—'}`,
-    asset.serialNumber ? `Код: ${asset.serialNumber}` : null,
-    asset.status ? `Статус: ${asset.status}` : null,
-  ].filter(Boolean).join('\n');
+  /**
+   * ⚠️ QR ведёт на `/tag/<инв. номер>` и рисуется **своей** библиотекой в SVG.
+   *
+   * Раньше картинка тянулась с `api.qrserver.com`: без интернета — пустая
+   * рамка, а при печати `<img>` не успевал декодироваться, и на лист уходила
+   * одна подпись. Плюс данные (стоимость, МОЛ) были зашиты прямо в код, то
+   * есть читались любой камерой в зале.
+   */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const QRCode = (await import('qrcode')).default;
+      const url = `${window.location.origin}/tag/${encodeURIComponent(invNum)}`;
+      const out = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+      if (alive) setSvg(out);
+    })();
+    return () => { alive = false; };
+  }, [invNum]);
 
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=${encodeURIComponent(qrText)}`;
-
-  function print() {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    w.document.write(`<html><head><title>Стикер ${invNum}</title><style>
-      body { font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
-      .sticker { width: 300px; border: 2px solid #000; border-radius: 12px; padding: 18px; margin: 0 auto; background: #fff; }
-      .qr { width: 230px; height: 230px; margin: 0 auto 10px; display: block; }
-      .subtitle { font-size: 13px; font-weight: 700; color: #111; }
-    </style></head><body><div class="sticker"><img src="${qrUrl}" class="qr" alt="QR" />
-      <div class="subtitle">Инвентарная наклейка оборудования</div></div>
-      <script>const i=document.querySelector('.qr');const go=()=>{window.print();window.close()};
-      if(i.complete){setTimeout(go,300)}else{i.onload=()=>setTimeout(go,300);i.onerror=()=>setTimeout(go,300)}</script>
-    </body></html>`);
-    w.document.close();
+  async function print() {
+    let host = document.getElementById('print-tags');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'print-tags';
+      document.body.appendChild(host);
+    }
+    host.innerHTML = `<div class="tag-sheet tag-sheet--one"><div class="tag-cell">${svg}
+      <div class="tag-cell__code">${invNum}</div>
+      <div class="tag-cell__cap">Инвентарная наклейка оборудования</div></div></div>`;
+    document.body.classList.add('printing-tags');
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    window.print();
+    setTimeout(() => {
+      document.body.classList.remove('printing-tags');
+      host!.innerHTML = '';
+    }, 1000);
   }
 
   return (
     <Overlay onClose={onClose}>
       <div className="card__title"><span className="card__title-text">🏷 Стикер · {invNum}</span></div>
       <div style={{ textAlign: 'center' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qrUrl} alt="QR" style={{ width: 230, height: 230, background: '#fff', borderRadius: 8 }} />
+        <div
+          style={{ width: 230, height: 230, margin: '0 auto', background: '#fff', borderRadius: 8, padding: 8 }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
         <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>{asset.name}</div>
       </div>
       <div className="action-bar">
         <button type="button" className="btn" onClick={onClose}>Закрыть</button>
-        <button type="button" className="btn btn--primary" onClick={print}>🖨 Печать</button>
+        <button type="button" className="btn btn--primary" disabled={!svg} onClick={print}>🖨 Печать</button>
       </div>
     </Overlay>
   );

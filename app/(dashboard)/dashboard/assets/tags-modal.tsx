@@ -6,15 +6,19 @@ import type { Asset, AssetLocation, AssetTag } from '@/db/schema';
 type TagRow = AssetTag & { asset?: Asset | null };
 
 /**
- * QR рисуем **сами**, а не картинкой с внешнего сервиса.
+ * QR рисуем **сами** и **вектором**, а не картинкой.
  *
- * Лист на сотню наклеек — это сотня запросов наружу: половина не успевает, и
- * из принтера выезжают пустые рамки, которые уже наклеены. Плюс печатать
- * приходится там, где интернета может не быть вовсе.
+ * Внешний сервис не годится: лист на сотню наклеек — это сотня запросов
+ * наружу, половина не успевает, и из принтера выезжают пустые рамки, которые
+ * уже наклеены. Печатать при этом приходится там, где интернета может не быть.
+ *
+ * ⚠️ И не `<img src="data:…">`: браузер декодирует картинку асинхронно, а
+ * `window.print()` уходит сразу — на лист выезжали только подписи, без кодов.
+ * SVG попадает в разметку готовым, ждать нечего.
  */
-async function qrDataUrl(text: string): Promise<string> {
+async function qrSvg(text: string): Promise<string> {
   const QRCode = (await import('qrcode')).default;
-  return QRCode.toDataURL(text, { margin: 1, width: 300, errorCorrectionLevel: 'M' });
+  return QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
 }
 
 /**
@@ -27,9 +31,9 @@ async function qrDataUrl(text: string): Promise<string> {
 async function printSheet(codes: string[]) {
   const origin = window.location.origin;
   const cells = await Promise.all(codes.map(async (code) => {
-    const src = await qrDataUrl(`${origin}/tag/${code}`);
+    const svg = await qrSvg(`${origin}/tag/${code}`);
     return `<div class="tag-cell">
-      <img src="${src}" alt="" />
+      ${svg}
       <div class="tag-cell__code">${code}</div>
       <div class="tag-cell__cap">Инвентарная наклейка оборудования</div>
     </div>`;
@@ -44,6 +48,9 @@ async function printSheet(codes: string[]) {
   host.innerHTML = `<div class="tag-sheet">${cells.join('')}</div>`;
 
   document.body.classList.add('printing-tags');
+  // Даём браузеру разложить страницу перед печатью: без кадра ожидания
+  // диалог иногда открывается по старой раскладке.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   window.print();
   setTimeout(() => {
     document.body.classList.remove('printing-tags');
