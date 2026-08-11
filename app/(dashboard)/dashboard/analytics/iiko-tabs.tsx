@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react';
 import { StackTable } from '@/components/stack-table';
+import { SortTh, useSort } from '@/components/sortable';
 
 type Dish = { name: string; amount: number; revenue: number };
 type Category = { name: string; totalRevenue: number; totalAmount: number; dishes: Dish[] };
@@ -15,11 +16,22 @@ function fmt(n: number) {
 
 export type IikoTab = 'pl' | 'sales' | 'waiters';
 
+/** Сколько позиций видно в группе до раскрытия. */
+const VISIBLE_DISHES = 20;
+
 export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: IikoTab }) {
   const [pl, setPl] = useState<PnL | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [waiters, setWaiters] = useState<Waiter[]>([]);
+  /** Какие группы блюд раскрыты целиком. */
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+
+  // Отчёт открывают с вопросом «у кого больше», поэтому первый клик по столбцу
+  // даёт убывание; по умолчанию — по выручке.
+  const waiterSort = useSort<Waiter, 'name' | 'orders' | 'refunds' | 'avgCheck' | 'sales'>(
+    waiters, 'sales', (w, key) => (key === 'name' ? w.name : w[key])
+  );
   const [error, setError] = useState<string | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, ExpenseDetailRow[] | 'loading' | 'error'>>({});
@@ -178,7 +190,7 @@ export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: Iik
                   </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
-                  {cat.dishes.slice(0, 20).map((d, i) => (
+                  {(openCats[cat.name] ? cat.dishes : cat.dishes.slice(0, VISIBLE_DISHES)).map((d, i) => (
                     <tr key={d.name + i} style={{ borderTop: '1px solid var(--border)' }}>
                       <td style={{ padding: '8px 16px', width: 32, color: 'var(--text-faint)', fontSize: 11 }}>{i + 1}</td>
                       <td style={{ padding: '8px 16px' }}>{d.name}</td>
@@ -188,10 +200,20 @@ export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: Iik
                   ))}
                 </tbody>
               </table>
-                  {cat.dishes.length > 20 && (
-                    <div style={{ padding: '8px 16px', fontSize: 11, color: 'var(--text-faint)', borderTop: '1px solid var(--border)' }}>
-                      … и ещё {cat.dishes.length - 20} позиций
-                    </div>
+                  {cat.dishes.length > VISIBLE_DISHES && (
+                    /* Раньше здесь висело «… и ещё 56 позиций» без всякой
+                       возможности их увидеть — а спрашивают обычно как раз
+                       про хвост, а не про топ-20. */
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      style={{ width: '100%', borderRadius: 0, borderLeft: 0, borderRight: 0, borderBottom: 0 }}
+                      onClick={() => setOpenCats((prev) => ({ ...prev, [cat.name]: !prev[cat.name] }))}
+                    >
+                      {openCats[cat.name]
+                        ? '▲ Свернуть'
+                        : `▼ Показать ещё ${cat.dishes.length - VISIBLE_DISHES} позиций`}
+                    </button>
                   )}
                 </section>
               );
@@ -209,15 +231,15 @@ export function IikoTabs({ from, to, tab }: { from: string; to: string; tab: Iik
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Официант</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Чеков</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Возврат</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Ср. чек</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Выручка</th>
+                    <SortTh label="Официант" col="name" sort={waiterSort.sort} onSort={waiterSort.toggle} />
+                    <SortTh label="Чеков" col="orders" sort={waiterSort.sort} onSort={waiterSort.toggle} align="right" />
+                    <SortTh label="Возврат" col="refunds" sort={waiterSort.sort} onSort={waiterSort.toggle} align="right" />
+                    <SortTh label="Ср. чек" col="avgCheck" sort={waiterSort.sort} onSort={waiterSort.toggle} align="right" />
+                    <SortTh label="Выручка" col="sales" sort={waiterSort.sort} onSort={waiterSort.toggle} align="right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {waiters.map((w) => (
+                  {waiterSort.sorted.map((w) => (
                     <tr key={w.name}>
                       <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>{w.name}</td>
                       <td style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)', fontVariantNumeric: 'tabular-nums' }}>{w.orders}</td>

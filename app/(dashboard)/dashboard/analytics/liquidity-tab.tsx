@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { SegmentBar, StatusBadge } from '@/components/charts';
 import { StackTable } from '@/components/stack-table';
+import { SortTh, useSort } from '@/components/sortable';
 
 type Status = 'liquid' | 'slow' | 'dead' | 'idle';
 
@@ -28,6 +29,8 @@ const ORDER: Status[] = ['liquid', 'slow', 'dead', 'idle'];
 
 function fmt(n: number) { return Math.round(n).toLocaleString('ru-RU'); }
 function qty(n: number) { return (Math.round(n * 100) / 100).toLocaleString('ru-RU'); }
+
+const LIMIT = 300;
 
 export function LiquidityTab() {
   const [data, setData] = useState<Data | null>(null);
@@ -63,6 +66,11 @@ export function LiquidityTab() {
   const q = query.trim().toLowerCase();
   const visible = data.items.filter(
     (i) => (filter === 'all' || i.status === filter) && (!q || i.name.toLowerCase().includes(q) || i.store.toLowerCase().includes(q))
+  );
+
+  // Строк бывает под тысячу — рисуем часть, но теперь порядок выбирает человек.
+  const sorter = useSort<typeof visible[number], 'name' | 'store' | 'balanceSum' | 'consumedSum' | 'turnoverDays' | 'koz'>(
+    visible, 'balanceSum', (it, key) => (key === 'name' || key === 'store' ? String(it[key] ?? '') : (it[key] as number | null) ?? -1)
   );
 
   return (
@@ -174,17 +182,17 @@ export function LiquidityTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>
-                <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Продукт</th>
-                <th style={{ padding: '10px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Склад</th>
+                <SortTh label="Продукт" col="name" sort={sorter.sort} onSort={sorter.toggle} />
+                <SortTh label="Склад" col="store" sort={sorter.sort} onSort={sorter.toggle} />
                 <th style={{ padding: '10px 8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>Статус</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Остаток</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Расход</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Оборачиваемость</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>КОЗ</th>
+                <SortTh label="Остаток" col="balanceSum" sort={sorter.sort} onSort={sorter.toggle} align="right" />
+                <SortTh label="Расход" col="consumedSum" sort={sorter.sort} onSort={sorter.toggle} align="right" />
+                <SortTh label="Оборачиваемость" col="turnoverDays" sort={sorter.sort} onSort={sorter.toggle} align="right" />
+                <SortTh label="КОЗ" col="koz" sort={sorter.sort} onSort={sorter.toggle} align="right" />
               </tr>
             </thead>
             <tbody>
-              {visible.slice(0, 300).map((i) => (
+              {sorter.sorted.slice(0, LIMIT).map((i) => (
                 <tr key={i.productId + i.store}>
                   <td style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ fontWeight: 600 }}>{i.name}</div>
@@ -209,6 +217,14 @@ export function LiquidityTab() {
                 </tr>
               ))}
               {visible.length === 0 && <tr><td colSpan={7}><div className="empty-state">Ничего не найдено</div></td></tr>}
+              {visible.length > LIMIT && (
+                /* Отсечка была немой: показывалось 300 строк из тысячи, и об
+                   этом человек не узнавал никак. Теперь хотя бы сказано, и
+                   сортировка позволяет вытащить наверх нужное. */
+                <tr><td colSpan={7} style={{ padding: '8px', fontSize: 11, color: 'var(--text-faint)', textAlign: 'center' }}>
+                  Показаны первые {LIMIT} из {visible.length} — отсортируйте или сузьте фильтр
+                </td></tr>
+              )}
             </tbody>
           </table>
         </StackTable>

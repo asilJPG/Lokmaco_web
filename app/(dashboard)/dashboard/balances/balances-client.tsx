@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pagination } from '@/components/pagination';
 import { StackTable } from '@/components/stack-table';
+import { SortTh } from '@/components/sortable';
 
 type BalanceItem = {
   product?: { id?: string; name?: string; num?: string };
@@ -207,17 +208,3 @@ const PAGE_SIZE = 50;
 
 type SortKey = 'num' | 'name' | 'amount' | 'sum';
 
-function SortTh({ label, col, sort, onSort, align = 'left' }: {
-  label: string; col: SortKey; sort: { key: SortKey; dir: 1 | -1 }; onSort: (c: SortKey) => void; align?: 'left' | 'right';
-}) {
-  const active = sort.key === col;
-  return (
-    <th
-      onClick={() => onSort(col)}
-      style={{ padding: '10px 8px', textAlign: align, borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-      title="Сортировать"
-    >
-      {label}{active ? (sort.dir === 1 ? ' ↑' : ' ↓') : ' ↕'}
-    </th>
-  );
-}
