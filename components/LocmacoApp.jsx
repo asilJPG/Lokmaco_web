@@ -10996,6 +10996,36 @@ function HistoryList({ history, loading, onRefresh, emptyText, onRestore, viewer
                     </span>
                     {viewerRole === "admin" && (
                       <button
+                        onClick={async () => {
+                          const r = await fetch("/api/iiko/invoice/resend", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: act.id }),
+                          });
+                          const j = await r.json().catch(() => null);
+                          alert(
+                            j?.success
+                              ? `Отчёт отправлен в Telegram (фото: ${j.photos})`
+                              : j?.error || "Не удалось отправить"
+                          );
+                        }}
+                        title="Отправить фотоотчёт в Telegram повторно"
+                        style={{
+                          background: "var(--bg-hover)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 8,
+                          padding: "5px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "var(--text-main)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        📨 В Telegram
+                      </button>
+                    )}
+                    {viewerRole === "admin" && (
+                      <button
                         onClick={() => setOpenInvoice(act)}
                         style={{
                           background: "var(--bg-hover)",
