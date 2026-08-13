@@ -42,14 +42,26 @@ async function handle(request) {
   try {
     const report = await buildNightlyReport();
 
-    // Два сообщения намеренно: касса и топ вместе перебивают лимит Telegram
-    const okCash = await sendTelegramText(REPORT_CHAT_ID, report.cash, REPORT_BOT_TOKEN);
-    const okTop = await sendTelegramText(REPORT_CHAT_ID, report.top, REPORT_BOT_TOKEN);
+    // Одно сообщение: касса и топ вместе. Разбиваем на два, только если не
+    // влезаем в лимит Telegram (4096 символов) — например, в день с большим
+    // меню, когда категорий и блюд много.
+    const joined = `${report.cash}\n\n━━━━━━━━━━━━━━━━━━━━\n\n${report.top}`;
+
+    let sent;
+    if (joined.length <= 4000) {
+      sent = await sendTelegramText(REPORT_CHAT_ID, joined, REPORT_BOT_TOKEN);
+    } else {
+      const okCash = await sendTelegramText(REPORT_CHAT_ID, report.cash, REPORT_BOT_TOKEN);
+      const okTop = await sendTelegramText(REPORT_CHAT_ID, report.top, REPORT_BOT_TOKEN);
+      sent = okCash && okTop;
+    }
 
     return Response.json({
-      success: okCash && okTop,
+      success: sent,
       date: report.date,
       attempts: report.attempts,
+      length: joined.length,
+      split: joined.length > 4000,
     });
   } catch (e) {
     console.error("[nightly]", e.message);
