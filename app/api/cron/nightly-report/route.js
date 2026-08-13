@@ -5,7 +5,12 @@ export const dynamic = "force-dynamic";
 // Четыре OLAP-запроса плюс возможные повторы: короткого лимита не хватит.
 export const maxDuration = 300;
 
-const REPORT_CHAT_ID = process.env.TG_REPORT_CHAT_ID || process.env.TG_CHAT_ID || "";
+const REPORT_CHAT_ID = String(process.env.TG_REPORT_CHAT_ID || "").trim();
+
+// У бота отчётов своя учётка, отдельная от бота сайта: он уже состоит в нужном
+// чате. Если переменной нет — шлём под ботом сайта, но тогда его придётся
+// добавить в чат вручную, иначе Telegram ответит «chat not found».
+const REPORT_BOT_TOKEN = String(process.env.TG_REPORT_BOT_TOKEN || "").trim();
 
 /**
  * Ночной отчёт. Раньше его слал Python-бот со своего сервера; теперь считает
@@ -38,8 +43,8 @@ async function handle(request) {
     const report = await buildNightlyReport();
 
     // Два сообщения намеренно: касса и топ вместе перебивают лимит Telegram
-    const okCash = await sendTelegramText(REPORT_CHAT_ID, report.cash);
-    const okTop = await sendTelegramText(REPORT_CHAT_ID, report.top);
+    const okCash = await sendTelegramText(REPORT_CHAT_ID, report.cash, REPORT_BOT_TOKEN);
+    const okTop = await sendTelegramText(REPORT_CHAT_ID, report.top, REPORT_BOT_TOKEN);
 
     return Response.json({
       success: okCash && okTop,
@@ -49,7 +54,7 @@ async function handle(request) {
   } catch (e) {
     console.error("[nightly]", e.message);
     // О сбое сообщаем в тот же чат — иначе отчёт молча пропадёт
-    await sendTelegramText(REPORT_CHAT_ID, `❌ Ночной отчёт не собрался: ${e.message}`);
+    await sendTelegramText(REPORT_CHAT_ID, `❌ Ночной отчёт не собрался: ${e.message}`, REPORT_BOT_TOKEN);
     return Response.json({ error: e.message }, { status: 500 });
   }
 }
