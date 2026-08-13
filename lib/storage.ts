@@ -20,14 +20,22 @@
 
 export const INVOICE_BUCKET = 'invoices';
 
-/** Что именно на фото. Ключ объекта заканчивается этим словом — видно по имени файла. */
-export type PhotoKind = 'goods' | 'invoice';
+/**
+ * Что именно на фото. Ключ объекта заканчивается этим словом — видно по имени файла.
+ *
+ * `item` — снимок одной позиции: доказательство, что именно этот товар привезли
+ * и в таком виде. `goods` — общий снимок «что привезли», им пользовались до
+ * появления пофрагментных фото; в интерфейсе он больше не предлагается, но
+ * старые записи в истории его содержат, и подпись для них нужна.
+ */
+export type PhotoKind = 'goods' | 'invoice' | 'item';
 
-export const PHOTO_KINDS: PhotoKind[] = ['goods', 'invoice'];
+export const PHOTO_KINDS: PhotoKind[] = ['goods', 'invoice', 'item'];
 
 export const PHOTO_LABELS: Record<PhotoKind, string> = {
   goods: 'Фото товара',
   invoice: 'Фото накладной',
+  item: 'Фото позиции',
 };
 
 // Клиент жмёт фото до ~1600px/jpeg 0.8 (обычно 150–400 КБ). 3 МБ — потолок
@@ -76,7 +84,7 @@ export function buildPhotoPath(filialId: number, kind: PhotoKind, contentType: s
 
 /** Путь принадлежит одному из филиалов пользователя? Заодно отсекает `..` и абсолютные пути. */
 export function isPathAllowed(path: string, filialIds: number[]): boolean {
-  if (!/^\d+\/\d{4}-\d{2}-\d{2}\/[a-f0-9-]{36}-(goods|invoice)\.(jpg|webp|png)$/.test(path)) return false;
+  if (!/^\d+\/\d{4}-\d{2}-\d{2}\/[a-f0-9-]{36}-(goods|invoice|item)\.(jpg|webp|png)$/.test(path)) return false;
   return filialIds.includes(Number(path.split('/')[0]));
 }
 

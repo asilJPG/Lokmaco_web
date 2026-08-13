@@ -12,7 +12,7 @@ export default async function InvoicePage() {
     <div className="grid">
       <div>
         <h1 className="page-title">Приход накладной</h1>
-        <p className="page-subtitle">Продиктуй или вставь текст накладной — AI распознает позиции, ты проверишь и создашь документ в iiko.</p>
+        <p className="page-subtitle">Сними накладную, добавь позиции и подтверди каждую фотографией товара — документ уйдёт в iiko, фотоотчёт в Telegram.</p>
       </div>
       <InvoiceClient />
     </div>

@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { VoiceInput } from './voice-input';
-import { PhotoInput, type Photo } from './photo-input';
-import { ScanInbox } from './scan-inbox';
+import { InvoicePhotos, ItemPhoto, type Photo } from './photo-input';
 import { StoreSelect } from '@/components/store-select';
 import { SupplierSelect } from '@/components/supplier-select';
 
 type Product = { id: string; name: string; num: string; mainUnit: string };
 type InvoiceItem = {
   product_id: string; product_name: string; unit: string; quantity: number; price: number;
-  /** Как позиция написана в накладной, если приход распознан с фото. */
+  /** Снимок этой позиции — доказательство, что товар действительно привезли. */
+  photo?: Photo | null;
+  /** Как позиция написана в накладной, если приход распознан из текста. */
   as_written?: string;
   /** «5 коробка × 24 = 120 шт» — как упаковки пересчитали в основную единицу. */
   pack_note?: string;
@@ -18,11 +18,20 @@ type InvoiceItem = {
   needs_review?: boolean;
 };
 
+/**
+ * Оформление прихода.
+ *
+ * ⚠️ Распознавание с фотографии и надиктовка **сняты** (13.08.2026, по просьбе
+ * Асиля): модель подставляла позиции уверенно и иногда неверно, а приход — это
+ * остатки и себестоимость. Позиции набираются руками. Код разбора текста,
+ * фото и голоса остался в репозитории (`voice-input.tsx`, `scan-inbox.tsx`,
+ * `/api/iiko/parse-photo`) — вернуть можно правкой этого файла.
+ *
+ * Взамен доказательство перенесено на фотографии: снимок накладной обязателен,
+ * у каждой позиции своя кнопка «фото товара», и всё это уходит в Telegram
+ * сразу после проведения.
+ */
 export function InvoiceClient() {
-  const [text, setText] = useState('');
-  const [parsing, setParsing] = useState(false);
-  const [parseError, setParseError] = useState<string | null>(null);
-
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<InvoiceItem[]>([]);
 
@@ -33,12 +42,9 @@ export function InvoiceClient() {
   const [comment, setComment] = useState('');
 
   const [addQuery, setAddQuery] = useState('');
-  const [fixQuery, setFixQuery] = useState<Record<number, string>>({});
 
-  const [goodsPhoto, setGoodsPhoto] = useState<Photo | null>(null);
-  const [invoicePhoto, setInvoicePhoto] = useState<Photo | null>(null);
+  const [invoicePhotos, setInvoicePhotos] = useState<Photo[]>([]);
 
-  const [photoParsing, setPhotoParsing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -49,43 +55,21 @@ export function InvoiceClient() {
         const data = await res.json();
         setProducts(data.products || []);
       } catch {
-        // ignore — только используется для ручного добавления/исправления строк
+        // ignore — список нужен только для подбора товара в форме
       }
     })();
   }, []);
 
   const totalSum = useMemo(() => items.reduce((s, it) => s + it.quantity * it.price, 0), [items]);
 
+  const itemsWithoutPhoto = useMemo(() => items.filter((it) => !it.photo), [items]);
+
   const canSend =
     Boolean(supplierId) &&
     Boolean(storeId) &&
     items.length > 0 &&
-    items.every((it) => it.product_id && it.quantity > 0);
-
-  async function parse() {
-    if (!text.trim()) return;
-    setParsing(true);
-    setParseError(null);
-    try {
-      const res = await fetch('/api/iiko/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setParseError(data.error || 'Ошибка распознавания');
-        return;
-      }
-      // Через ту же функцию, что и фото: пересчёт упаковок и пометки о проверке
-      // должны выглядеть одинаково, надиктовали приход или сняли.
-      applyParsed(data.items || []);
-    } catch (e) {
-      setParseError(e instanceof Error ? e.message : 'Ошибка сети');
-    } finally {
-      setParsing(false);
-    }
-  }
+    items.every((it) => it.product_id && it.quantity > 0) &&
+    invoicePhotos.length > 0;
 
   function updateItem(i: number, patch: Partial<InvoiceItem>) {
     setItems((prev) => prev.map((it, j) => (j === i ? { ...it, ...patch } : it)));
@@ -94,12 +78,8 @@ export function InvoiceClient() {
     setItems((prev) => prev.filter((_, j) => j !== i));
   }
   function addProduct(p: Product) {
-    setItems((prev) => [...prev, { product_id: p.id, product_name: p.name, unit: p.mainUnit, quantity: 0, price: 0 }]);
+    setItems((prev) => [...prev, { product_id: p.id, product_name: p.name, unit: p.mainUnit, quantity: 0, price: 0, photo: null }]);
     setAddQuery('');
-  }
-  function fixProduct(i: number, p: Product) {
-    updateItem(i, { product_id: p.id, product_name: p.name, unit: p.mainUnit });
-    setFixQuery((prev) => ({ ...prev, [i]: '' }));
   }
 
   // Один товар намеренно можно добавить несколько раз: в накладной он часто
@@ -110,66 +90,17 @@ export function InvoiceClient() {
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [addQuery, products]);
 
-  /**
-   * Позиции с фотографии накладной. Снимок уже загружен ради факта — здесь он
-   * же читается моделью. Результат попадает в ту же таблицу, что и текстовый
-   * разбор: провести приход можно только после проверки человеком.
-   */
-  /** Разложить распознанные позиции в таблицу. Общее для фото и для скана. */
-  function applyParsed(raw: { product_id?: string; product_name?: string; unit?: string; quantity?: number; price?: number; as_written?: string; needs_review?: boolean; pack_note?: string }[]) {
-    const parsed: InvoiceItem[] = raw.map((it) => ({
-      product_id: it.product_id || '',
-      product_name: it.product_name || '',
-      unit: it.unit || 'кг',
-      quantity: Number(it.quantity) || 0,
-      price: Number(it.price) || 0,
-      as_written: it.as_written,
-      needs_review: it.needs_review,
-      pack_note: it.pack_note,
-    }));
-    setItems(parsed);
-    const unmatched = parsed.filter((it) => !it.product_id).length;
-    const review = parsed.filter((it) => it.needs_review && it.product_id).length;
-    setMsg({
-      ok: unmatched === 0,
-      text: unmatched === 0
-        ? `Позиций подставлено: ${parsed.length}. Проверь количества и цены перед отправкой.`
-        : `Подставлено ${parsed.length}, из них ${unmatched} не нашлись в номенклатуре — выбери товар вручную.`,
-    });
-    if (review > 0) {
-      setParseError(`Строк, где название в накладной не совпало с товаром в iiko: ${review}. Они помечены — сверь, тот ли товар выбран.`);
-    }
-    return parsed;
-  }
-
-  async function parsePhoto(path?: string) {
-    const target = path || invoicePhoto?.path;
-    if (!target) return;
-    setPhotoParsing(true);
-    setParseError(null);
-    try {
-      const res = await fetch('/api/iiko/parse-photo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: target }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setParseError(data.error || 'Не удалось распознать накладную');
-        return;
-      }
-      applyParsed(data.items || []);
-    } catch (e) {
-      setParseError(e instanceof Error ? e.message : 'Ошибка сети');
-    } finally {
-      setPhotoParsing(false);
-    }
-  }
-
   async function submit() {
     setBusy(true);
     setMsg(null);
     try {
+      const photos = [
+        ...invoicePhotos.map((p) => ({ path: p.path, kind: 'invoice' as const })),
+        ...items.flatMap((it) => (it.photo
+          ? [{ path: it.photo.path, kind: 'item' as const, product_id: it.product_id, product_name: it.product_name }]
+          : [])),
+      ];
+
       const res = await fetch('/api/iiko/invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -178,21 +109,24 @@ export function InvoiceClient() {
           supplier_name: supplierName,
           store_id: storeId,
           store_name: storeName,
-          items,
+          items: items.map(({ photo: _photo, ...it }) => it),
           comment,
-          photos: [goodsPhoto, invoicePhoto].filter(Boolean).map((p) => ({ path: p!.path, kind: p!.kind })),
+          photos,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        setMsg({ ok: false, text: data.error || 'Ошибка' });
+        setMsg({ ok: false, text: data.error || `Ошибка ${res.status}` });
       } else {
-        setMsg({ ok: true, text: `Создан документ ${data.documentNumber}` });
+        setMsg({
+          ok: true,
+          text: data.tg_sent
+            ? `Создан документ ${data.documentNumber}. Фотоотчёт ушёл в Telegram.`
+            : `Создан документ ${data.documentNumber}. ⚠️ Фотоотчёт в Telegram не ушёл — фотографии сохранены, отправятся со сводкой.`,
+        });
         setItems([]);
-        setText('');
         setComment('');
-        setGoodsPhoto(null);
-        setInvoicePhoto(null);
+        setInvoicePhotos([]);
       }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Ошибка сети' });
@@ -203,41 +137,22 @@ export function InvoiceClient() {
 
   return (
     <div className="grid">
-      <ScanInbox
-        onPick={(path) => parsePhoto(path)}
-        onUse={(parsed) => applyParsed(parsed.items || [])}
-      />
-
-      <section className="card">
-        <div className="card__title"><span className="card__title-text">🗣️ Текст накладной</span></div>
-        <div className="field">
-          <label className="field__label">Вставь или продиктуй текст</label>
-          <textarea
-            className="textarea"
-            rows={5}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={'помидоры 50кг 600000\nлук 30 кг 150000'}
-          />
-        </div>
-        <VoiceInput
-          disabled={parsing || busy}
-          onText={(t) => setText((cur) => (cur.trim() ? `${cur.trim()}\n${t}` : t))}
-        />
-        {parseError && <div className="banner banner--error">{parseError}</div>}
-        <div className="action-bar">
-          <button type="button" className="btn btn--primary" onClick={parse} disabled={parsing || !text.trim()}>
-            {parsing ? 'Распознаём…' : 'Распознать'}
-          </button>
-        </div>
-      </section>
-
       <section className="card">
         <div className="card__title"><span className="card__title-text">🚚 Поставщик и склад</span></div>
         <div className="grid grid--2">
           <SupplierSelect value={supplierId} onChange={(id, name) => { setSupplierId(id); setSupplierName(name); }} />
           <StoreSelect label="Склад" value={storeId} onChange={(id, name) => { setStoreId(id); setStoreName(name); }} />
         </div>
+      </section>
+
+      <section className="card">
+        <div className="card__title"><span className="card__title-text">📄 Накладная поставщика</span></div>
+        <InvoicePhotos photos={invoicePhotos} onChange={setInvoicePhotos} disabled={busy} />
+        {invoicePhotos.length === 0 && (
+          <div className="banner banner--warn" style={{ marginTop: 10 }}>
+            Без снимка накладной приход не проводится. Снимите лист целиком, чтобы читались позиции и суммы.
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -259,55 +174,13 @@ export function InvoiceClient() {
                 {items.map((it, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={{ padding: '8px 12px' }}>
-                      {it.product_id ? (
-                        <>
-                          {it.product_name}
-                          <span style={{ color: 'var(--text-faint)', fontSize: 11, marginLeft: 8 }}>{it.unit}</span>
-                          {it.pack_note && (
-                            /* Пересчёт упаковок в основную единицу: в накладной коробки,
-                               на складе штуки. Показываем саму арифметику — иначе цифры
-                               в форме не сходятся с цифрами в накладной, и это пугает. */
-                            <div className="review-note">📦 {it.pack_note} (по карточке iiko)</div>
-                          )}
-                          {it.needs_review && (
-                            /* В накладной одно, в номенклатуре выбрано другое. Чаще всего
-                               это «морковь» → «Морковь желтый»: вариантов два, и товар
-                               на складе от выбора зависит. */
-                            <div className="review-note">
-                              ⚠️ В накладной: «{it.as_written}» — проверь, тот ли товар
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div>
-                          <div className="banner banner--warn" style={{ marginBottom: 6, padding: '4px 8px', fontSize: 12 }}>
-                            Не найден в iiko: «{it.product_name || '—'}» — выбери вручную
-                          </div>
-                          <input
-                            className="input input--inline"
-                            placeholder="Поиск товара…"
-                            value={fixQuery[i] || ''}
-                            onChange={(e) => setFixQuery((prev) => ({ ...prev, [i]: e.target.value }))}
-                          />
-                          {(fixQuery[i] || '').trim() && (
-                            <div style={{ marginTop: 4, border: '1px solid var(--border)', borderRadius: 8, maxHeight: 180, overflowY: 'auto' }}>
-                              {products
-                                .filter((p) => p.name.toLowerCase().includes((fixQuery[i] || '').toLowerCase()))
-                                .slice(0, 8)
-                                .map((p) => (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => fixProduct(i, p)}
-                                    style={{ width: '100%', textAlign: 'left', padding: '6px 10px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 12 }}
-                                  >
-                                    {p.name}
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {it.product_name}
+                      <span style={{ color: 'var(--text-faint)', fontSize: 11, marginLeft: 8 }}>{it.unit}</span>
+                      <ItemPhoto
+                        photo={it.photo || null}
+                        onChange={(p) => updateItem(i, { photo: p })}
+                        disabled={busy}
+                      />
                     </td>
                     <td style={{ padding: '8px 12px' }}>
                       <input
@@ -352,7 +225,7 @@ export function InvoiceClient() {
         )}
 
         <div className="field">
-          <label className="field__label">Добавить товар вручную</label>
+          <label className="field__label">Добавить товар</label>
           <input
             className="input"
             placeholder="Название товара"
@@ -374,28 +247,12 @@ export function InvoiceClient() {
             </div>
           )}
         </div>
-      </section>
 
-      <section className="card">
-        <div className="card__title"><span className="card__title-text">📷 Фото</span></div>
-        <div className="photo-grid">
-          <PhotoInput kind="goods" photo={goodsPhoto} onChange={setGoodsPhoto} disabled={busy} />
-          <PhotoInput kind="invoice" photo={invoicePhoto} onChange={setInvoicePhoto} disabled={busy} />
-        </div>
-        {invoicePhoto && (
-          <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn--primary" onClick={() => parsePhoto()} disabled={photoParsing || busy}>
-              {photoParsing ? '⏳ Читаю накладную…' : '📄 Заполнить позиции с фото накладной'}
-            </button>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '6px 0 0' }}>
-              Позиции подставятся в таблицу выше. Проверь их: снимок под углом или в тени читается плохо, а модель отвечает уверенно в любом случае.
-            </p>
+        {items.length > 0 && itemsWithoutPhoto.length > 0 && (
+          <div className="banner banner--warn" style={{ marginTop: 12 }}>
+            Приход пройдёт и так, но в отчёте будет видно, что фото нет:{' '}
+            {itemsWithoutPhoto.map((it) => it.product_name).join(', ')}
           </div>
-        )}
-        {(!goodsPhoto || !invoicePhoto) && (
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '10px 0 0' }}>
-            Фото необязательны, но приход без них будет помечен в истории — по нему потом не проверишь, что привезли.
-          </p>
         )}
       </section>
 

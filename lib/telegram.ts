@@ -39,6 +39,24 @@ export async function sendMessage(chatId: string, text: string): Promise<boolean
 
 export type OutgoingPhoto = { bytes: Uint8Array; contentType: string; filename: string };
 
+/** Одиночный снимок с подписью. */
+export async function sendPhoto(chatId: string, photo: OutgoingPhoto, caption: string): Promise<boolean> {
+  const form = new FormData();
+  form.append('chat_id', chatId);
+  form.append('caption', clampCaption(caption));
+  form.append('parse_mode', 'HTML');
+  form.append('photo', new Blob([photo.bytes as unknown as BlobPart], { type: photo.contentType }), photo.filename);
+
+  const res = await fetch(`${API}/bot${token()}/sendPhoto`, {
+    method: 'POST',
+    body: form,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) console.error('[telegram] sendPhoto', res.status, (await res.text()).slice(0, 300));
+  return res.ok;
+}
+
 /**
  * Альбом. Подпись Телеграм показывает только у ПЕРВОГО фото — остальные идут
  * без неё, поэтому весь текст собираем в одну подпись, а не по фото.
@@ -46,6 +64,10 @@ export type OutgoingPhoto = { bytes: Uint8Array; contentType: string; filename: 
  */
 export async function sendPhotoAlbum(chatId: string, photos: OutgoingPhoto[], caption: string): Promise<boolean> {
   if (photos.length === 0) return false;
+  // ⚠️ Альбом из одного снимка Телеграм не принимает: sendMediaGroup требует
+  // от 2 до 10 вложений. Приход с единственным фото накладной — самый частый
+  // случай, поэтому одиночку отправляем обычным sendPhoto.
+  if (photos.length === 1) return sendPhoto(chatId, photos[0], caption);
   const batch = photos.slice(0, 10);
 
   const form = new FormData();

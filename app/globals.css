@@ -1246,6 +1246,19 @@ tr[data-today="true"] td:first-child {
   background: var(--surface-muted);
 }
 
+/* Фото позиции — прямо в строке таблицы, поэтому всё компактное: снимают
+   по товару, пока он в руках, и кнопка не должна разгонять строку по высоте. */
+.item-photo { margin-top: 6px; }
+.item-photo__btn { font-size: 11px; padding: 4px 8px; }
+.item-photo__done { display: flex; align-items: center; gap: 6px; }
+.item-photo__done img {
+  width: 44px; height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+.item-photo__error { font-size: 11px; color: var(--danger, #dc2626); margin-top: 4px; }
+
 /* Мигающая точка записи: без неё непонятно, идёт запись или уже нет. */
 .rec-dot {
   width: 12px; height: 12px;

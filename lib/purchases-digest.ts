@@ -5,12 +5,14 @@ import { esc, purchasesChatId, sendMessage, sendPhotoAlbum, type OutgoingPhoto }
 import { fmtDate, todayTashkent } from '@/lib/period';
 
 type Item = { product_name?: string; quantity?: number; price?: number; unit?: string };
+export type InvoicePhoto = { path: string; kind: PhotoKind; product_name?: string };
 type Details = {
   supplier_name?: string;
   store_name?: string;
   comment?: string;
   items?: Item[];
-  photos?: { path: string; kind: PhotoKind }[];
+  photos?: InvoicePhoto[];
+  items_without_photo?: string[];
   tg_sent_at?: string;
 };
 
@@ -40,7 +42,69 @@ function caption(row: { userName: string | null; documentNumber: string | null; 
 
   lines.push('', `<b>Итого: ${money(sumOf(items))} сум</b>`);
   if (d.comment) lines.push(`💬 ${esc(d.comment)}`);
+  const without = Array.isArray(d.items_without_photo) ? d.items_without_photo : [];
+  if (without.length > 0) lines.push(`⚠️ Без фото товара: ${esc(without.join(', '))}`);
   return lines.join('\n');
+}
+
+/**
+ * Отправить фотоотчёт по одному приходу и пометить его отправленным.
+ *
+ * Зовётся сразу после проведения — чтобы в группе видели приход, пока машина
+ * ещё у входа, — и повторно из вечерней сводки для тех, у кого мгновенная
+ * отправка не прошла. Отметка `tg_sent_at` в самом документе не даёт прислать
+ * одно и то же дважды.
+ *
+ * Порядок вложений: сначала накладная, потом позиции. Телеграм показывает
+ * подпись только у первого фото альбома — и это должна быть накладная.
+ */
+export async function sendInvoicePhotos(row: {
+  id: number;
+  userName: string | null;
+  documentNumber: string | null;
+  details: Record<string, unknown>;
+}): Promise<boolean> {
+  const chatId = purchasesChatId();
+  if (!chatId) return false;
+
+  const d = row.details as Details;
+  if (d.tg_sent_at) return true;
+
+  const all = Array.isArray(d.photos) ? d.photos : [];
+  const ordered = [
+    ...all.filter((p) => p.kind === 'invoice'),
+    ...all.filter((p) => p.kind !== 'invoice'),
+  ];
+  if (ordered.length === 0) return false;
+
+  const files: OutgoingPhoto[] = [];
+  for (const p of ordered) {
+    const file = await downloadPhoto(p.path);
+    if (!file?.body) continue;
+    const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
+    files.push({
+      bytes,
+      contentType: file.contentType,
+      filename: `${p.product_name || PHOTO_LABELS[p.kind] || 'photo'}.jpg`,
+    });
+  }
+  if (files.length === 0) return false;
+
+  // В альбом больше 10 снимков не влезает, а позиций в накладной бывает
+  // больше: шлём пачками, подпись — только у первой, чтобы не дублировать
+  // весь список товаров под каждым альбомом.
+  let ok = false;
+  for (let i = 0; i < files.length; i += 10) {
+    const sent = await sendPhotoAlbum(chatId, files.slice(i, i + 10), i === 0 ? caption({ ...row, details: d }) : '');
+    if (i === 0) ok = sent;
+  }
+  if (!ok) return false;
+
+  await db
+    .update(schema.botActions)
+    .set({ details: { ...d, tg_sent_at: new Date().toISOString() } })
+    .where(eq(schema.botActions.id, row.id));
+  return true;
 }
 
 /**
@@ -96,30 +160,17 @@ export async function sendPurchasesDigest(
       continue;
     }
 
-    const files: OutgoingPhoto[] = [];
-    for (const p of photos) {
-      const file = await downloadPhoto(p.path);
-      if (!file?.body) continue;
-      const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
-      files.push({
-        bytes,
-        contentType: file.contentType,
-        filename: `${PHOTO_LABELS[p.kind] || 'photo'}.jpg`,
-      });
-    }
-    if (files.length === 0) {
-      withoutPhoto.push(`• ${esc(d.supplier_name || '—')} — фото не читаются из хранилища`);
+    const ok = await sendInvoicePhotos({
+      id: row.id,
+      userName: row.userName,
+      documentNumber: row.documentNumber,
+      details: (row.details || {}) as Record<string, unknown>,
+    });
+    if (!ok) {
+      withoutPhoto.push(`• ${esc(d.supplier_name || '—')} — фотоотчёт отправить не удалось`);
       continue;
     }
-
-    const ok = await sendPhotoAlbum(chatId, files, caption({ ...row, details: d }));
-    if (!ok) continue;
-
     sent++;
-    await db
-      .update(schema.botActions)
-      .set({ details: { ...d, tg_sent_at: new Date().toISOString() } })
-      .where(eq(schema.botActions.id, row.id));
   }
 
   if (withoutPhoto.length > 0) {
