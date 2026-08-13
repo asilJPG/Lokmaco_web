@@ -16,8 +16,10 @@ const REPORT_CHAT_ID = process.env.TG_REPORT_CHAT_ID || process.env.TG_CHAT_ID |
  * Доступ по секрету: Vercel Cron шлёт `Authorization: Bearer $CRON_SECRET`.
  */
 async function handle(request) {
-  const secret = process.env.CRON_SECRET || "";
-  const auth = request.headers.get("authorization") || "";
+  // Значение из панели окружения легко приезжает с пробелом или переносом
+  // строки на конце — сравнение по сырому значению тогда не сходится.
+  const secret = String(process.env.CRON_SECRET || "").trim();
+  const auth = String(request.headers.get("authorization") || "").trim();
 
   if (!secret) {
     console.error("[nightly] CRON_SECRET не задан — эндпоинт закрыт");
