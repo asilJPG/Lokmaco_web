@@ -100,6 +100,8 @@ export async function POST(request) {
       await logAction(user.tg_id, user.name, "invoice", dn, details);
 
       await sendInvoiceReport({
+        // dateStr уже в ташкентском времени: «10.08.2026 14:32:05»
+        dateTime: dateStr,
         documentNumber: `${dn} от ${dateStr}`,
         supplierName: supplier_name || "Неизвестный поставщик",
         storeName: store_name || "Неизвестный склад",
