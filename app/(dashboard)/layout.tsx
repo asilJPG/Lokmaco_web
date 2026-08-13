@@ -56,7 +56,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <FilialSwitcher filials={filials} current={current} allowAll={allowAll} />
         <SidebarNav role={session.role} badges={{ inbox: inboxCount }} />
         <div className="cmdk-hint" data-print-hide style={{
-          padding: '6px 12px 12px', fontSize: 11, color: 'var(--text-faint)',
+          padding: '4px 8px 6px', fontSize: 10, color: 'var(--text-faint)',
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
           <span>Быстрый поиск</span>
