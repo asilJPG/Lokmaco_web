@@ -61,11 +61,16 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Укажите наименование, место эксплуатации и МОЛ' }, { status: 400 });
   }
 
-  // Инвентарный номер можно не вводить — соберём из локации и случайного числа.
+  // Инвентарный номер можно не вводить — соберём сами.
+  //
+  // ⚠️ Два сегмента, а не три. Прежний `INV-<место>-<число>` давал `INV-1-5375`
+  // и `INV-INV-2147` (место кириллицей срезалось в пустоту), а трёхсегментный
+  // номер читается как «экземпляр партии»: разные предметы слипались в одну
+  // строку списка. Место в номере всё равно бесполезно — оно меняется, а номер
+  // остаётся.
   let invNumber = String(b.inv_number || '').trim();
   if (!invNumber) {
-    const prefix = String(b.location || 'GEN').toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4) || 'INV';
-    invNumber = `INV-${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+    invNumber = `INV-${Math.floor(10000 + Math.random() * 90000)}`;
   }
 
   const [created] = await db.insert(schema.assets).values({
