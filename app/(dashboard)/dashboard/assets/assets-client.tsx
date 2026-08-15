@@ -40,6 +40,14 @@ export function AssetsClient() {
   const [editing, setEditing] = useState<AssetForm | null>(null);
   const [qrAsset, setQrAsset] = useState<Asset | null>(null);
   const [scanMode, setScanMode] = useState<'audit' | 'bind' | null>(null);
+  /**
+   * Оклейка одного конкретного экземпляра из списка.
+   *
+   * Так это делали на старом сайте, и так удобнее, когда предмет один: предмет
+   * выбирают глазами, а камера нужна только чтобы прочитать код наклейки.
+   * Обход по партии («наклеил — иди дальше») живёт рядом, отдельной кнопкой.
+   */
+  const [bindUnit, setBindUnit] = useState<Asset | null>(null);
   const [sheet, setSheet] = useState<'tags' | 'audits' | 'places' | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -393,6 +401,16 @@ export function AssetsClient() {
                           {tagByAsset.get(u.id) || 'без наклейки'}
                         </span>
                         <span className="asset-unit__seen">{u.lastInventoriedAt ? day(u.lastInventoriedAt) : '—'}</span>
+                        {!tagByAsset.has(u.id) && (
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--icon btn--primary"
+                            onClick={() => { setBindUnit(u); setScanMode('bind'); }}
+                            title="Наклеить QR на этот экземпляр"
+                          >
+                            📷
+                          </button>
+                        )}
                         <button type="button" className="btn btn--sm btn--icon" onClick={() => setQrAsset(u)} title="Стикер">🏷</button>
                         <button type="button" className="btn btn--sm btn--icon" onClick={() => setEditing(toForm(u))} title="Изменить">✎</button>
                         <button type="button" className="btn btn--sm btn--icon btn--danger" onClick={() => remove(u)} title="Удалить">✕</button>
@@ -414,12 +432,13 @@ export function AssetsClient() {
       {scanMode && (
         <InventoryScanModal
           initialMode={scanMode}
+          targetUnitId={bindUnit?.id}
           assets={assets}
           tags={tags}
           locations={locations}
           onFinish={finishAudit}
           onBound={load}
-          onClose={() => setScanMode(null)}
+          onClose={() => { setScanMode(null); setBindUnit(null); }}
         />
       )}
     </div>

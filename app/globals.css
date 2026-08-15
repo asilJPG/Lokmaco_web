@@ -1436,6 +1436,7 @@ tr[data-today="true"] td:first-child {
   pointer-events: none;
 }
 .scan-target__name { font-size: 15px; font-weight: 700; flex: 1; }
+.scan-target__unit { font-size: 13px; font-weight: 600; opacity: 0.9; margin-top: 2px; }
 .scan-target__count { font-size: 18px; font-weight: 800; }
 
 .scan-state { margin-left: 8px; font-size: 11px; color: var(--text-muted); }

@@ -52,9 +52,16 @@ function buildBatches(assets: Asset[]): Batch[] {
  * делают с того, что уже в кармане.
  */
 export function InventoryScanModal({
-  initialMode = 'audit', assets, tags, locations, onFinish, onBound, onClose,
+  initialMode = 'audit', targetUnitId, assets, tags, locations, onFinish, onBound, onClose,
 }: {
   initialMode?: Mode;
+  /**
+   * Конкретный экземпляр, к которому клеим. Приходит из списка ОС: там
+   * выбирают предмет глазами («вот эта морозилка»), а камера нужна только
+   * чтобы прочитать код наклейки. Без него камера сама берёт следующий
+   * свободный экземпляр выбранной партии.
+   */
+  targetUnitId?: string;
   assets: Asset[];
   tags: AssetTag[];
   locations: AssetLocation[];
@@ -81,7 +88,16 @@ export function InventoryScanModal({
   const [starting, setStarting] = useState(false);
 
   /** Что клеим в режиме оклейки. */
-  const [batchKey, setBatchKey] = useState('');
+  const [batchKey, setBatchKey] = useState(() => {
+    const a = targetUnitId ? assets.find((x) => x.id === targetUnitId) : null;
+    return a ? `${baseInvNumber(a.invNumber)}|${a.name}` : '';
+  });
+  /**
+   * Прикреплённый экземпляр: пока он задан, наклейка уходит именно на него,
+   * а не на «следующий свободный». Снимается после первой же привязки —
+   * дальше идут по партии как обычно.
+   */
+  const [pinnedId, setPinnedId] = useState<string | null>(targetUnitId ?? null);
   const [bindPlace, setBindPlace] = useState('');
   const [bindQuery, setBindQuery] = useState('');
   const [showUnits, setShowUnits] = useState(false);
@@ -160,6 +176,13 @@ export function InventoryScanModal({
   useEffect(() => {
     if (mode === 'bind' && !batchKey && bindList.length > 0) setBatchKey(bindList[0].key);
   }, [mode, batchKey, bindList]);
+
+  // Пришли из списка ОС с конкретным предметом — подводим к нему ленту, иначе
+  // выбранная карточка оказалась бы где-то за краем экрана.
+  useEffect(() => {
+    if (targetUnitId && batchKey) scrollToBatch(batchKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activePlace = audit ? (audit.locationId || 'all') : placeId;
   const scope = useMemo(
@@ -293,7 +316,13 @@ export function InventoryScanModal({
     // Следующий экземпляр без наклейки. Порядок по инв. номеру, чтобы
     // оклеивание шло предсказуемо: 01, 02, 03…
     const bound = boundNow();
-    const target = batch.units.find((u) => !bound.has(u.id));
+    const pinned = pinnedId ? batch.units.find((u) => u.id === pinnedId) : null;
+    if (pinned && bound.has(pinned.id)) {
+      setLast({ tone: 'dup', code, title: `У «${unitLabel(pinned, assets) || pinned.invNumber}» уже есть наклейка ${bound.get(pinned.id)}` });
+      buzz([40, 60, 40]);
+      return;
+    }
+    const target = pinned || batch.units.find((u) => !bound.has(u.id));
     if (!target) {
       setLast({ tone: 'dup', code, title: `У всех ${batch.units.length} уже есть наклейки` });
       buzz([40, 60, 40]);
@@ -325,6 +354,7 @@ export function InventoryScanModal({
       if (!res.ok) throw new Error();
       // Позднее «сохранено» не должно затирать уже следующий скан.
       setLast((cur) => (cur && cur.code === code ? { ...cur, state: 'saved' } : cur));
+      setPinnedId(null);
 
       // Партия закончилась — сама подводим ленту к следующей неоклеенной,
       // чтобы можно было просто идти дальше и клеить.
@@ -499,6 +529,7 @@ export function InventoryScanModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const pinnedUnit = pinnedId ? byId.get(pinnedId) || null : null;
   const scannedInScope = scope.filter((a) => scannedIds.has(a.id)).length;
   const missing = scope.filter((a) => !scannedIds.has(a.id));
 
@@ -530,7 +561,12 @@ export function InventoryScanModal({
               {flash > 0 && <div key={flash} className="scan-flash" />}
               {mode === 'bind' && batch && (
                 <div className="scan-target">
-                  <div className="scan-target__name">{batch.name}</div>
+                  <div className="scan-target__name">
+                    {batch.name}
+                    {/* Пришли из списка — говорим, на какой именно экземпляр
+                        уйдёт наклейка: иначе кажется, что клеим «во что-то». */}
+                    {pinnedUnit && <div className="scan-target__unit">→ {unitLabel(pinnedUnit, assets) || pinnedUnit.invNumber}</div>}
+                  </div>
                   <div className="scan-target__count">{boundCount(batch)} из {batch.units.length}</div>
                 </div>
               )}
