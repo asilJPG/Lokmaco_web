@@ -1150,6 +1150,25 @@ tr[data-today="true"] td:first-child {
 }
 .action-bar__btn { flex: 1; }
 
+/* ⚠️ Кнопки внутри модального окна — своя полоса, не `.action-bar`.
+   На телефоне `.action-bar` прибита к низу ЭКРАНА (`position: fixed`), и в
+   окне она отрывалась от формы: «Отмена» и «Сохранить» висели поперёк полей
+   где-то посередине. Здесь полоса липнет к низу самого окна. */
+.modal-foot {
+  position: sticky;
+  bottom: calc(-1 * var(--space-4));
+  margin: var(--space-4) calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+@media (max-width: 767px) {
+  .modal-foot .btn { flex: 1; min-height: 44px; }
+}
+
 /* ---------------- Dark theme (auto via prefers-color-scheme) ---------------- */
 @media (prefers-color-scheme: dark) {
   :root {

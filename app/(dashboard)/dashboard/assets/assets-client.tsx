@@ -424,7 +424,7 @@ export function AssetsClient() {
         </div>
       )}
 
-      {editing && <AssetFormModal initial={editing} onSave={save} onClose={() => setEditing(null)} />}
+      {editing && <AssetFormModal initial={editing} locations={locations} onSave={save} onClose={() => setEditing(null)} />}
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
       {sheet === 'audits' && <AuditsModal locations={locations} onClose={() => setSheet(null)} />}
       {sheet === 'places' && <LocationsModal onClose={() => setSheet(null)} onChanged={load} />}
