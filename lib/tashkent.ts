@@ -27,6 +27,12 @@ export function tashkentTime(d: Date = tashkentNow()): string {
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
+/** `ДД.ММ.ГГГГ ЧЧ:ММ` по ташкентским часам — для людей, не для iiko. */
+export function fmtDateTimeTashkent(at: Date): string {
+  const d = new Date(at.getTime() + TASHKENT_OFFSET_MS);
+  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 /** `YYYY-MM-DDTHH:MM:SS` без зоны — формат XML API (`v2/documents/*`). */
 export function tashkentStampNaive(d: Date = tashkentNow()): string {
   return `${tashkentDate(d)}T${tashkentTime(d)}`;

@@ -111,6 +111,7 @@ export async function POST(req: Request) {
         id: actionId,
         userName: session.name,
         documentNumber: result.documentNumber ?? null,
+        createdAt: new Date(),
         details,
       });
     } catch (e) {

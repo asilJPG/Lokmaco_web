@@ -3,6 +3,7 @@ import { db, schema } from '@/db/client';
 import { downloadPhoto, PHOTO_LABELS, type PhotoKind } from '@/lib/storage';
 import { esc, purchasesChatId, sendMessage, sendPhotoAlbum, type OutgoingPhoto } from '@/lib/telegram';
 import { fmtDate, todayTashkent } from '@/lib/period';
+import { fmtDateTimeTashkent } from '@/lib/tashkent';
 
 type Item = { product_name?: string; quantity?: number; price?: number; unit?: string };
 export type InvoicePhoto = { path: string; kind: PhotoKind; product_name?: string };
@@ -24,7 +25,21 @@ function sumOf(items: Item[]): number {
   return items.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.price) || 0), 0);
 }
 
-function caption(row: { userName: string | null; documentNumber: string | null; details: Details }): string {
+/**
+ * Что писать под фотографиями.
+ *
+ * ⚠️ По умолчанию — **коротко**: «Приход» и дата. Так сделано в легаси
+ * осознанно: сообщение уходит в общую рабочую группу, а поставщик, суммы и
+ * состав закупа там показывать не нужно. Подробная подпись включается
+ * `TG_INVOICE_CAPTION=full` — код её ниже сохранён целиком.
+ */
+function shortCaption(row: { createdAt?: Date | null }): string {
+  const when = row.createdAt ? fmtDateTimeTashkent(row.createdAt) : '';
+  return ['📦 <b>Приход</b>', esc(when)].filter(Boolean).join('\n');
+}
+
+function caption(row: { userName: string | null; documentNumber: string | null; details: Details; createdAt?: Date | null }): string {
+  if ((process.env.TG_INVOICE_CAPTION || 'short') !== 'full') return shortCaption(row);
   const d = row.details;
   const items = Array.isArray(d.items) ? d.items : [];
   const lines = [
@@ -62,6 +77,7 @@ export async function sendInvoicePhotos(row: {
   id: number;
   userName: string | null;
   documentNumber: string | null;
+  createdAt?: Date | null;
   details: Record<string, unknown>;
 }): Promise<boolean> {
   const chatId = purchasesChatId();
@@ -71,9 +87,16 @@ export async function sendInvoicePhotos(row: {
   if (d.tg_sent_at) return true;
 
   const all = Array.isArray(d.photos) ? d.photos : [];
+  // Порядок как в легаси: сначала накладная, потом коллажи позиций. Сами
+  // снимки позиций в группу не идут — они уже внутри коллажей, иначе одна
+  // накладная на 20 строк превращалась бы в двадцать сообщений. Если коллаж
+  // не собрался (старый браузер, сбой canvas), позиции всё же отправляем:
+  // лучше россыпь снимков, чем ничего.
+  const collages = all.filter((p) => p.kind === 'collage');
   const ordered = [
     ...all.filter((p) => p.kind === 'invoice'),
-    ...all.filter((p) => p.kind !== 'invoice'),
+    ...collages,
+    ...(collages.length === 0 ? all.filter((p) => p.kind === 'item' || p.kind === 'goods') : []),
   ];
   if (ordered.length === 0) return false;
 
@@ -132,6 +155,7 @@ export async function sendPurchasesDigest(
       id: schema.botActions.id,
       userName: schema.botActions.userName,
       documentNumber: schema.botActions.documentNumber,
+      createdAt: schema.botActions.createdAt,
       details: schema.botActions.details,
     })
     .from(schema.botActions)
@@ -164,6 +188,7 @@ export async function sendPurchasesDigest(
       id: row.id,
       userName: row.userName,
       documentNumber: row.documentNumber,
+      createdAt: row.createdAt,
       details: (row.details || {}) as Record<string, unknown>,
     });
     if (!ok) {
