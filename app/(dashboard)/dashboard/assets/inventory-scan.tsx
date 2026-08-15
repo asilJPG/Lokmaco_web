@@ -13,6 +13,13 @@ type Feedback = {
   progress?: string;
   sub?: string;
   unbound?: boolean;
+  /**
+   * Судьба записи на сервере. Привязка показывается сразу (рука уже тянется к
+   * следующей наклейке), но «сохранено» должно означать именно сохранено:
+   * наклейка уже на предмете, и незаписанная привязка обнаружится только на
+   * следующей инвентаризации.
+   */
+  state?: 'saving' | 'saved' | 'failed';
 };
 
 type Mode = 'audit' | 'bind';
@@ -76,6 +83,11 @@ export function InventoryScanModal({
   /** Что клеим в режиме оклейки. */
   const [batchKey, setBatchKey] = useState('');
   const [bindPlace, setBindPlace] = useState('');
+  const [bindQuery, setBindQuery] = useState('');
+  const [showUnits, setShowUnits] = useState(false);
+  /** Зелёная вспышка поверх кадра: видно, не глядя в текст. */
+  const [flash, setFlash] = useState(0);
+  const stripRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * Наклейки держим в своём состоянии, а не только в пропсах: при оклейке они
@@ -96,6 +108,58 @@ export function InventoryScanModal({
 
   const batches = useMemo(() => buildBatches(assets), [assets]);
   const batch = batches.find((b) => b.key === batchKey);
+
+  /**
+   * Порядок карточек в ленте оклейки — **замороженный**.
+   *
+   * Неоклеенное должно быть впереди: клеят по кругу, и листать мимо готового
+   * незачем. Но пересчитывать порядок на каждой наклейке нельзя — карточки
+   * уезжали бы из-под пальца ровно в тот момент, когда с ними работают.
+   * Поэтому «кто был готов на момент открытия» считается один раз.
+   */
+  const rankRef = useRef<Map<string, number> | null>(null);
+  if (rankRef.current === null && assets.length > 0) {
+    const boundIds = new Set(tags.filter((t) => t.assetId).map((t) => t.assetId));
+    rankRef.current = new Map(
+      buildBatches(assets).map((b) => [b.key, b.units.every((u) => boundIds.has(u.id)) ? 1 : 0])
+    );
+  }
+
+  const bindList = useMemo(() => {
+    const q = bindQuery.trim().toLowerCase();
+    const rank = (k: string) => rankRef.current?.get(k) ?? 0;
+    return batches
+      .filter((b) => !q || b.name.toLowerCase().includes(q) || b.units.some((u) => (u.invNumber || '').toLowerCase().includes(q)))
+      .sort((a, b) => rank(a.key) - rank(b.key));
+  }, [batches, bindQuery]);
+
+  /** Подвести ленту к карточке — после автоперехода на следующую партию. */
+  function scrollToBatch(key: string) {
+    const strip = stripRef.current;
+    const card = strip?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`);
+    if (!strip || !card) return;
+    strip.scrollTo({ left: card.offsetLeft - (strip.clientWidth - card.clientWidth) / 2, behavior: 'smooth' });
+  }
+
+  /** Что под центром ленты — то и клеим. Выбор пальцем, без нажатий. */
+  function onStripScroll() {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const mid = strip.scrollLeft + strip.clientWidth / 2;
+    let bestKey = '';
+    let bestDist = Infinity;
+    for (const el of Array.from(strip.children) as HTMLElement[]) {
+      const dist = Math.abs(el.offsetLeft + el.clientWidth / 2 - mid);
+      if (dist < bestDist) { bestDist = dist; bestKey = el.dataset.key || ''; }
+    }
+    if (bestKey && bestKey !== batchKey) { setBatchKey(bestKey); setLast(null); }
+  }
+
+  // Первая карточка выбирается сама: пустой выбор означал бы, что первый же
+  // скан уходит в «сначала выберите, что клеим».
+  useEffect(() => {
+    if (mode === 'bind' && !batchKey && bindList.length > 0) setBatchKey(bindList[0].key);
+  }, [mode, batchKey, bindList]);
 
   const activePlace = audit ? (audit.locationId || 'all') : placeId;
   const scope = useMemo(
@@ -241,12 +305,15 @@ export function InventoryScanModal({
     tagListRef.current = tagListRef.current.map((t) => (t.code === code ? { ...t, assetId: target.id } : t));
     setTagList(tagListRef.current);
     const done = batch.units.filter((u) => boundNow().has(u.id)).length;
-    setLast({
+    const shown: Feedback = {
       tone: 'ok',
       code,
       title: `${target.name} · ${unitLabel(target, assets) || target.invNumber}`,
       progress: `оклеено ${done} из ${batch.units.length}`,
-    });
+      state: 'saving',
+    };
+    setLast(shown);
+    setFlash((n) => n + 1);
     buzz(60);
 
     try {
@@ -256,12 +323,29 @@ export function InventoryScanModal({
         body: JSON.stringify({ code, asset_id: target.id, location_id: bindPlace || undefined }),
       });
       if (!res.ok) throw new Error();
+      // Позднее «сохранено» не должно затирать уже следующий скан.
+      setLast((cur) => (cur && cur.code === code ? { ...cur, state: 'saved' } : cur));
+
+      // Партия закончилась — сама подводим ленту к следующей неоклеенной,
+      // чтобы можно было просто идти дальше и клеить.
+      if (done === batch.units.length) {
+        const boundAll = boundNow();
+        // Ищем вперёд от текущей карточки и только потом по кругу: идут по
+        // залу по порядку, и отброс в начало ленты сбивал бы маршрут.
+        const from = bindList.findIndex((b) => b.key === batch.key);
+        const order = [...bindList.slice(from + 1), ...bindList.slice(0, Math.max(from, 0))];
+        const next = order.find((b) => b.units.some((u) => !boundAll.has(u.id)));
+        if (next) {
+          setBatchKey(next.key);
+          scrollToBatch(next.key);
+        }
+      }
     } catch {
       // Откатываем: наклейка физически уже наклеена, но в учёте её нет —
       // человек должен это увидеть сразу, а не при следующей инвентаризации.
       tagListRef.current = tagListRef.current.map((t) => (t.code === code ? { ...t, assetId: null } : t));
       setTagList(tagListRef.current);
-      setLast({ tone: 'bad', code, title: 'Не сохранилось — отсканируйте ещё раз' });
+      setLast({ tone: 'bad', code, title: 'Не сохранилось — отсканируйте ещё раз', state: 'failed' });
       buzz([120, 60, 120]);
     }
   }
@@ -270,7 +354,22 @@ export function InventoryScanModal({
   // состояние с тех пор меняется каждым сканом. Без ref он звал бы обработчик
   // из первого рендера и не видел ни отсканированного, ни привязанного.
   const handleRef = useRef<(raw: string) => void>(() => {});
-  handleRef.current = (raw: string) => { if (mode === 'bind') void registerBind(raw); else registerAudit(raw); };
+
+  /**
+   * ⚠️ Камера читает наклейку по десять раз в секунду, пока она в кадре.
+   * Без паузы сообщение «сохранено» тут же сменялось на «уже привязана» —
+   * то есть ровно в момент успеха человек видел предупреждение. Пауза даёт
+   * прочитать результат и убрать телефон.
+   */
+  const seenRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
+  const REPEAT_MS = 2500;
+
+  handleRef.current = (raw: string) => {
+    const now = Date.now();
+    if (raw === seenRef.current.code && now - seenRef.current.at < REPEAT_MS) return;
+    seenRef.current = { code: raw, at: now };
+    if (mode === 'bind') void registerBind(raw); else registerAudit(raw);
+  };
 
   /** Буфер обхода: связь в подвале пропадает, телефон садится. */
   useEffect(() => {
@@ -412,18 +511,29 @@ export function InventoryScanModal({
               {mode === 'bind' ? '🏷 Оклейка' : '📷 Инвентаризация'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              {mode === 'bind' ? 'Наклей и наведи камеру — привяжется само' : 'Наведите камеру на наклейку'}
+              {mode === 'bind' ? 'Наклей пустую наклейку и наведи камеру — привяжется само' : 'Наведите камеру на наклейку'}
             </div>
           </div>
           <button type="button" className="btn btn--sm" onClick={onClose}>✕</button>
         </div>
 
-        <div className="scan-sheet__video">
+        {/* В оклейке кадр крупнее: под ним только лента выбора, а наводить
+            наклейку с вытянутой руки по маленькому окошку неудобно. */}
+        <div className={`scan-sheet__video ${mode === 'bind' ? 'scan-sheet__video--big' : ''}`}>
           {supported ? (
             <>
               <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <canvas ref={canvasRef} style={{ display: 'none' }} />
               <div className="scan-reticle" />
+              {/* Вспышка на весь кадр — подтверждение, которое видно, даже
+                  когда телефон в вытянутой руке и текст не читается. */}
+              {flash > 0 && <div key={flash} className="scan-flash" />}
+              {mode === 'bind' && batch && (
+                <div className="scan-target">
+                  <div className="scan-target__name">{batch.name}</div>
+                  <div className="scan-target__count">{boundCount(batch)} из {batch.units.length}</div>
+                </div>
+              )}
             </>
           ) : (
             <div style={{ padding: 24, color: '#fff', textAlign: 'center' }}>
@@ -439,6 +549,10 @@ export function InventoryScanModal({
               <span style={{ fontSize: 18 }}>{last.tone === 'ok' ? '✅' : last.tone === 'dup' ? '🔁' : '⚠️'}</span>
               <div style={{ fontSize: 13, lineHeight: 1.4, flex: 1 }}>
                 <b style={{ fontFamily: 'monospace' }}>{last.code}</b> — {last.title}
+                {/* «Сохранено» появляется только после ответа сервера:
+                    наклейка уже на предмете, и обещать запись авансом нельзя. */}
+                {last.state === 'saving' && <span className="scan-state">сохраняю…</span>}
+                {last.state === 'saved' && <span className="scan-state scan-state--ok">✓ сохранено</span>}
                 {last.unbound && mode === 'audit' && (
                   <button type="button" className="btn btn--sm" style={{ marginLeft: 8 }} onClick={() => setBinding(last.code)}>
                     Привязать
@@ -473,14 +587,55 @@ export function InventoryScanModal({
 
           {mode === 'bind' ? (
             <>
-              <select className="select" value={batchKey} onChange={(e) => { setBatchKey(e.target.value); setLast(null); }}>
-                <option value="">Что клеим?</option>
-                {batches.map((b) => (
-                  <option key={b.key} value={b.key}>
-                    {b.name} — {boundCount(b)} из {b.units.length}
-                  </option>
-                ))}
-              </select>
+              {/* Лента вместо выпадающего списка: выбирают пальцем на ходу, а
+                  список из девяноста строк в системном `select` на телефоне —
+                  это прицельное попадание в строку высотой в палец. */}
+              <div className="bind-strip" ref={stripRef} onScroll={onStripScroll}>
+                {bindList.map((b) => {
+                  const done = boundCount(b);
+                  const full = done === b.units.length;
+                  return (
+                    <button
+                      key={b.key}
+                      type="button"
+                      data-key={b.key}
+                      className={`bind-card ${b.key === batchKey ? 'bind-card--on' : ''} ${full ? 'bind-card--done' : ''}`}
+                      onClick={() => { setBatchKey(b.key); setLast(null); scrollToBatch(b.key); }}
+                    >
+                      <div className="bind-card__name">{b.name}</div>
+                      <div className="bind-card__count">
+                        {full ? '✅ все оклеены' : <>{done} <span>из {b.units.length}</span></>}
+                      </div>
+                    </button>
+                  );
+                })}
+                {bindList.length === 0 && <div className="empty-state" style={{ margin: 'auto' }}>Ничего не найдено</div>}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', textAlign: 'center', marginTop: -4 }}>
+                ← листай, выбирай что клеишь · наклейка привяжется к ближайшему свободному экземпляру
+              </div>
+
+              <input
+                className="input"
+                value={bindQuery}
+                placeholder="Найти оборудование"
+                onChange={(e) => setBindQuery(e.target.value)}
+              />
+
+              {/* Код руками — когда наклейка помялась при поклейке или камера
+                  не берёт её под плёнкой. Без этого оклейка вставала целиком. */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input"
+                  value={manual}
+                  placeholder="Код наклейки, если не читается"
+                  onChange={(e) => setManual(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { handleRef.current(manual); setManual(''); } }}
+                />
+                <button type="button" className="btn btn--sm" onClick={() => { handleRef.current(manual); setManual(''); }}>
+                  Привязать
+                </button>
+              </div>
 
               {locations.length > 0 && (
                 <select className="select" value={bindPlace} onChange={(e) => setBindPlace(e.target.value)}>
@@ -491,23 +646,22 @@ export function InventoryScanModal({
 
               {batch && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Оклеено</span>
-                    <span style={{ fontSize: 20, fontWeight: 800 }}>
-                      {boundCount(batch)} <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>из {batch.units.length}</span>
-                    </span>
-                  </div>
-                  <div className="scan-missing">
-                    {batch.units.map((u) => (
-                      <div key={u.id} style={{ display: 'flex', gap: 8, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
-                        <b style={{ fontFamily: 'monospace' }}>{u.invNumber}</b>
-                        <span style={{ color: 'var(--text-muted)' }}>{unitLabel(u, assets)}</span>
-                        <span style={{ marginLeft: 'auto', color: tagByAsset.has(u.id) ? 'var(--success)' : 'var(--text-faint)' }}>
-                          {tagByAsset.get(u.id) || 'без наклейки'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <button type="button" className="btn btn--sm" onClick={() => setShowUnits((v) => !v)}>
+                    {showUnits ? 'Скрыть экземпляры' : `Экземпляры: ${boundCount(batch)} из ${batch.units.length}`}
+                  </button>
+                  {showUnits && (
+                    <div className="scan-missing">
+                      {batch.units.map((u) => (
+                        <div key={u.id} style={{ display: 'flex', gap: 8, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                          <b style={{ fontFamily: 'monospace' }}>{u.invNumber}</b>
+                          <span style={{ color: 'var(--text-muted)' }}>{unitLabel(u, assets)}</span>
+                          <span style={{ marginLeft: 'auto', color: tagByAsset.has(u.id) ? 'var(--success)' : 'var(--text-faint)' }}>
+                            {tagByAsset.get(u.id) || 'без наклейки'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </>

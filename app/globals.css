@@ -1404,6 +1404,79 @@ tr[data-today="true"] td:first-child {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
 }
+/* В оклейке кадр крупнее: под ним только лента выбора, а наводить наклейку
+   с вытянутой руки по маленькому окошку неудобно. */
+.scan-sheet__video--big { max-height: 50vh; }
+
+/* Подтверждение, которое видно, не читая текст: кадр коротко вспыхивает
+   зелёным. Ключ у элемента меняется на каждой привязке — анимация
+   перезапускается, даже если наклейки идут одна за другой. */
+.scan-flash {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 185, 129, 0.55);
+  pointer-events: none;
+  animation: scan-flash 550ms ease-out forwards;
+}
+@keyframes scan-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Что клеим — поверх кадра: в оклейке смотрят в камеру, а не в форму. */
+.scan-target {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 10px 14px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  pointer-events: none;
+}
+.scan-target__name { font-size: 15px; font-weight: 700; flex: 1; }
+.scan-target__count { font-size: 18px; font-weight: 800; }
+
+.scan-state { margin-left: 8px; font-size: 11px; color: var(--text-muted); }
+.scan-state--ok { color: var(--success, #059669); font-weight: 700; }
+
+/* Лента выбора: листается пальцем, карточка под центром — активная. */
+.bind-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* Боковые поля обязательны: карточка встаёт по центру, а без них первая и
+     последняя доехать до центра не могут и «прилипают» к краю. */
+  padding: 2px 14% 6px;
+  min-height: 76px;
+  scrollbar-width: none;
+}
+.bind-strip::-webkit-scrollbar { display: none; }
+.bind-card {
+  scroll-snap-align: center;
+  flex: 0 0 72%;
+  min-height: 66px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.bind-card--on { border-color: var(--accent); background: var(--accent-soft); }
+.bind-card--done { opacity: 0.55; }
+.bind-card__name { font-size: 14px; font-weight: 700; line-height: 1.25; }
+.bind-card__count { font-size: 17px; font-weight: 800; }
+.bind-card__count span { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
 .scan-feedback--ok  { background: rgba(16, 185, 129, 0.14); }
 .scan-feedback--dup { background: rgba(245, 158, 11, 0.16); }
 .scan-feedback--bad { background: rgba(239, 68, 68, 0.14); }
