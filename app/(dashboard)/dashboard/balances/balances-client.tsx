@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pagination } from '@/components/pagination';
 import { StackTable } from '@/components/stack-table';
 import { SortTh } from '@/components/sortable';
+import { useStores } from '@/lib/stores-client';
 
 type BalanceItem = {
   product?: { id?: string; name?: string; num?: string };
@@ -29,6 +30,15 @@ export function BalancesClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string>('');
+  /**
+   * Пользователь уже выбрал склад руками — автовыбор больше не вмешивается.
+   *
+   * ⚠️ Именно ref, а не состояние: `load()` вызывается один раз при монтировании
+   * и навсегда запоминает значение из своего замыкания. С обычным `useState`
+   * выбранный вручную склад всё равно перебивался, когда приходили остатки, —
+   * поймано на проверке.
+   */
+  const touchedRef = useRef(false);
   const [query, setQuery] = useState('');
 
   async function load(isRefresh = false) {
@@ -39,7 +49,10 @@ export function BalancesClient() {
       const json: ApiResp = await res.json();
       const arr = json.data || json.balances || [];
       setData(arr);
-      if (!selectedId && arr.length > 0) {
+      // Пришли остатки — показываем склад, где что-то есть. Проверяем именно
+      // «не трогал руками», а не «selectedId пустой»: до ответа там уже стоит
+      // первый склад из справочника, и прежнее условие никогда бы не сработало.
+      if (!touchedRef.current && arr.length > 0) {
         const first = arr.find((b) => (b.balanceItems?.length || 0) > 0) || arr[0];
         setSelectedId(first.storage?.id || '');
       }
@@ -54,10 +67,36 @@ export function BalancesClient() {
 
   useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
 
+
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 });
   const [page, setPage] = useState(1);
 
-  const stores = useMemo(() => data.map((b) => b.storage).filter((s): s is { id: string; name: string } => !!s?.id), [data]);
+  /**
+   * Список складов — из общего справочника, а не из ответа с остатками.
+   *
+   * ⚠️ Раньше он собирался из `/api/iiko/balances`, а это тяжёлый запрос: пока
+   * он шёл, выпадающий список стоял пустым и задизейбленным, хотя справочник
+   * уже лежал в кэше вкладки (`lib/stores-client.ts`, один запрос на все
+   * разделы). Склады из ответа с остатками добавляем следом — на случай, если
+   * там окажется склад, которого нет в справочнике.
+   */
+  const { stores: known } = useStores();
+  const stores = useMemo(() => {
+    const out: { id: string; name: string }[] = [];
+    const seen = new Set<string>();
+    for (const s of known) { if (!seen.has(s.id)) { seen.add(s.id); out.push(s); } }
+    for (const b of data) {
+      const s = b.storage;
+      if (s?.id && !seen.has(s.id)) { seen.add(s.id); out.push({ id: s.id, name: s.name || s.id }); }
+    }
+    return out;
+  }, [known, data]);
+
+  // Справочник приходит раньше остатков — сразу показываем первый склад,
+  // чтобы поле не стояло пустым несколько секунд.
+  useEffect(() => {
+    if (!selectedId && known.length > 0) setSelectedId(known[0].id);
+  }, [known, selectedId]);
   const selected = data.find((b) => b.storage?.id === selectedId);
   const rawItems = selected?.balanceItems || [];
   const filtered = useMemo(() => {
@@ -135,8 +174,8 @@ export function BalancesClient() {
         <div className="grid grid--2">
           <div className="field">
             <label className="field__label">Склад</label>
-            <select className="select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} disabled={stores.length === 0}>
-              {stores.length === 0 && <option value="">Нет данных</option>}
+            <select className="select" value={selectedId} onChange={(e) => { touchedRef.current = true; setSelectedId(e.target.value); }} disabled={stores.length === 0}>
+              {stores.length === 0 && <option value="">{loading ? 'Загрузка…' : 'Нет данных'}</option>}
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
