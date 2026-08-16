@@ -215,6 +215,25 @@ export function AssetsClient() {
     }
   }
 
+  /**
+   * Дописать экземпляры в уже разбитую партию: разбили на 5, а их шесть.
+   * Заводить шестой отдельной карточкой нельзя — у него будет свой номер, он
+   * окажется вне партии, и обход посчитает его чужим предметом.
+   */
+  async function addUnits(k: Kind) {
+    const raw = prompt(`Сколько экземпляров дописать к «${k.name}»? Сейчас в партии ${k.units.length}.`, '1');
+    if (raw === null) return;
+    const add = parseInt(raw, 10);
+    if (!Number.isFinite(add) || add < 1) return setMsg({ ok: false, text: 'Нужно число не меньше 1' });
+    const res = await fetch('/api/assets/split', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: k.head.id, add }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setMsg({ ok: res.ok, text: res.ok ? json.message : json.error || 'Не удалось дописать' });
+    await load();
+  }
+
   async function split(a: Asset) {
     if (!confirm(`Разбить «${a.name}» на ${a.quantity} экземпляров? У каждого будет своя наклейка. Обратно не схлопнуть.`)) return;
     const res = await fetch('/api/assets/split', {
@@ -388,6 +407,11 @@ export function AssetsClient() {
                     {(k.head.quantity || 1) > 1 && !many && (
                       <button type="button" className="btn btn--sm" onClick={() => split(k.head)}>
                         ✂️ Разбить на {k.head.quantity} экземпляров
+                      </button>
+                    )}
+                    {many && (
+                      <button type="button" className="btn btn--sm" onClick={() => addUnits(k)}>
+                        ➕ Дописать экземпляр
                       </button>
                     )}
 

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
-import { baseInvNumber, unitInvNumber } from '@/lib/inv-number';
+import { baseInvNumber, unitInvNumber, unitSuffix } from '@/lib/inv-number';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
 
   const [asset] = await db.select().from(schema.assets).where(eq(schema.assets.id, id));
   if (!asset) return Response.json({ error: 'Позиция не найдена' }, { status: 404 });
+
+  // Досчитать партию: разбили на 5, а их оказалось 6.
+  if (b?.add) return addToBatch(asset, parseInt(String(b.add), 10) || 1, session);
 
   const n = parseInt(String(b?.count ?? asset.quantity ?? 0), 10);
   if (!Number.isFinite(n) || n < 2) return Response.json({ error: 'Количество должно быть 2 или больше' }, { status: 400 });
@@ -101,5 +104,88 @@ export async function POST(req: Request) {
     success: true,
     count: created.length + 1,
     message: `«${asset.name}» разбит на ${n} экземпляров — теперь у каждого своя наклейка`,
+  });
+}
+
+/**
+ * Дописать экземпляры в уже разбитую партию.
+ *
+ * Обычный случай: разбили на 5, пришли клеить — а их шесть. Раньше выхода не
+ * было: разбивка отвечала «эта позиция уже разбита», и оставалось заводить
+ * шестой предмет отдельной карточкой — с другим номером, вне партии, и обход
+ * считал бы его чужим.
+ *
+ * ⚠️ Стоимость **перераспределяется по всей партии**, а не берётся с потолка:
+ * сумма по карточкам обязана остаться прежней. Шестой стол не появился из
+ * воздуха — его стоимость уже сидела в тех же деньгах, просто раскладывали их
+ * на пятерых. Остаток от округления, как и при разбивке, уходит последнему.
+ */
+async function addToBatch(
+  asset: typeof schema.assets.$inferSelect,
+  add: number,
+  session: { tgId: number | null; name: string }
+) {
+  if (!Number.isFinite(add) || add < 1) return Response.json({ error: 'Сколько экземпляров добавить?' }, { status: 400 });
+
+  const base = baseInvNumber(asset.invNumber);
+  const all = (await db.select().from(schema.assets))
+    .filter((a) => baseInvNumber(a.invNumber) === base && a.name === asset.name);
+  if (all.length === 0) return Response.json({ error: 'Партия не найдена' }, { status: 404 });
+
+  const total = all.length + add;
+  if (total > MAX_UNITS) return Response.json({ error: `В партии не может быть больше ${MAX_UNITS} штук` }, { status: 400 });
+
+  const sum = all.reduce((s, a) => s + (Number(a.initialCost) || 0), 0);
+  const per = Math.floor((sum / total) * 100) / 100;
+  const lastCost = Math.round((sum - per * (total - 1)) * 100) / 100;
+
+  // Индексы могли пойти не подряд (карточку удаляли) — считаем от максимума,
+  // иначе новый экземпляр занял бы номер, который уже печатали на наклейке.
+  const maxIndex = all.reduce((m, a) => Math.max(m, unitSuffix(a.invNumber) ?? 0), 0);
+
+  const rest = Array.from({ length: add }, (_, k) => {
+    const i = maxIndex + k + 1;
+    return {
+      invNumber: unitInvNumber(base, i, total),
+      name: asset.name,
+      category: asset.category || 'Оборудование',
+      location: asset.location || '',
+      locationId: asset.locationId,
+      responsiblePerson: asset.responsiblePerson || '',
+      quantity: 1,
+      initialCost: String(i === total ? lastCost : per),
+      commissioningDate: asset.commissioningDate,
+      status: asset.status || 'in_use',
+      serialNumber: asset.serialNumber || '',
+      notes: `Экземпляр ${i} из ${total}. Дописан к партии ${base}.`,
+      photoUrl: asset.photoUrl || '',
+      source: asset.source,
+    };
+  });
+
+  const created = await db.insert(schema.assets).values(rest).returning({ invNumber: schema.assets.invNumber });
+
+  // Стоимость у старых карточек тоже пересчитываем — иначе сумма партии
+  // выросла бы на пустом месте.
+  for (const a of all) {
+    const i = unitSuffix(a.invNumber) ?? 0;
+    await db.update(schema.assets)
+      .set({ initialCost: String(i === total ? lastCost : per), updatedAt: new Date() })
+      .where(eq(schema.assets.id, a.id));
+  }
+
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length > 0) {
+    await db.insert(schema.botActions).values({
+      filialId: filialIds[0], tgId: session.tgId, userName: session.name,
+      actionType: 'asset_split_add', documentNumber: base,
+      details: { name: asset.name, added: add, total, total_cost: sum },
+    });
+  }
+
+  return Response.json({
+    success: true,
+    count: created.length,
+    message: `Добавлено: ${created.map((c) => c.invNumber).join(', ')}. В партии теперь ${total} шт, стоимость разложена заново — сумма не изменилась.`,
   });
 }
