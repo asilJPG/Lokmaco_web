@@ -176,6 +176,9 @@ export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: 
                 aria-expanded={expanded}
               >
                 <span style={{ flex: 1, textAlign: 'left' }}>{group.title}</span>
+                {/* Сколько разделов спрятано: свёрнутая группа без этого
+                    выглядит пустой, а не свёрнутой. */}
+                {!expanded && <span className="app-sidebar__count">{items.length}</span>}
                 <span className="app-sidebar__chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
               </button>
             )}

@@ -55,17 +55,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
         <FilialSwitcher filials={filials} current={current} allowAll={allowAll} />
         <SidebarNav role={session.role} badges={{ inbox: inboxCount }} />
-        <div className="cmdk-hint" data-print-hide style={{
-          padding: '4px 8px 6px', fontSize: 10, color: 'var(--text-faint)',
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <span>Быстрый поиск</span>
-          <kbd style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', background: 'var(--surface-muted)' }}>⌘K</kbd>
+        <div className="cmdk-hint" data-print-hide>
+          <span>🔍 Быстрый поиск</span>
+          <kbd>⌘K</kbd>
         </div>
         <div className="app-sidebar__user">
-          <div>
+          <span className="app-sidebar__avatar" aria-hidden="true">{session.name.trim().charAt(0).toUpperCase()}</span>
+          <div className="app-sidebar__who">
             <div className="app-sidebar__user-name">{session.name}</div>
-            <div>{session.role}</div>
+            <div className="app-sidebar__user-role">{session.role}</div>
           </div>
           <LogoutButton />
         </div>
