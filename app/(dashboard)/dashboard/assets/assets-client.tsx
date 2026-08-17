@@ -43,9 +43,10 @@ export function AssetsClient() {
   /**
    * Оклейка одного конкретного экземпляра из списка.
    *
-   * Так это делали на старом сайте, и так удобнее, когда предмет один: предмет
-   * выбирают глазами, а камера нужна только чтобы прочитать код наклейки.
-   * Обход по партии («наклеил — иди дальше») живёт рядом, отдельной кнопкой.
+   * ⚠️ Это **единственный** путь к оклейке. Была ещё общая кнопка «Оклейка» с
+   * лентой выбора оборудования под камерой — убрана 13.08.2026 по просьбе:
+   * ею не пользовались, потому что предмет всё равно ищут в списке. Порядок
+   * теперь один: нашёл в списке → 📷 → навёл на пустую наклейку.
    */
   const [bindUnit, setBindUnit] = useState<Asset | null>(null);
   const [sheet, setSheet] = useState<'tags' | 'audits' | 'places' | null>(null);
@@ -282,10 +283,9 @@ export function AssetsClient() {
     <div className="grid">
       {msg && <div className={`banner ${msg.ok ? 'banner--success' : 'banner--error'}`}>{msg.text}</div>}
 
-      {/* Обход и оклейка — то, зачем сюда заходят с телефона. */}
+      {/* Обход — то, зачем сюда заходят с телефона. Оклейка живёт в строках списка. */}
       <div className="asset-actions">
         <button type="button" className="btn btn--primary asset-actions__main" onClick={() => setScanMode('audit')}>📷 Обход</button>
-        <button type="button" className="btn asset-actions__main" onClick={() => setScanMode('bind')}>🏷 Оклейка</button>
       </div>
 
       {/* Сводка одной строкой. Три отдельные плитки занимали на телефоне целый
