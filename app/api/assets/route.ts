@@ -2,6 +2,7 @@ import { eq, desc, inArray } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
+import { baseInvNumber, unitSuffix } from '@/lib/inv-number';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,7 +153,43 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return Response.json({ error: 'Missing asset id' }, { status: 400 });
 
+  const [gone] = await db.select().from(schema.assets).where(eq(schema.assets.id, id));
   await db.delete(schema.assets).where(eq(schema.assets.id, id));
-  await logAssetAction('asset_delete', id, { status: 'deleted' }, session);
-  return Response.json({ success: true });
+  await logAssetAction('asset_delete', id, { status: 'deleted', inv_number: gone?.invNumber }, session);
+
+  // Удалили лишний экземпляр партии — его стоимость возвращается остальным.
+  // Иначе разбивка на шесть с последующим удалением шестого тихо уменьшала бы
+  // стоимость ОС на балансе: сумма по карточкам обязана сходиться с исходной,
+  // ровно как при разбивке и дописывании.
+  const spread = gone ? await spreadCostOverBatch(gone) : null;
+  return Response.json({ success: true, ...(spread ? { rebalanced: spread } : {}) });
+}
+
+/**
+ * Разложить стоимость удалённого экземпляра по оставшимся в партии.
+ *
+ * Возвращает, сколько карточек пересчитано, или null — если удаляли не
+ * экземпляр партии либо партия закончилась совсем.
+ */
+async function spreadCostOverBatch(gone: typeof schema.assets.$inferSelect): Promise<number | null> {
+  if (unitSuffix(gone.invNumber) === null) return null;
+
+  const base = baseInvNumber(gone.invNumber);
+  const rest = (await db.select().from(schema.assets))
+    .filter((a) => baseInvNumber(a.invNumber) === base && a.name === gone.name);
+  if (rest.length === 0) return null;
+
+  const sum = rest.reduce((s, a) => s + (Number(a.initialCost) || 0), 0) + (Number(gone.initialCost) || 0);
+  const per = Math.floor((sum / rest.length) * 100) / 100;
+  const lastCost = Math.round((sum - per * (rest.length - 1)) * 100) / 100;
+
+  // Остаток от округления — последнему по номеру, как и везде.
+  const maxIndex = rest.reduce((m, a) => Math.max(m, unitSuffix(a.invNumber) ?? 0), 0);
+  for (const a of rest) {
+    const isLast = (unitSuffix(a.invNumber) ?? 0) === maxIndex;
+    await db.update(schema.assets)
+      .set({ initialCost: String(isLast ? lastCost : per), updatedAt: new Date() })
+      .where(eq(schema.assets.id, a.id));
+  }
+  return rest.length;
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { canAccess, type Section } from '@/lib/access';
 
@@ -14,17 +13,7 @@ type Item = {
   section: Section;
 };
 
-type Group = {
-  title?: string;
-  items: Item[];
-  /**
-   * Раскрыта при первом заходе. Так помечены группы ежедневной работы: за
-   * месяц из v2 сделали 546 перемещений, 271 приход и 29 закрытий смены —
-   * это «Склад» и «Смена». Аналитику и настройки открывают изредка, им
-   * незачем занимать экран постоянно.
-   */
-  defaultOpen?: boolean;
-};
+type Group = { title?: string; items: Item[] };
 
 /**
  * Grouped by how the day actually runs — what a cashier touches every shift
@@ -40,7 +29,6 @@ const GROUPS: Group[] = [
   },
   {
     title: 'Смена',
-    defaultOpen: true,
     items: [
       { href: '/dashboard/cashier', label: 'Закрыть смену', icon: '🧾', section: 'cashier' },
       { href: '/dashboard/inbox', label: 'Подтверждения', icon: '📨', badgeKey: 'inbox', section: 'inbox' },
@@ -50,7 +38,6 @@ const GROUPS: Group[] = [
   },
   {
     title: 'Склад',
-    defaultOpen: true,
     items: [
       { href: '/dashboard/balances', label: 'Остатки', icon: '📦', section: 'balances' },
       { href: '/dashboard/transfer', label: 'Перемещение', icon: '🔄', section: 'transfer' },
@@ -94,45 +81,11 @@ const GROUPS: Group[] = [
   },
 ];
 
-const OPEN_KEY = 'lokmaco_nav_open';
-
 export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: number } }) {
   const path = usePathname();
   const sp = useSearchParams();
 
   const currentTab = sp?.get('tab');
-
-  /**
-   * Свёрнутые группы.
-   *
-   * ⚠️ Даже после уменьшения шрифта дерево админа — 29 пунктов, ~985px, а на
-   * ноутбуке под меню остаётся ~580px: треть разделов пряталась за прокруткой.
-   * Поэтому по умолчанию раскрыты только группы ежедневной работы (`defaultOpen`)
-   * и та, в которой сейчас находишься, — остальные в одном клике, а меню
-   * помещается целиком.
-   *
-   * Выбор запоминается в localStorage: у кого экран большой, тот раскроет всё
-   * один раз и забудет. Читаем в эффекте, а не при первом рендере, иначе
-   * разметка на сервере и в браузере разойдётся.
-   */
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(OPEN_KEY);
-      if (raw) setOpen(JSON.parse(raw) as Record<string, boolean>);
-    } catch {
-      // повреждённое значение — не повод ломать меню
-    }
-  }, []);
-
-  function toggle(title: string) {
-    setOpen((prev) => {
-      const group = GROUPS.find((g) => g.title === title);
-      const next = { ...prev, [title]: !(prev[title] ?? !!group?.defaultOpen) };
-      try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
-      return next;
-    });
-  }
 
   function isActive(item: Item): boolean {
     const [href, query] = item.href.split('?');
@@ -150,39 +103,15 @@ export function SidebarNav({ role, badges }: { role: string; badges?: { inbox?: 
     return canAccess(role, item.section);
   }
 
-  /** Группа, в которой сейчас находишься, раскрыта всегда — иначе после
-   *  перехода активный пункт оказался бы спрятан от самого себя. */
-  function hasActive(group: Group): boolean {
-    return group.items.some((it) => allowed(it) && isActive(it));
-  }
-
-  function isOpen(group: Group): boolean {
-    return open[group.title!] ?? !!group.defaultOpen;
-  }
-
   return (
     <nav className="app-sidebar__nav app-sidebar__nav--desktop">
       {GROUPS.map((group, gi) => {
         const items = group.items.filter(allowed);
         if (items.length === 0) return null;
-        const expanded = !group.title || hasActive(group) || isOpen(group);
         return (
           <div className="app-sidebar__group" key={group.title || gi}>
-            {group.title && (
-              <button
-                type="button"
-                className="app-sidebar__group-title"
-                onClick={() => toggle(group.title!)}
-                aria-expanded={expanded}
-              >
-                <span style={{ flex: 1, textAlign: 'left' }}>{group.title}</span>
-                {/* Сколько разделов спрятано: свёрнутая группа без этого
-                    выглядит пустой, а не свёрнутой. */}
-                {!expanded && <span className="app-sidebar__count">{items.length}</span>}
-                <span className="app-sidebar__chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-              </button>
-            )}
-            {expanded && items.map((it) => {
+            {group.title && <div className="app-sidebar__group-title">{group.title}</div>}
+            {items.map((it) => {
               const badge = it.badgeKey && badges?.[it.badgeKey];
               return (
                 <Link

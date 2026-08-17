@@ -85,6 +85,15 @@ export function InventoryScanModal({
   const [saving, setSaving] = useState(false);
   const [binding, setBinding] = useState<string | null>(null);
   const [audit, setAudit] = useState<{ id: string; locationId: string | null } | null>(null);
+  /**
+   * Какая камера снимает. Задняя по умолчанию — ей и сканируют. Фронтальная
+   * нужна, когда наклейка в неудобном месте: её видно на экране, пока тянешься
+   * рукой за шкаф. Переключение пересоздаёт поток, поэтому эффект камеры от
+   * этого состояния и зависит.
+   */
+  const [facing, setFacing] = useState<'environment' | 'user'>('environment');
+  const [torchOn, setTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
   const [starting, setStarting] = useState(false);
 
   /** Что клеим в режиме оклейки. */
@@ -492,9 +501,19 @@ export function InventoryScanModal({
           };
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // ⚠️ `exact` не ставим: на ноутбуке и на планшете задней камеры может
+        // не быть вовсе, и с `exact` getUserMedia падает вместо того, чтобы
+        // взять единственную.
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
+
+        // Фонарик есть только у задней камеры и только в Chromium — кнопку
+        // показываем, когда трек действительно это умеет.
+        const track = stream.getVideoTracks()[0];
+        const caps = (track?.getCapabilities?.() || {}) as { torch?: boolean };
+        setHasTorch(Boolean(caps.torch));
+        setTorchOn(false);
         const video = videoRef.current;
         if (!video) return;
         video.srcObject = stream;
@@ -527,7 +546,20 @@ export function InventoryScanModal({
       streamRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [facing]);
+
+  /** Фонарик. Гасить его при закрытии не нужно — трек останавливается целиком. */
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      // `torch` пока вне типов MediaTrackConstraintSet — отсюда приведение.
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] } as unknown as MediaTrackConstraints);
+      setTorchOn((v) => !v);
+    } catch {
+      setHasTorch(false);
+    }
+  }
 
   const pinnedUnit = pinnedId ? byId.get(pinnedId) || null : null;
   const scannedInScope = scope.filter((a) => scannedIds.has(a.id)).length;
@@ -553,7 +585,34 @@ export function InventoryScanModal({
         <div className={`scan-sheet__video ${mode === 'bind' ? 'scan-sheet__video--big' : ''}`}>
           {supported ? (
             <>
-              <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {/* Фронталку зеркалим: иначе рука на экране едет не в ту сторону,
+                  и навести наклейку в рамку почти невозможно. */}
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                style={{ width: '100%', height: '100%', objectFit: 'cover', transform: facing === 'user' ? 'scaleX(-1)' : undefined }}
+              />
+              <div className="scan-cam-controls">
+                <button
+                  type="button"
+                  className="scan-cam-btn"
+                  onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))}
+                  title={facing === 'environment' ? 'Фронтальная камера' : 'Основная камера'}
+                >
+                  🔄
+                </button>
+                {hasTorch && (
+                  <button
+                    type="button"
+                    className={`scan-cam-btn ${torchOn ? 'is-on' : ''}`}
+                    onClick={toggleTorch}
+                    title="Фонарик"
+                  >
+                    🔦
+                  </button>
+                )}
+              </div>
               <canvas ref={canvasRef} style={{ display: 'none' }} />
               <div className="scan-reticle" />
               {/* Вспышка на весь кадр — подтверждение, которое видно, даже

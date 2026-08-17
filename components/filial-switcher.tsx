@@ -31,16 +31,16 @@ export function FilialSwitcher({ filials, current, allowAll }: { filials: Filial
   }
 
   return (
-    <div className="filial-switcher" style={{ padding: '0 var(--space-2) var(--space-2)' }}>
-      <label style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Филиал</label>
+    <div className="filial-switcher" style={{ padding: '0 var(--space-3) var(--space-3)' }}>
+      <label style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Филиал</label>
       <select
         value={String(current)}
         onChange={(e) => switchTo(e.target.value)}
         disabled={busy}
         style={{
-          marginTop: 4,
+          marginTop: 6,
           width: '100%',
-          padding: '5px 8px',
+          padding: '8px 10px',
           background: 'var(--surface-muted)',
           color: 'var(--text)',
           border: '1px solid var(--border)',
