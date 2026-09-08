@@ -166,9 +166,18 @@ export const assetAudits = pgTable('asset_audits', {
   startedBy: text('started_by').notNull().default(''),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
+  /**
+   * Дата документа — не то же самое, что дата закрытия: обход часто закрывают
+   * на следующий день, а в акте стоит дата инвентаризации.
+   */
+  actDate: date('act_date'),
+  /** Кто проводит. Обходит кладовщик, а отвечает МОЛ — это разные люди. */
+  performedBy: text('performed_by').notNull().default(''),
   /** Фиксируются в момент закрытия — это и есть акт. */
   scanned: jsonb('scanned').notNull().default([]),
   missing: jsonb('missing').notNull().default([]),
+  /** Излишки: нашли то, чего в этом месте числиться не должно. */
+  surplus: jsonb('surplus').notNull().default([]),
   note: text('note').notNull().default(''),
 }, (t) => ({
   byFilial: index('asset_audits_filial_idx').on(t.filialId, t.startedAt),

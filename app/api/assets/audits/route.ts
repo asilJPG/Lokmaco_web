@@ -45,10 +45,14 @@ export async function POST(req: Request) {
   if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
 
   const b = await req.json().catch(() => ({}));
+  // Дата документа и ответственный приходят из формы: обход закрывают и на
+  // следующий день, а проводит его не обязательно тот, кто держит телефон.
   const [row] = await db.insert(schema.assetAudits).values({
     filialId: filialIds[0],
     locationId: b?.location_id || null,
     startedBy: session.name,
+    actDate: typeof b?.act_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.act_date) ? b.act_date : null,
+    performedBy: String(b?.performed_by || session.name).trim().slice(0, 120),
   }).returning();
 
   return Response.json({ success: true, audit: row });
@@ -84,9 +88,24 @@ export async function PATCH(req: Request) {
   ));
   const scannedSet = new Set(scannedIds);
 
-  const snapshot = (a: typeof all[number]) => ({ id: a.id, inv_number: a.invNumber, name: a.name });
+  /**
+   * ⚠️ Снимок несёт ещё стоимость и код iiko: акт подписывают и хранят, а
+   * карточка потом меняется — стоимость правят, предмет переносят. Пересчёт
+   * акта «по текущим данным» через месяц дал бы другие суммы.
+   */
+  const snapshot = (a: typeof all[number]) => ({
+    id: a.id,
+    inv_number: a.invNumber,
+    name: a.name,
+    code: a.serialNumber || '',
+    cost: Number(a.initialCost) || 0,
+  });
   const scanned = scope.filter((a) => scannedSet.has(a.id)).map(snapshot);
   const missing = scope.filter((a) => !scannedSet.has(a.id)).map(snapshot);
+  // Излишки: отсканировали то, чего в этом месте числиться не должно. Без них
+  // акт односторонний — только недостача, как будто найденное «не считается».
+  const scopeIds = new Set(scope.map((a) => a.id));
+  const surplus = all.filter((a) => scannedSet.has(a.id) && !scopeIds.has(a.id)).map(snapshot);
 
   const now = new Date();
   if (scannedIds.length > 0) {
@@ -96,7 +115,7 @@ export async function PATCH(req: Request) {
   }
 
   await db.update(schema.assetAudits)
-    .set({ finishedAt: now, scanned, missing, note: String(b?.note || '') })
+    .set({ finishedAt: now, scanned, missing, surplus, note: String(b?.note || '') })
     .where(eq(schema.assetAudits.id, id));
 
   await db.insert(schema.botActions).values({
@@ -105,10 +124,10 @@ export async function PATCH(req: Request) {
     userName: session.name,
     actionType: 'asset_audit',
     documentNumber: id,
-    details: { scanned: scanned.length, missing: missing.length, location_id: audit.locationId },
+    details: { scanned: scanned.length, missing: missing.length, surplus: surplus.length, location_id: audit.locationId },
   });
 
-  return Response.json({ success: true, scanned: scanned.length, missing: missing.length });
+  return Response.json({ success: true, id, scanned: scanned.length, missing: missing.length, surplus: surplus.length });
 }
 
 /** Бросить незакрытый обход — например начатый по ошибке не в том месте. */

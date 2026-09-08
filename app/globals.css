@@ -1614,6 +1614,39 @@ tr[data-today="true"] td:first-child {
 .row-sheet__item:hover { background: var(--accent-soft); }
 .row-sheet__item--danger { color: var(--danger, #dc2626); }
 .row-sheet__item span { font-size: 17px; width: 22px; text-align: center; }
+
+/* Акт инвентаризации: итоги над таблицей — первое, что ищут глазами
+   («сошлось или нет»), а уже потом смотрят строки. */
+.act-sheet { max-width: 860px; }
+/* Дата и ответственный — в одну строку: это шапка документа, а не форма. */
+.act-head { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .act-head { grid-template-columns: 1fr; } }
+.act-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.act-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  font-size: 13px;
+}
+.act-total span { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.act-total b { font-size: 14px; }
+.act-total--bad { background: rgba(239, 68, 68, .12); }
+.act-total--bad b { color: var(--danger, #dc2626); }
+.act-total--warn { background: rgba(245, 158, 11, .14); }
+.act-total--ok { background: rgba(16, 185, 129, .12); }
+.act-row--diff td { background: rgba(239, 68, 68, .07); }
+@media (max-width: 560px) {
+  .act-totals { grid-template-columns: 1fr; }
+}
 /* ---- Что прячем и в каком порядке, когда экрана не хватает ----
    Порядок обратный ценности: сначала уходит дата обхода, потом место с МОЛ,
    потом инвентарный номер. Всё спрятанное перетекает второй строкой под

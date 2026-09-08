@@ -90,6 +90,15 @@ export function InventoryScanModal({
   const [binding, setBinding] = useState<string | null>(null);
   const [audit, setAudit] = useState<{ id: string; locationId: string | null } | null>(null);
   /**
+   * Шапка акта: дата документа и кто проводит.
+   *
+   * Спрашиваем **до** обхода, как в iiko: обход закрывают и на следующий день,
+   * а проводит его не обязательно тот, кто держит телефон, — обходит кладовщик,
+   * отвечает МОЛ.
+   */
+  const [actDate, setActDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [performedBy, setPerformedBy] = useState('');
+  /**
    * Какая камера снимает. Задняя по умолчанию — ей и сканируют. Фронтальная
    * нужна, когда наклейка в неудобном месте: её видно на экране, пока тянешься
    * рукой за шкаф. Переключение пересоздаёт поток, поэтому эффект камеры от
@@ -454,7 +463,11 @@ export function InventoryScanModal({
       const res = await fetch('/api/assets/audits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location_id: placeId === 'all' ? null : placeId }),
+        body: JSON.stringify({
+          location_id: placeId === 'all' ? null : placeId,
+          act_date: actDate,
+          performed_by: performedBy.trim(),
+        }),
       });
       const json = await res.json();
       if (json.audit) setAudit({ id: json.audit.id, locationId: json.audit.locationId });
@@ -819,6 +832,27 @@ export function InventoryScanModal({
             </>
           ) : (
             <>
+              {/* Шапка акта. Показывается только до начала: после старта дата и
+                  ответственный уже записаны в документ, и менять их на ходу
+                  значит подменять акт. */}
+              {!audit && (
+                <div className="act-head">
+                  <div className="field">
+                    <label className="field__label">Дата инвентаризации</label>
+                    <input type="date" className="input" value={actDate} onChange={(e) => setActDate(e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label className="field__label">Кто проводит</label>
+                    <input
+                      className="input"
+                      value={performedBy}
+                      placeholder="ФИО, если не вы"
+                      onChange={(e) => setPerformedBy(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               {locations.length > 0 && !audit && (
                 <select className="select" value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
                   <option value="all">Всё оборудование ({assets.length})</option>
@@ -896,7 +930,7 @@ export function InventoryScanModal({
             </button>
           ) : (
             <button type="button" className="btn btn--primary" disabled={starting} onClick={startAudit}>
-              {starting ? 'Начинаю…' : '▶️ Начать обход'}
+              {starting ? 'Начинаю…' : '▶️ Начать инвентаризацию'}
             </button>
           )}
         </div>

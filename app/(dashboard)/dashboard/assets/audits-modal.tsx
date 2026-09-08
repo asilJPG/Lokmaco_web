@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { AssetAudit, AssetLocation } from '@/db/schema';
+import type { AssetLocation } from '@/db/schema';
+import type { Act } from './act-modal';
 
-type Snapshot = { id: string; inv_number: string; name: string };
-type Audit = Omit<AssetAudit, 'scanned' | 'missing'> & { scanned: Snapshot[]; missing: Snapshot[] };
+type Audit = Act;
 
 const dt = (v: string | Date | null) => (v ? new Date(v).toLocaleString('ru-RU') : '—');
 
@@ -14,7 +14,11 @@ const dt = (v: string | Date | null) => (v ? new Date(v).toLocaleString('ru-RU')
  * Здесь живёт ответ на главный вопрос: чего не нашли и когда. Раньше этот
  * список существовал только в браузере до нажатия кнопки.
  */
-export function AuditsModal({ locations, onClose }: { locations: AssetLocation[]; onClose: () => void }) {
+export function AuditsModal({ locations, onClose, onOpenAct }: {
+  locations: AssetLocation[];
+  onClose: () => void;
+  onOpenAct: (a: Act) => void;
+}) {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -67,7 +71,7 @@ export function AuditsModal({ locations, onClose }: { locations: AssetLocation[]
                 <div>
                   <div style={{ fontWeight: 700 }}>{placeName(a.locationId)}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {a.startedBy} · {dt(a.startedAt)}
+                    {a.performedBy || a.startedBy} · {a.actDate ? new Date(a.actDate).toLocaleDateString('ru-RU') : dt(a.startedAt)}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 13 }}>
@@ -77,6 +81,9 @@ export function AuditsModal({ locations, onClose }: { locations: AssetLocation[]
                       <div style={{ color: a.missing.length ? 'var(--danger)' : 'var(--text-muted)' }}>
                         {a.missing.length ? `⚠️ не нашли ${a.missing.length}` : 'всё на месте'}
                       </div>
+                      {(a.surplus?.length || 0) > 0 && (
+                        <div style={{ color: 'var(--warning)' }}>излишки {a.surplus.length}</div>
+                      )}
                     </>
                   ) : (
                     <div style={{ color: 'var(--warning)' }}>не закрыт</div>
@@ -89,7 +96,11 @@ export function AuditsModal({ locations, onClose }: { locations: AssetLocation[]
                   <button type="button" className="btn btn--sm" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
                     {openId === a.id ? 'Свернуть' : 'Показать позиции'}
                   </button>
-                  <button type="button" className="btn btn--sm" onClick={() => exportCsv(a)}>📥 Акт (CSV)</button>
+                  {/* Акт — отдельным окном: в нём и недостача, и излишки, и
+                      книжный остаток. Список «показать позиции» остаётся для
+                      быстрого взгляда, не открывая документ. */}
+                  <button type="button" className="btn btn--sm btn--primary" onClick={() => onOpenAct(a)}>📄 Акт</button>
+                  <button type="button" className="btn btn--sm" onClick={() => exportCsv(a)}>📥 CSV</button>
                 </div>
               )}
 

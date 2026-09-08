@@ -6,6 +6,7 @@ import { AssetFormModal, QrStickerModal, STATUS, emptyForm, toForm, type AssetFo
 import { InventoryScanModal } from './inventory-scan';
 import { TagsModal } from './tags-modal';
 import { AuditsModal } from './audits-modal';
+import { ActModal, type Act } from './act-modal';
 import { LocationsModal } from './locations-modal';
 import { baseInvNumber, unitLabel } from '@/lib/inv-number';
 import { SortTh, useSort } from '@/components/sortable';
@@ -82,6 +83,8 @@ export function AssetsClient() {
    * (в частности, «Удалить» не окажется под пальцем рядом с «Изменить»).
    */
   const [rowMenu, setRowMenu] = useState<Asset | null>(null);
+  /** Открытый акт инвентаризации. */
+  const [act, setAct] = useState<Act | null>(null);
   const [sheet, setSheet] = useState<'tags' | 'audits' | 'places' | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -257,12 +260,28 @@ export function AssetsClient() {
     setScanMode(null);
     if (!res.ok) return setMsg({ ok: false, text: json.error || 'Не удалось закрыть обход' });
     setMsg({
-      ok: json.missing === 0,
-      text: json.missing === 0
-        ? `Обход закрыт: всё на месте, ${json.scanned} шт.`
-        : `Обход закрыт: нашли ${json.scanned}, не нашли ${json.missing} — список в «Обходах».`,
+      ok: json.missing === 0 && json.surplus === 0,
+      text: json.missing === 0 && json.surplus === 0
+        ? `Инвентаризация закрыта: всё сошлось, ${json.scanned} шт.`
+        : `Инвентаризация закрыта: нашли ${json.scanned}, недостача ${json.missing}, излишки ${json.surplus || 0}.`,
     });
+    // Акт открываем сразу: инвентаризацию проводят ради него, и искать его
+    // потом в списке обходов — лишний шаг ровно в тот момент, когда результат
+    // и нужен.
+    await openAct(auditId);
     await load();
+  }
+
+  /** Достать закрытый акт и показать его. */
+  async function openAct(id: string) {
+    try {
+      const res = await fetch('/api/assets/audits');
+      const json = await res.json();
+      const found = (json.audits || []).find((a: Act) => a.id === id);
+      if (found) setAct(found);
+    } catch {
+      // акт всегда можно открыть из «Обходов» — молчим
+    }
   }
 
   async function splitAll() {
@@ -688,7 +707,8 @@ export function AssetsClient() {
       )}
       {editing && <AssetFormModal initial={editing} locations={locations} onSave={save} onClose={() => setEditing(null)} />}
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
-      {sheet === 'audits' && <AuditsModal locations={locations} onClose={() => setSheet(null)} />}
+      {sheet === 'audits' && <AuditsModal locations={locations} onClose={() => setSheet(null)} onOpenAct={(a) => setAct(a)} />}
+      {act && <ActModal act={act} locations={locations} onClose={() => setAct(null)} />}
       {sheet === 'places' && <LocationsModal onClose={() => setSheet(null)} onChanged={load} />}
       {sheet === 'tags' && <TagsModal locations={locations} onClose={() => setSheet(null)} onChanged={load} />}
       {scanMode && (
