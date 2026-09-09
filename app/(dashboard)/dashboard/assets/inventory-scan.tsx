@@ -88,7 +88,8 @@ export function InventoryScanModal({
   const [manual, setManual] = useState('');
   const [saving, setSaving] = useState(false);
   const [binding, setBinding] = useState<string | null>(null);
-  const [audit, setAudit] = useState<{ id: string; locationId: string | null } | null>(null);
+  const [audit, setAudit] = useState<{ id: string; locationId: string | null; startedAt?: string; startedBy?: string; actDate?: string | null; performedBy?: string } | null>(null);
+  const [dropping, setDropping] = useState(false);
   /**
    * Шапка акта: дата документа и кто проводит.
    *
@@ -452,7 +453,16 @@ export function InventoryScanModal({
       try {
         const res = await fetch('/api/assets/audits');
         const json = await res.json();
-        if (json.open) setAudit({ id: json.open.id, locationId: json.open.locationId });
+        if (json.open) {
+          setAudit({
+            id: json.open.id,
+            locationId: json.open.locationId,
+            startedAt: json.open.startedAt,
+            startedBy: json.open.startedBy,
+            actDate: json.open.actDate,
+            performedBy: json.open.performedBy,
+          });
+        }
       } catch { /* без истории просто начнём новый */ }
     })();
   }, []);
@@ -470,9 +480,43 @@ export function InventoryScanModal({
         }),
       });
       const json = await res.json();
-      if (json.audit) setAudit({ id: json.audit.id, locationId: json.audit.locationId });
+      if (json.audit) {
+        setAudit({
+          id: json.audit.id,
+          locationId: json.audit.locationId,
+          startedAt: json.audit.startedAt,
+          startedBy: json.audit.startedBy,
+          actDate: json.audit.actDate,
+          performedBy: json.audit.performedBy,
+        });
+      }
     } finally {
       setStarting(false);
+    }
+  }
+
+  /**
+   * Бросить незакрытый обход.
+   *
+   * ⚠️ Незакрытый обход подхватывается автоматически, и без этой кнопки он
+   * захватывает экран навсегда: форма новой инвентаризации (дата, кто
+   * проводит, место) показывается только когда обхода нет, и человек видит
+   * чужой позавчерашний обход вместо своего нового. Поймано 09.09.2026:
+   * висел обход от 16 августа, и новые поля были просто недоступны.
+   */
+  async function dropAudit() {
+    if (!audit) return;
+    if (!confirm('Бросить незакрытый обход? Отсканированное в нём не сохранится, акт не создастся.')) return;
+    setDropping(true);
+    try {
+      await fetch(`/api/assets/audits?id=${audit.id}`, { method: 'DELETE' });
+      localStorage.removeItem(`asset-audit-${audit.id}`);
+      setAudit(null);
+      setScannedIds(new Set());
+      scannedRef.current = new Set();
+      setLast(null);
+    } finally {
+      setDropping(false);
     }
   }
 
@@ -832,6 +876,23 @@ export function InventoryScanModal({
             </>
           ) : (
             <>
+              {/* Идёт незакрытый обход — говорим об этом прямо и даём выход.
+                  Иначе он молча забирает экран: форма новой инвентаризации
+                  показывается только когда обхода нет. */}
+              {audit && (
+                <div className="banner banner--warn" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1 }}>
+                    Продолжается обход
+                    {audit.actDate || audit.startedAt ? ` от ${new Date(audit.actDate || audit.startedAt!).toLocaleDateString('ru-RU')}` : ''}
+                    {audit.performedBy || audit.startedBy ? ` · ${audit.performedBy || audit.startedBy}` : ''}
+                    {' — сканируй дальше или закрой его внизу.'}
+                  </span>
+                  <button type="button" className="btn btn--sm btn--danger" disabled={dropping} onClick={dropAudit}>
+                    {dropping ? 'Бросаю…' : 'Бросить и начать новый'}
+                  </button>
+                </div>
+              )}
+
               {/* Шапка акта. Показывается только до начала: после старта дата и
                   ответственный уже записаны в документ, и менять их на ходу
                   значит подменять акт. */}
