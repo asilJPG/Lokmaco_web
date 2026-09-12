@@ -10,12 +10,6 @@ type Audit = Act;
 const dt = (v: string | Date | null) => (v ? new Date(v).toLocaleString('ru-RU') : '—');
 const day = (v: string | Date | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
-/**
- * История обходов — то, ради чего инвентаризация вообще документ.
- *
- * Здесь живёт ответ на главный вопрос: чего не нашли и когда. Раньше этот
- * список существовал только в браузере до нажатия кнопки.
- */
 export function AuditsModal({ locations, onClose, onOpenAct }: {
   locations: AssetLocation[];
   onClose: () => void;
@@ -24,20 +18,76 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [editingAudit, setEditingAudit] = useState<Audit | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editPerformedBy, setEditPerformedBy] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function loadAudits() {
+    try {
+      const res = await fetch('/api/assets/audits');
+      const json = await res.json();
+      setAudits(json.audits || []);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/assets/audits');
-        const json = await res.json();
-        setAudits(json.audits || []);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadAudits();
   }, []);
 
   const placeName = (id: string | null) => (id ? locations.find((l) => l.id === id)?.name || 'место удалено' : 'всё оборудование');
+
+  function startEdit(a: Audit) {
+    setEditingAudit(a);
+    setEditDate(a.actDate ? String(a.actDate).slice(0, 10) : (a.startedAt ? new Date(a.startedAt).toISOString().slice(0, 10) : ''));
+    setEditPerformedBy(a.performedBy || a.startedBy || '');
+    setEditNote(a.note || '');
+  }
+
+  async function saveMeta() {
+    if (!editingAudit) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/assets/audits', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingAudit.id,
+          action: 'update_meta',
+          act_date: editDate || null,
+          performed_by: editPerformedBy.trim(),
+          note: editNote.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.audit) {
+        setAudits((prev) => prev.map((item) => (item.id === editingAudit.id ? {
+          ...item,
+          actDate: json.audit.actDate,
+          performedBy: json.audit.performedBy,
+          note: json.audit.note,
+        } : item)));
+        setEditingAudit(null);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteAudit(id: string) {
+    if (!confirm('Удалить эту инвентаризацию? Данные обхода и акт будут безвозвратно удалены.')) return;
+    try {
+      const res = await fetch(`/api/assets/audits?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setAudits((prev) => prev.filter((a) => a.id !== id));
+      }
+    } catch {
+      alert('Ошибка при удалении');
+    }
+  }
 
   /** Скачивание в формате ИНВ-3 */
   function exportInv3(a: Audit) {
@@ -70,7 +120,7 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
     downloadInv3HtmlFile(data);
   }
 
-  /** Акт обхода в CSV — то, что распечатывают и подписывают с МОЛ. */
+  /** Акт обхода в CSV */
   function exportCsv(a: Audit) {
     const rows: string[][] = [['Статус', 'Инв. №', 'Наименование']];
     for (const s of a.scanned) rows.push(['найдено', s.inv_number, s.name]);
@@ -93,6 +143,47 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
           <button type="button" className="btn btn--sm" onClick={onClose}>✕</button>
         </div>
 
+        {editingAudit && (
+          <div className="card" style={{ margin: '8px 12px', padding: 12, background: 'var(--surface-muted)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>✏️ Редактирование реквизитов инвентаризации</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Дата акта</label>
+                <input
+                  type="date"
+                  className="input input--inline"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Кто проводит / Ответственные</label>
+                <input
+                  className="input input--inline"
+                  placeholder="Асиль, Шодиев..."
+                  value={editPerformedBy}
+                  onChange={(e) => setEditPerformedBy(e.target.value)}
+                />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Примечание</label>
+                <input
+                  className="input input--inline"
+                  placeholder="Комментарий к инвентаризации..."
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button type="button" className="btn btn--sm" onClick={() => setEditingAudit(null)}>Отмена</button>
+              <button type="button" className="btn btn--sm btn--primary" disabled={saving} onClick={saveMeta}>
+                {saving ? 'Сохраняю…' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="scan-sheet__body">
           {loading ? (
             <div className="empty-state">Загрузка…</div>
@@ -106,6 +197,7 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                     {a.performedBy || a.startedBy} · {a.actDate ? new Date(a.actDate).toLocaleDateString('ru-RU') : dt(a.startedAt)}
                   </div>
+                  {a.note && <div style={{ fontSize: 12, marginTop: 4, color: 'var(--text-muted)' }}>💬 {a.note}</div>}
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 13 }}>
                   {a.finishedAt ? (
@@ -124,17 +216,20 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
                 </div>
               </div>
 
-              {a.finishedAt && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {a.finishedAt ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <button type="button" className="btn btn--sm" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
                     {openId === a.id ? 'Свернуть' : 'Показать позиции'}
                   </button>
-                  {/* Акт — отдельным окном: в нём и недостача, и излишки, и
-                      книжный остаток. Список «показать позиции» остаётся для
-                      быстрого взгляда, не открывая документ. */}
                   <button type="button" className="btn btn--sm btn--primary" onClick={() => onOpenAct(a)}>📄 Акт (ИНВ-3)</button>
                   <button type="button" className="btn btn--sm" onClick={() => exportInv3(a)}>📥 ИНВ-3</button>
                   <button type="button" className="btn btn--sm" onClick={() => exportCsv(a)}>CSV</button>
+                  <button type="button" className="btn btn--sm" onClick={() => startEdit(a)} title="Изменить дату или ответственных">✏️</button>
+                  <button type="button" className="btn btn--sm btn--danger" onClick={() => deleteAudit(a.id)} title="Удалить обход">🗑️</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn--sm btn--danger" onClick={() => deleteAudit(a.id)}>🗑️ Удалить незакрытый</button>
                 </div>
               )}
 

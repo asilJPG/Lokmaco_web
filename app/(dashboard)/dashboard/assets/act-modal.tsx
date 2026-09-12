@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { AssetAudit, AssetLocation } from '@/db/schema';
 import {
   type Inv3Data,
@@ -20,23 +20,21 @@ export type Act = Omit<AssetAudit, 'scanned' | 'missing' | 'surplus'> & {
 const money = (n: number) => Math.round(n).toLocaleString('ru-RU');
 const day = (v: string | Date | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
-/**
- * Акт инвентаризации — как в iiko: и недостача, и излишки.
- *
- * У каждой позиции две величины: **книжный остаток** (сколько числится) и
- * **факт** (сколько нашли), а между ними разница. Односторонний список «чего
- * не нашли» на вопрос «сошлось ли» не отвечает: найденное не там, где
- * числится, тоже расхождение.
- *
- * Каждая карточка ОС — это одна единица, поэтому книжный остаток всегда 1, а
- * факт 0 или 1. Партия из двадцати столов — это двадцать строк, и в акте видно,
- * какой именно стол пропал.
- */
-export function ActModal({ act, locations, onClose }: {
+export function ActModal({ act: initialAct, locations, onClose, onDeleted, onUpdated }: {
   act: Act;
   locations: AssetLocation[];
   onClose: () => void;
+  onDeleted?: (id: string) => void;
+  onUpdated?: (act: Act) => void;
 }) {
+  const [act, setAct] = useState<Act>(initialAct);
+  const [editing, setEditing] = useState(false);
+  const [editDate, setEditDate] = useState(() => (act.actDate ? String(act.actDate).slice(0, 10) : (act.startedAt ? new Date(act.startedAt).toISOString().slice(0, 10) : '')));
+  const [editPerformedBy, setEditPerformedBy] = useState(() => act.performedBy || act.startedBy || '');
+  const [editNote, setEditNote] = useState(() => act.note || '');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const rows = useMemo(() => [
     ...act.missing.map((r) => ({ ...r, fact: 0, book: 1 })),
     ...act.surplus.map((r) => ({ ...r, fact: 1, book: 0 })),
@@ -69,6 +67,51 @@ export function ActModal({ act, locations, onClose }: {
       book: r.book,
     })),
   }), [act, place, rows]);
+
+  async function saveMeta() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/assets/audits', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: act.id,
+          action: 'update_meta',
+          act_date: editDate || null,
+          performed_by: editPerformedBy.trim(),
+          note: editNote.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.audit) {
+        const next: Act = {
+          ...act,
+          actDate: json.audit.actDate,
+          performedBy: json.audit.performedBy,
+          note: json.audit.note,
+        };
+        setAct(next);
+        setEditing(false);
+        onUpdated?.(next);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteAudit() {
+    if (!confirm('Удалить эту инвентаризацию? Данные обхода и акт будут удалены.')) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/assets/audits?id=${act.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        onDeleted?.(act.id);
+        onClose();
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   /** Файл акта в CSV */
   function downloadCsv() {
@@ -116,8 +159,57 @@ export function ActModal({ act, locations, onClose }: {
               {day(act.actDate || act.startedAt)} · {place} · проводит {act.performedBy || act.startedBy}
             </div>
           </div>
-          <button type="button" className="btn btn--sm" onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button type="button" className="btn btn--sm" onClick={() => setEditing(!editing)} title="Изменить дату или ответственных">
+              ✏️ {editing ? 'Отмена' : 'Изменить'}
+            </button>
+            <button type="button" className="btn btn--sm btn--danger" disabled={deleting} onClick={deleteAudit} title="Удалить инвентаризацию">
+              🗑️
+            </button>
+            <button type="button" className="btn btn--sm" onClick={onClose}>✕</button>
+          </div>
         </div>
+
+        {editing && (
+          <div className="card" style={{ margin: '8px 12px', padding: 12, background: 'var(--surface-muted)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>✏️ Редактирование реквизитов инвентаризации</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Дата акта</label>
+                <input
+                  type="date"
+                  className="input input--inline"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Кто проводит / Ответственные</label>
+                <input
+                  className="input input--inline"
+                  placeholder="Асиль, Шодиев..."
+                  value={editPerformedBy}
+                  onChange={(e) => setEditPerformedBy(e.target.value)}
+                />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Примечание</label>
+                <input
+                  className="input input--inline"
+                  placeholder="Комментарий к инвентаризации..."
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button type="button" className="btn btn--sm" onClick={() => setEditing(false)}>Отмена</button>
+              <button type="button" className="btn btn--sm btn--primary" disabled={saving} onClick={saveMeta}>
+                {saving ? 'Сохраняю…' : 'Сохранить изменения'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="act-totals">
           <div className={act.missing.length ? 'act-total act-total--bad' : 'act-total'}>
@@ -158,8 +250,6 @@ export function ActModal({ act, locations, onClose }: {
                         {r.name}
                         <span className="xls__sub">{r.inv_number}</span>
                       </td>
-                      {/* Код ОС — из iiko; у заведённых руками его нет, тогда
-                          показываем инвентарный, как и в файле акта. */}
                       <td className="xls__mono col-wide">{r.code || r.inv_number}</td>
                       <td className="xls__num">{r.fact}</td>
                       <td className="xls__num">{r.book}</td>

@@ -979,7 +979,7 @@ export function InventoryScanModal({
               className="btn btn--primary"
               disabled={saving}
               onClick={async () => {
-                if (!confirm(`Закрыть обход? Ненайденных — ${missing.length}, они попадут в акт.`)) return;
+                if (!confirm(`Закончить инвентаризацию? Отсканировано: ${scannedIds.size}, не найдено: ${missing.length}. Акт будет сформирован автоматически.`)) return;
                 setSaving(true);
                 try {
                   await onFinish(audit.id, Array.from(scannedIds));
@@ -987,7 +987,7 @@ export function InventoryScanModal({
                 } finally { setSaving(false); }
               }}
             >
-              {saving ? 'Закрываю…' : `Закрыть обход · ${scannedIds.size}`}
+              {saving ? 'Завершаю…' : `🏁 Закончить инвентаризацию · ${scannedIds.size}`}
             </button>
           ) : (
             <button type="button" className="btn btn--primary" disabled={starting} onClick={startAudit}>

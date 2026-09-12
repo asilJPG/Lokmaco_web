@@ -59,11 +59,7 @@ export async function POST(req: Request) {
 }
 
 /**
- * Закрыть обход.
- *
- * ⚠️ Ненайденное считает **сервер** на момент закрытия, а не браузер. Иначе
- * акт зависел бы от того, что успело подгрузиться в телефон: устаревший список
- * карточек молча превратил бы половину зала в недостачу.
+ * Закрыть обход или обновить метаданные (дату, кто проводит, примечание).
  */
 export async function PATCH(req: Request) {
   const session = await requireSession();
@@ -78,23 +74,42 @@ export async function PATCH(req: Request) {
     .from(schema.assetAudits)
     .where(and(eq(schema.assetAudits.id, id), inArray(schema.assetAudits.filialId, filialIds)));
   if (!audit) return Response.json({ error: 'Обход не найден' }, { status: 404 });
+
+  // Если это редактирование метаданных (даты, кто проводил, примечания)
+  if (b?.action === 'update_meta') {
+    const updates: Partial<typeof schema.assetAudits.$inferInsert> = {};
+    if (typeof b.act_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.act_date)) {
+      updates.actDate = b.act_date;
+    }
+    if (typeof b.performed_by === 'string') {
+      updates.performedBy = b.performed_by.trim().slice(0, 120);
+    }
+    if (typeof b.note === 'string') {
+      updates.note = b.note.trim().slice(0, 500);
+    }
+    if (b.location_id !== undefined) {
+      updates.locationId = b.location_id || null;
+    }
+
+    const [updated] = await db
+      .update(schema.assetAudits)
+      .set(updates)
+      .where(eq(schema.assetAudits.id, id))
+      .returning();
+
+    return Response.json({ success: true, audit: updated });
+  }
+
   if (audit.finishedAt) return Response.json({ error: 'Этот обход уже закрыт' }, { status: 409 });
 
   const scannedIds: string[] = Array.isArray(b?.scanned) ? b.scanned.map(String).filter(Boolean) : [];
 
-  // ⚠️ Обход считает scope в пределах одного филиала: у audit.filial_id уже
-  // проставлен верный филиал (он в самой записи обхода), берём его.
   const all = await db.select().from(schema.assets).where(eq(schema.assets.filialId, audit.filialId));
   const scope = all.filter((a) => (
     a.status !== 'archived' && (!audit.locationId || a.locationId === audit.locationId)
   ));
   const scannedSet = new Set(scannedIds);
 
-  /**
-   * ⚠️ Снимок несёт ещё стоимость и код iiko: акт подписывают и хранят, а
-   * карточка потом меняется — стоимость правят, предмет переносят. Пересчёт
-   * акта «по текущим данным» через месяц дал бы другие суммы.
-   */
   const snapshot = (a: typeof all[number]) => ({
     id: a.id,
     inv_number: a.invNumber,
@@ -104,8 +119,6 @@ export async function PATCH(req: Request) {
   });
   const scanned = scope.filter((a) => scannedSet.has(a.id)).map(snapshot);
   const missing = scope.filter((a) => !scannedSet.has(a.id)).map(snapshot);
-  // Излишки: отсканировали то, чего в этом месте числиться не должно. Без них
-  // акт односторонний — только недостача, как будто найденное «не считается».
   const scopeIds = new Set(scope.map((a) => a.id));
   const surplus = all.filter((a) => scannedSet.has(a.id) && !scopeIds.has(a.id)).map(snapshot);
 
@@ -116,8 +129,19 @@ export async function PATCH(req: Request) {
       .where(inArray(schema.assets.id, scannedIds));
   }
 
+  const actDate = typeof b?.act_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.act_date) ? b.act_date : audit.actDate;
+  const performedBy = typeof b?.performed_by === 'string' && b.performed_by.trim() ? b.performed_by.trim().slice(0, 120) : audit.performedBy;
+
   await db.update(schema.assetAudits)
-    .set({ finishedAt: now, scanned, missing, surplus, note: String(b?.note || '') })
+    .set({
+      finishedAt: now,
+      scanned,
+      missing,
+      surplus,
+      note: String(b?.note || audit.note || ''),
+      actDate,
+      performedBy,
+    })
     .where(eq(schema.assetAudits.id, id));
 
   await db.insert(schema.botActions).values({
@@ -132,7 +156,7 @@ export async function PATCH(req: Request) {
   return Response.json({ success: true, id, scanned: scanned.length, missing: missing.length, surplus: surplus.length });
 }
 
-/** Бросить незакрытый обход — например начатый по ошибке не в том месте. */
+/** Удалить обход (как незакрытый, так и завершённый). */
 export async function DELETE(req: Request) {
   await requireSession();
   const filialIds = await getCurrentFilialIds();
@@ -141,7 +165,6 @@ export async function DELETE(req: Request) {
 
   await db.delete(schema.assetAudits).where(and(
     eq(schema.assetAudits.id, id),
-    isNull(schema.assetAudits.finishedAt),
     inArray(schema.assetAudits.filialId, filialIds),
   ));
   return Response.json({ success: true });

@@ -721,7 +721,15 @@ export function AssetsClient() {
       {editing && <AssetFormModal initial={editing} locations={locations} onSave={save} onClose={() => setEditing(null)} />}
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
       {sheet === 'audits' && <AuditsModal locations={locations} onClose={() => setSheet(null)} onOpenAct={(a) => setAct(a)} />}
-      {act && <ActModal act={act} locations={locations} onClose={() => setAct(null)} />}
+      {act && (
+        <ActModal
+          act={act}
+          locations={locations}
+          onClose={() => setAct(null)}
+          onDeleted={() => { setAct(null); setMsg({ ok: true, text: 'Инвентаризация удалена' }); load(); }}
+          onUpdated={(updated) => { setAct(updated); setMsg({ ok: true, text: 'Реквизиты инвентаризации обновлены' }); }}
+        />
+      )}
       {batchCost && (
         <BatchCostModal
           units={batchCost}
