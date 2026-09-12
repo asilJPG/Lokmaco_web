@@ -24,25 +24,124 @@ export type Inv3Data = {
 };
 
 const INV3_CSS = `
-body { background: #ffffff; margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; }
-.inv3-table { border-collapse: collapse; table-layout: fixed; margin: 0 auto; width: 1091px; color: #000; font-family: Arial, Helvetica, sans-serif; }
-.inv3-table td { padding: 0; font-size: 8pt; vertical-align: top; }
-.s-head-sm { font-size: 6.5pt; font-family: Arial, Helvetica, sans-serif; }
-.s-head-bold { font-size: 11pt; font-weight: bold; font-family: Arial, Helvetica, sans-serif; }
-.s-title { font-size: 13pt; font-weight: bold; font-family: Arial, Helvetica, sans-serif; text-align: center; }
-.s-border-box { border: 1px solid #000; text-align: center; }
-.s-border-bot { border-bottom: 1px solid #000; }
-.s-border-top { border-top: 1px solid #000; }
-.s-border-all { border: 1px solid #000; }
-.s-subtext { font-size: 6pt; text-align: center; }
-.s-num { text-align: right; }
-.s-center { text-align: center; }
-.s-receipt { font-size: 8pt; text-align: justify; }
-
+body {
+  background: #ffffff;
+  margin: 0;
+  padding: 24px;
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  color: #111;
+  line-height: 1.35;
+}
+.doc-container {
+  max-width: 1060px;
+  margin: 0 auto;
+}
+.header-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+.header-table td {
+  padding: 3px 6px;
+  font-size: 9pt;
+  vertical-align: bottom;
+}
+.doc-title {
+  text-align: center;
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin: 12px 0 4px 0;
+  letter-spacing: 0.5px;
+}
+.doc-subtitle {
+  text-align: center;
+  font-size: 10.5pt;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.border-box {
+  border: 1px solid #111;
+  text-align: center;
+  font-weight: bold;
+  padding: 4px 8px;
+}
+.line-bot {
+  border-bottom: 1px solid #222;
+}
+.subtext {
+  font-size: 7pt;
+  color: #555;
+  text-align: center;
+  padding-top: 1px;
+}
+.receipt-box {
+  border: 1px solid #ddd;
+  background: #fafafa;
+  padding: 10px 14px;
+  font-size: 8.5pt;
+  text-align: justify;
+  margin: 12px 0;
+  border-radius: 4px;
+}
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 8.5pt;
+}
+.inv-table th, .inv-table td {
+  border: 1px solid #333;
+  padding: 5px 6px;
+  vertical-align: middle;
+}
+.inv-table th {
+  background: #f3f4f6;
+  font-weight: bold;
+  text-align: center;
+  font-size: 8pt;
+}
+.inv-table td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.inv-table td.center {
+  text-align: center;
+}
+.inv-table tr.total-row {
+  background: #f9fafb;
+  font-weight: bold;
+}
+.inv-table tr.diff-shortage {
+  background: #fff5f5;
+}
+.inv-table tr.diff-surplus {
+  background: #f0fdf4;
+}
+.totals-words {
+  margin: 16px 0;
+  font-size: 9pt;
+  line-height: 1.8;
+}
+.signatures-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  page-break-inside: avoid;
+}
+.signatures-table td {
+  padding: 6px 8px;
+  font-size: 8.5pt;
+  vertical-align: bottom;
+}
 @media print {
   body { padding: 0; }
-  .inv3-table { width: 100%; max-width: 100%; }
   .no-print { display: none !important; }
+  .receipt-box { background: transparent; border-color: #999; }
+  .inv-table th { background: #eee !important; -webkit-print-color-adjust: exact; }
+  .doc-container { max-width: 100%; width: 100%; }
 }
 `;
 
@@ -62,14 +161,16 @@ function fmtMoney(n: number): string {
 }
 
 function fmtQty(n: number): string {
+  if (n === 0) return '0';
   return (Math.round(n * 1000) / 1000)
-    .toLocaleString('ru-RU', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+    .toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
     .replace(/\s/g, '&nbsp;');
 }
 
 /**
- * Генерация полного HTML-документа по унифицированной форме № ИНВ-3
- * (Инвентаризационная опись товарно-материальных ценностей / основных средств).
+ * Генерация чистого HTML-документа по унифицированной описи ИНВ-3
+ * со структурой таблицы:
+ * № п/п | Наименование | Номенклатурный номер | Цена | Фактические значения (кол-во / сумма) | По данным бухучета (кол-во / сумма) | Разница (кол-во / сумма)
  */
 export function generateInv3Html(data: Inv3Data): string {
   const org = escapeHtml(data.organization || 'OOO "The Lokmaco Fergana"');
@@ -77,7 +178,7 @@ export function generateInv3Html(data: Inv3Data): string {
   const docNum = escapeHtml(data.docNumber || '1');
   const docDate = escapeHtml(data.docDate || new Date().toLocaleDateString('ru-RU'));
 
-  // Разбираем ответственных лиц (если указано несколько через запятую/точку с запятой/слеш/и)
+  // Разбираем ответственных лиц (ФИО которые вводит пользователь)
   const persons = (data.performedBy || data.responsiblePerson || 'Материально ответственное лицо')
     .split(/[,;/]|\s+и\s+/i)
     .map((p) => p.trim())
@@ -96,41 +197,49 @@ export function generateInv3Html(data: Inv3Data): string {
   let totalFactSum = 0;
   let totalBookQty = 0;
   let totalBookSum = 0;
+  let totalDiffQty = 0;
+  let totalDiffSum = 0;
 
   const rowsHtml = items.map((it, idx) => {
     const num = idx + 1;
     const name = escapeHtml(it.name);
-    const code = escapeHtml(it.code || it.inv_number || '');
-    const unit = escapeHtml(it.unit || 'шт');
+    const code = escapeHtml(it.code || it.inv_number || '—');
     const cost = Number(it.cost) || 0;
-    const invNum = escapeHtml(it.inv_number);
 
     const factQty = Number(it.fact) || 0;
     const factSum = factQty * cost;
     const bookQty = Number(it.book) || 0;
     const bookSum = bookQty * cost;
 
+    const diffQty = factQty - bookQty;
+    const diffSum = diffQty * cost;
+
     totalFactQty += factQty;
     totalFactSum += factSum;
     totalBookQty += bookQty;
     totalBookSum += bookSum;
+    totalDiffQty += diffQty;
+    totalDiffSum += diffSum;
+
+    const rowClass = diffQty < 0 ? 'diff-shortage' : diffQty > 0 ? 'diff-surplus' : '';
+    const diffSign = diffQty > 0 ? '+' : '';
 
     return `
-      <tr style="height: 28px;">
-        <td class="s-border-all s-center" style="width: 39px; height: 28px; vertical-align: middle;">${num}</td>
-        <td class="s-border-all" colspan="4" style="width: 87px; height: 28px;"></td>
-        <td class="s-border-all" colspan="10" style="width: 252px; height: 28px; vertical-align: middle; padding-left: 4px; padding-right: 4px;">${name}</td>
-        <td class="s-border-all s-center" colspan="4" style="width: 87px; height: 28px; vertical-align: middle;">${code}</td>
-        <td class="s-border-all" colspan="4" style="width: 63px; height: 28px;"></td>
-        <td class="s-border-all s-center" colspan="3" style="width: 63px; height: 28px; vertical-align: middle;">${unit}</td>
-        <td class="s-border-all s-num" colspan="4" style="width: 70px; height: 28px; vertical-align: middle; padding-right: 4px;">${fmtMoney(cost)}</td>
-        <td class="s-border-all s-center" colspan="4" style="width: 63px; height: 28px; vertical-align: middle;">${invNum}</td>
-        <td class="s-border-all" colspan="3" style="width: 63px; height: 28px;"></td>
-        <td class="s-border-all s-num" colspan="8" style="width: 71px; height: 28px; vertical-align: middle; padding-right: 4px;">${fmtQty(factQty)}</td>
-        <td class="s-border-all s-num" colspan="3" style="width: 79px; height: 28px; vertical-align: middle; padding-right: 4px;">${fmtMoney(factSum)}</td>
-        <td class="s-border-all s-num" colspan="5" style="width: 71px; height: 28px; vertical-align: middle; padding-right: 4px;">${fmtQty(bookQty)}</td>
-        <td class="s-border-all s-num" colspan="3" style="width: 79px; height: 28px; vertical-align: middle; padding-right: 4px;">${fmtMoney(bookSum)}</td>
-        <td style="width: 4px; border: 0;"></td>
+      <tr class="${rowClass}">
+        <td class="center" style="width: 38px;">${num}</td>
+        <td style="font-weight: 500;">${name}</td>
+        <td class="center" style="font-family: monospace; font-size: 8pt;">${code}</td>
+        <td class="num">${fmtMoney(cost)}</td>
+        <td class="num" style="width: 60px;">${fmtQty(factQty)}</td>
+        <td class="num" style="width: 85px;">${fmtMoney(factSum)}</td>
+        <td class="num" style="width: 60px;">${fmtQty(bookQty)}</td>
+        <td class="num" style="width: 85px;">${fmtMoney(bookSum)}</td>
+        <td class="num" style="width: 60px; font-weight: ${diffQty !== 0 ? 'bold' : 'normal'}; color: ${diffQty < 0 ? '#b91c1c' : diffQty > 0 ? '#15803d' : '#333'};">
+          ${diffQty === 0 ? '0' : diffSign + fmtQty(diffQty)}
+        </td>
+        <td class="num" style="width: 85px; font-weight: ${diffSum !== 0 ? 'bold' : 'normal'}; color: ${diffSum < 0 ? '#b91c1c' : diffSum > 0 ? '#15803d' : '#333'};">
+          ${diffSum === 0 ? '0,00' : diffSign + fmtMoney(diffSum)}
+        </td>
       </tr>`;
   }).join('\n');
 
@@ -138,43 +247,44 @@ export function generateInv3Html(data: Inv3Data): string {
   const totalFactQtyWords = numberToWordsRu(Math.floor(totalFactQty), false);
   const totalFactSumWords = sumToWordsRu(totalFactSum);
 
-  const membersRowsHtml = members.map((m) => `
-    <tr style="height: 12px;"><td colspan="51"></td></tr>
+  const diffSignTotal = totalDiffQty > 0 ? '+' : '';
+
+  // Блок подписей членов комиссии: ФИО которое внёс пользователь, рядом линия подписи и место для расшифровки
+  const commissionRowsHtml = persons.map((p, i) => `
     <tr>
-      <td colspan="10" style="vertical-align: bottom; font-weight: bold;">Член комиссии:</td>
-      <td colspan="11" class="s-border-bot" style="text-align: center; vertical-align: bottom;">Администратор</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-border-bot"></td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-border-bot" style="text-align: center; vertical-align: bottom; font-weight: bold;">${m}</td>
+      <td style="width: 170px; font-weight: bold;">${i === 0 ? 'Председатель комиссии:' : 'Член комиссии:'}</td>
+      <td style="width: 140px; border-bottom: 1px solid #222; text-align: center; font-weight: bold;">${escapeHtml(p)}</td>
+      <td style="width: 12px;"></td>
+      <td style="width: 130px; border-bottom: 1px solid #222; text-align: center;"></td>
+      <td style="width: 12px;"></td>
+      <td style="border-bottom: 1px solid #222; text-align: center; color: #555;">( &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</td>
     </tr>
     <tr>
-      <td colspan="10"></td>
-      <td colspan="11" class="s-subtext">(должность)</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-subtext">(подпись)</td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-subtext">(расшифровка подписи)</td>
+      <td></td>
+      <td class="subtext">(ФИО)</td>
+      <td></td>
+      <td class="subtext">(подпись)</td>
+      <td></td>
+      <td class="subtext">(расшифровка подписи вручную)</td>
     </tr>
   `).join('\n');
 
   const molRowsHtml = persons.map((p) => `
-    <tr style="height: 10px;"><td colspan="51"></td></tr>
     <tr>
-      <td colspan="10" style="vertical-align: bottom; font-weight: bold;">МОЛ / Проводил:</td>
-      <td colspan="11" class="s-border-bot" style="text-align: center; vertical-align: bottom;">Материально ответственное лицо</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-border-bot"></td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-border-bot" style="text-align: center; vertical-align: bottom; font-weight: bold;">${escapeHtml(p)}</td>
+      <td style="width: 170px; font-weight: bold;">МОЛ / Проводил:</td>
+      <td style="width: 140px; border-bottom: 1px solid #222; text-align: center; font-weight: bold;">${escapeHtml(p)}</td>
+      <td style="width: 12px;"></td>
+      <td style="width: 130px; border-bottom: 1px solid #222; text-align: center;"></td>
+      <td style="width: 12px;"></td>
+      <td style="border-bottom: 1px solid #222; text-align: center; color: #555;">( &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</td>
     </tr>
     <tr>
-      <td colspan="10"></td>
-      <td colspan="11" class="s-subtext">(должность)</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-subtext">(подпись)</td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-subtext">(расшифровка подписи)</td>
+      <td></td>
+      <td class="subtext">(ФИО)</td>
+      <td></td>
+      <td class="subtext">(подпись)</td>
+      <td></td>
+      <td class="subtext">(расшифровка подписи вручную)</td>
     </tr>
   `).join('\n');
 
@@ -189,233 +299,139 @@ export function generateInv3Html(data: Inv3Data): string {
   </style>
 </head>
 <body>
-  <div style="margin-bottom: 16px; text-align: right;" class="no-print">
-    <button onclick="window.print()" style="padding: 8px 16px; font-size: 14px; font-weight: bold; background: #111827; color: #fff; border: none; border-radius: 6px; cursor: pointer;">🖨️ Распечатать / Сохранить в PDF</button>
-  </div>
+  <div class="doc-container">
+    <div style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 8px;" class="no-print">
+      <button onclick="window.print()" style="padding: 8px 18px; font-size: 13px; font-weight: bold; background: #111827; color: #fff; border: none; border-radius: 6px; cursor: pointer;">🖨️ Распечатать / Сохранить в PDF</button>
+    </div>
 
-  <table class="inv3-table">
-    <!-- Шапка формы -->
-    <tr>
-      <td colspan="46" style="text-align: right; font-size: 7pt;">Унифицированная форма № ИНВ-3<br/>Утверждена постановлением Госкомстата России от 18.08.98 № 88</td>
-      <td colspan="5" class="s-border-box" style="font-weight: bold; font-size: 8pt; height: 20px; vertical-align: middle;">Код</td>
-    </tr>
-    <tr>
-      <td colspan="46"></td>
-      <td colspan="5" class="s-border-box" style="height: 18px; vertical-align: middle; font-size: 7.5pt;">Форма по ОКУД 0317004</td>
-    </tr>
-    <tr>
-      <td colspan="36" class="s-border-bot" style="font-weight: bold; font-size: 9pt; height: 22px; vertical-align: bottom;">${org}</td>
-      <td colspan="10" style="text-align: right; font-size: 7.5pt; vertical-align: bottom;">по ОКПО</td>
-      <td colspan="5" class="s-border-box" style="height: 22px; vertical-align: middle;"></td>
-    </tr>
-    <tr>
-      <td colspan="36" class="s-subtext">(организация)</td>
-      <td colspan="15"></td>
-    </tr>
-    <tr>
-      <td colspan="36" class="s-border-bot" style="font-weight: bold; font-size: 9pt; height: 22px; vertical-align: bottom;">${dept}</td>
-      <td colspan="15"></td>
-    </tr>
-    <tr>
-      <td colspan="36" class="s-subtext">(структурное подразделение)</td>
-      <td colspan="15"></td>
-    </tr>
-    <tr style="height: 12px;"><td colspan="51"></td></tr>
-
-    <!-- Номер и дата -->
-    <tr>
-      <td colspan="31"></td>
-      <td colspan="12" class="s-border-box" style="font-weight: bold; height: 22px; vertical-align: middle;">Номер документа</td>
-      <td colspan="8" class="s-border-box" style="font-weight: bold; height: 22px; vertical-align: middle;">Дата составления</td>
-    </tr>
-    <tr>
-      <td colspan="31"></td>
-      <td colspan="12" class="s-border-box" style="font-weight: bold; height: 22px; vertical-align: middle;">${docNum}</td>
-      <td colspan="8" class="s-border-box" style="font-weight: bold; height: 22px; vertical-align: middle;">${docDate}</td>
-    </tr>
-
-    <tr style="height: 16px;"><td colspan="51"></td></tr>
+    <!-- Шапка документа -->
+    <table class="header-table">
+      <tr>
+        <td style="width: 65%;">
+          <div style="font-size: 11pt; font-weight: bold; border-bottom: 1px solid #222; padding-bottom: 2px;">${org}</div>
+          <div class="subtext" style="text-align: left;">(организация)</div>
+          <div style="font-size: 10pt; font-weight: 600; border-bottom: 1px solid #222; padding-top: 6px; padding-bottom: 2px;">${dept}</div>
+          <div class="subtext" style="text-align: left;">(структурное подразделение / место)</div>
+        </td>
+        <td style="width: 35%; text-align: right; vertical-align: top;">
+          <div style="font-size: 7.5pt; color: #555;">Унифицированная форма № ИНВ-3<br/>Форма по ОКУД 0317004</div>
+          <div style="margin-top: 10px; display: inline-flex; gap: 6px; text-align: center;">
+            <div class="border-box" style="font-size: 8pt; min-width: 90px;">
+              <div style="font-size: 7pt; font-weight: normal; color: #555;">Номер документа</div>
+              <div>${docNum}</div>
+            </div>
+            <div class="border-box" style="font-size: 8pt; min-width: 100px;">
+              <div style="font-size: 7pt; font-weight: normal; color: #555;">Дата составления</div>
+              <div>${docDate}</div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
 
     <!-- Заголовок -->
-    <tr>
-      <td colspan="51" class="s-title">ИНВЕНТАРИЗАЦИОННАЯ ОПИСЬ</td>
-    </tr>
-    <tr>
-      <td colspan="51" style="text-align: center; font-weight: bold; font-size: 10pt;">товарно-материальных ценностей / основных средств</td>
-    </tr>
-    <tr style="height: 8px;"><td colspan="51"></td></tr>
+    <div class="doc-title">ИНВЕНТАРИЗАЦИОННАЯ ОПИСЬ</div>
+    <div class="doc-subtitle">товарно-материальных ценностей / основных средств</div>
 
     <!-- Расписка -->
-    <tr>
-      <td colspan="51" style="text-align: center; font-weight: bold; font-size: 9pt;">РАСПИСКА</td>
-    </tr>
-    <tr>
-      <td colspan="51" class="s-receipt" style="padding-top: 4px; line-height: 1.3;">
-        &nbsp;&nbsp;&nbsp;&nbsp;К началу проведения инвентаризации все расходные и приходные документы на товарно-материальные ценности сданы в бухгалтерию и все товарно-материальные ценности, поступившие на мою (нашу) ответственность, оприходованы, а выбывшие списаны в расход.
-      </td>
-    </tr>
-    <tr style="height: 12px;"><td colspan="51"></td></tr>
-    <tr>
-      <td colspan="12" style="font-size: 8pt; vertical-align: bottom;">Материально ответственное(ые) лицо(а):</td>
-      <td colspan="11" class="s-border-bot" style="text-align: center; font-size: 8pt; vertical-align: bottom;">МОЛ</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-border-bot" style="text-align: center; font-size: 8pt; vertical-align: bottom;"></td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-border-bot" style="text-align: center; font-size: 8pt; vertical-align: bottom; font-weight: bold;">${allPersonsEscaped}</td>
-    </tr>
-    <tr>
-      <td colspan="12"></td>
-      <td colspan="11" class="s-subtext">(должность)</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-subtext">(подпись)</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-subtext">(расшифровка подписи)</td>
-    </tr>
-    <tr style="height: 12px;"><td colspan="51"></td></tr>
+    <div class="receipt-box">
+      <b>РАСПИСКА:</b> К началу проведения инвентаризации все расходные и приходные документы на товарно-материальные ценности сданы в бухгалтерию и все товарно-материальные ценности, поступившие на мою (нашу) ответственность, оприходованы, а выбывшие списаны в расход.
+      <div style="margin-top: 8px; display: flex; gap: 12px; align-items: flex-end;">
+        <span>Материально ответственное(ые) лицо(а):</span>
+        <span style="border-bottom: 1px solid #222; font-weight: bold; flex: 1; padding: 0 8px;">${allPersonsEscaped}</span>
+      </div>
+    </div>
 
-    <!-- Шапка таблицы описи (колонки 1..13) -->
-    <tr style="font-size: 7.5pt; text-align: center; font-weight: bold;">
-      <td class="s-border-all" rowspan="2" style="width: 39px; vertical-align: middle;">№<br/>п/п</td>
-      <td class="s-border-all" rowspan="2" colspan="4" style="width: 87px; vertical-align: middle;">Счет,<br/>субсчет</td>
-      <td class="s-border-all" rowspan="2" colspan="10" style="width: 252px; vertical-align: middle;">Товарно-материальные ценности<br/>(наименование, характеристика)</td>
-      <td class="s-border-all" rowspan="2" colspan="4" style="width: 87px; vertical-align: middle;">Код<br/>(номенкл.<br/>номер)</td>
-      <td class="s-border-all" colspan="7" style="vertical-align: middle;">Единица измерения</td>
-      <td class="s-border-all" rowspan="2" colspan="4" style="width: 70px; vertical-align: middle;">Цена,<br/>сум</td>
-      <td class="s-border-all" colspan="7" style="vertical-align: middle;">Номер</td>
-      <td class="s-border-all" colspan="11" style="vertical-align: middle;">Фактическое наличие</td>
-      <td class="s-border-all" colspan="8" style="vertical-align: middle;">По данным бух. учета</td>
-      <td style="width: 4px; border: 0;"></td>
-    </tr>
-    <tr style="font-size: 7pt; text-align: center; font-weight: bold;">
-      <td class="s-border-all" colspan="4" style="width: 63px; vertical-align: middle;">код по ОКЕИ</td>
-      <td class="s-border-all" colspan="3" style="width: 63px; vertical-align: middle;">наимен.</td>
-      <td class="s-border-all" colspan="4" style="width: 63px; vertical-align: middle;">инвентарный</td>
-      <td class="s-border-all" colspan="3" style="width: 63px; vertical-align: middle;">паспорта</td>
-      <td class="s-border-all" colspan="8" style="width: 71px; vertical-align: middle;">количество</td>
-      <td class="s-border-all" colspan="3" style="width: 79px; vertical-align: middle;">сумма, сум</td>
-      <td class="s-border-all" colspan="5" style="width: 71px; vertical-align: middle;">количество</td>
-      <td class="s-border-all" colspan="3" style="width: 79px; vertical-align: middle;">сумма, сум</td>
-      <td style="width: 4px; border: 0;"></td>
-    </tr>
-    <!-- Номера колонок -->
-    <tr style="font-size: 7pt; text-align: center; background: #f9f9f9;">
-      <td class="s-border-all">1</td>
-      <td class="s-border-all" colspan="4">2</td>
-      <td class="s-border-all" colspan="10">3</td>
-      <td class="s-border-all" colspan="4">4</td>
-      <td class="s-border-all" colspan="4">5</td>
-      <td class="s-border-all" colspan="3">6</td>
-      <td class="s-border-all" colspan="4">7</td>
-      <td class="s-border-all" colspan="4">8</td>
-      <td class="s-border-all" colspan="3">9</td>
-      <td class="s-border-all" colspan="8">10</td>
-      <td class="s-border-all" colspan="3">11</td>
-      <td class="s-border-all" colspan="5">12</td>
-      <td class="s-border-all" colspan="3">13</td>
-      <td style="width: 4px; border: 0;"></td>
-    </tr>
+    <!-- Основная таблица -->
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width: 36px;">№<br/>п/п</th>
+          <th rowspan="2">Наименование ценностей</th>
+          <th rowspan="2" style="width: 110px;">Номенклатурный<br/>номер</th>
+          <th rowspan="2" style="width: 80px;">Цена,<br/>сум</th>
+          <th colspan="2">Фактическое наличие</th>
+          <th colspan="2">По данным бухучета</th>
+          <th colspan="2">Разница (расхождения)</th>
+        </tr>
+        <tr>
+          <th style="width: 55px;">Кол-во</th>
+          <th style="width: 85px;">Сумма, сум</th>
+          <th style="width: 55px;">Кол-во</th>
+          <th style="width: 85px;">Сумма, сум</th>
+          <th style="width: 55px;">Кол-во</th>
+          <th style="width: 85px;">Сумма, сум</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <tr class="total-row">
+          <td colspan="4" style="text-align: right; font-weight: bold; padding-right: 8px;">ИТОГО:</td>
+          <td class="num">${fmtQty(totalFactQty)}</td>
+          <td class="num">${fmtMoney(totalFactSum)}</td>
+          <td class="num">${fmtQty(totalBookQty)}</td>
+          <td class="num">${fmtMoney(totalBookSum)}</td>
+          <td class="num" style="color: ${totalDiffQty < 0 ? '#b91c1c' : totalDiffQty > 0 ? '#15803d' : '#111'}; font-weight: bold;">
+            ${totalDiffQty === 0 ? '0' : diffSignTotal + fmtQty(totalDiffQty)}
+          </td>
+          <td class="num" style="color: ${totalDiffSum < 0 ? '#b91c1c' : totalDiffSum > 0 ? '#15803d' : '#111'}; font-weight: bold;">
+            ${totalDiffSum === 0 ? '0,00' : diffSignTotal + fmtMoney(totalDiffSum)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
-    <!-- Строки данных -->
-    ${rowsHtml}
-
-    <!-- Итого по описи (числа в таблице) -->
-    <tr style="height: 24px; font-weight: bold;">
-      <td colspan="36" style="text-align: right; vertical-align: middle; padding-right: 8px;">Итого:</td>
-      <td class="s-border-all s-num" colspan="8" style="vertical-align: middle; padding-right: 4px;">${fmtQty(totalFactQty)}</td>
-      <td class="s-border-all s-num" colspan="3" style="vertical-align: middle; padding-right: 4px;">${fmtMoney(totalFactSum)}</td>
-      <td class="s-border-all s-num" colspan="5" style="vertical-align: middle; padding-right: 4px;">${fmtQty(totalBookQty)}</td>
-      <td class="s-border-all s-num" colspan="3" style="vertical-align: middle; padding-right: 4px;">${fmtMoney(totalBookSum)}</td>
-      <td style="width: 4px; border: 0;"></td>
-    </tr>
-
-    <tr style="height: 16px;"><td colspan="51"></td></tr>
-
-    <!-- Итого прописью -->
-    <tr>
-      <td colspan="12" style="font-weight: bold; vertical-align: bottom;">Итого по описи:</td>
-      <td colspan="39"></td>
-    </tr>
-    <tr>
-      <td colspan="16" style="vertical-align: bottom;">а) количество порядковых номеров:</td>
-      <td colspan="35" class="s-border-bot" style="font-weight: bold; padding-left: 8px; vertical-align: bottom;">${countWords}</td>
-    </tr>
-    <tr>
-      <td colspan="16"></td>
-      <td colspan="35" class="s-subtext">(прописью)</td>
-    </tr>
-    <tr>
-      <td colspan="16" style="vertical-align: bottom;">б) общее количество единиц фактически:</td>
-      <td colspan="35" class="s-border-bot" style="font-weight: bold; padding-left: 8px; vertical-align: bottom;">${totalFactQtyWords}</td>
-    </tr>
-    <tr>
-      <td colspan="16"></td>
-      <td colspan="35" class="s-subtext">(прописью)</td>
-    </tr>
-    <tr>
-      <td colspan="16" style="vertical-align: bottom;">в) на сумму фактически:</td>
-      <td colspan="35" class="s-border-bot" style="font-weight: bold; padding-left: 8px; vertical-align: bottom;">${totalFactSumWords}</td>
-    </tr>
-    <tr>
-      <td colspan="16"></td>
-      <td colspan="35" class="s-subtext">(прописью)</td>
-    </tr>
-
-    <tr style="height: 16px;"><td colspan="51"></td></tr>
+    <!-- Итоги прописью -->
+    <div class="totals-words">
+      <div><b>Итого по описи:</b></div>
+      <div style="display: flex; gap: 8px;">
+        <span style="min-width: 260px;">а) количество порядковых номеров:</span>
+        <span style="border-bottom: 1px solid #222; font-weight: bold; flex: 1;">${countWords}</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <span style="min-width: 260px;">б) общее количество единиц фактически:</span>
+        <span style="border-bottom: 1px solid #222; font-weight: bold; flex: 1;">${totalFactQtyWords}</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <span style="min-width: 260px;">в) на сумму фактически:</span>
+        <span style="border-bottom: 1px solid #222; font-weight: bold; flex: 1;">${totalFactSumWords}</span>
+      </div>
+    </div>
 
     <!-- Подписи комиссии -->
-    <tr>
-      <td colspan="51" style="font-size: 8pt; line-height: 1.3;">
-        Все цены, подсчеты итогов по строкам, страницам и в целом по инвентаризационной описи товарно-материальных ценностей проверены.
-      </td>
-    </tr>
-    <tr style="height: 10px;"><td colspan="51"></td></tr>
-    <tr>
-      <td colspan="10" style="vertical-align: bottom; font-weight: bold;">Председатель комиссии:</td>
-      <td colspan="11" class="s-border-bot" style="text-align: center; vertical-align: bottom;">Директор</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-border-bot"></td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-border-bot" style="text-align: center; vertical-align: bottom; font-weight: bold;">${chairman}</td>
-    </tr>
-    <tr>
-      <td colspan="10"></td>
-      <td colspan="11" class="s-subtext">(должность)</td>
-      <td colspan="2"></td>
-      <td colspan="12" class="s-subtext">(подпись)</td>
-      <td colspan="2"></td>
-      <td colspan="14" class="s-subtext">(расшифровка подписи)</td>
-    </tr>
+    <div style="font-size: 8.5pt; margin-top: 14px;">
+      Все цены, подсчеты итогов по строкам, страницам и в целом по инвентаризационной описи товарно-материальных ценностей проверены.
+    </div>
 
-    ${membersRowsHtml}
-
-    <tr style="height: 16px;"><td colspan="51"></td></tr>
+    <table class="signatures-table">
+      ${commissionRowsHtml}
+    </table>
 
     <!-- Заключительная расписка МОЛ -->
-    <tr>
-      <td colspan="51" class="s-receipt" style="line-height: 1.3;">
-        &nbsp;&nbsp;&nbsp;&nbsp;Все товарно-материальные ценности, поименованные в настоящей инвентаризационной описи с № 1 по № ${itemCount}, комиссией проверены в натуре в моем присутствии и внесены в опись, в связи с чем претензий к инвентаризационной комиссии не имею. Товарно-материальные ценности, перечисленные в описи, находятся на моем ответственном хранении.
-      </td>
-    </tr>
-    ${molRowsHtml}
+    <div style="font-size: 8.5pt; margin-top: 16px; line-height: 1.35; text-align: justify;">
+      Все товарно-материальные ценности, поименованные в настоящей инвентаризационной описи с № 1 по № ${itemCount}, комиссией проверены в натуре в моем присутствии и внесены в опись, в связи с чем претензий к инвентаризационной комиссии не имею. Товарно-материальные ценности, перечисленные в описи, находятся на моем ответственном хранении.
+    </div>
 
-    <tr style="height: 16px;"><td colspan="51"></td></tr>
-    <tr>
-      <td colspan="20" style="vertical-align: bottom;">Указанные в настоящей описи данные и расчеты проверил:</td>
-      <td colspan="10" class="s-border-bot" style="text-align: center; vertical-align: bottom;">Бухгалтер</td>
-      <td colspan="2"></td>
-      <td colspan="8" class="s-border-bot"></td>
-      <td colspan="2"></td>
-      <td colspan="9" class="s-border-bot" style="text-align: center; vertical-align: bottom;"></td>
-    </tr>
-    <tr>
-      <td colspan="20"></td>
-      <td colspan="10" class="s-subtext">(должность)</td>
-      <td colspan="2"></td>
-      <td colspan="8" class="s-subtext">(подпись)</td>
-      <td colspan="2"></td>
-      <td colspan="9" class="s-subtext">(расшифровка подписи)</td>
-    </tr>
-  </table>
+    <table class="signatures-table" style="margin-top: 10px;">
+      ${molRowsHtml}
+      <tr>
+        <td style="width: 170px; font-weight: bold;">Проверил (бухгалтер):</td>
+        <td style="width: 140px; border-bottom: 1px solid #222; text-align: center;">Бухгалтер</td>
+        <td style="width: 12px;"></td>
+        <td style="width: 130px; border-bottom: 1px solid #222; text-align: center;"></td>
+        <td style="width: 12px;"></td>
+        <td style="border-bottom: 1px solid #222; text-align: center; color: #555;">( &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; )</td>
+      </tr>
+      <tr>
+        <td></td>
+        <td class="subtext">(должность)</td>
+        <td></td>
+        <td class="subtext">(подпись)</td>
+        <td></td>
+        <td class="subtext">(расшифровка подписи вручную)</td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>`;
 }
@@ -447,7 +463,7 @@ export function downloadInv3ExcelFile(data: Inv3Data, filename?: string) {
     <style>${INV3_CSS}</style>
   </head>
   <body>
-    ${html.slice(html.indexOf('<table'), html.lastIndexOf('</table>') + 8)}
+    ${html}
   </body>
 </html>`;
   const blob = new Blob([excelWrapper], { type: 'application/vnd.ms-excel;charset=utf-8' });
