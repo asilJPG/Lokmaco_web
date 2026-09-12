@@ -2,6 +2,12 @@
 
 import { useMemo } from 'react';
 import type { AssetAudit, AssetLocation } from '@/db/schema';
+import {
+  type Inv3Data,
+  downloadInv3HtmlFile,
+  downloadInv3ExcelFile,
+  printInv3Window,
+} from '@/lib/inv3-export';
 
 /** Строка акта — снимок карточки на момент закрытия обхода, а не текущее её состояние. */
 export type ActRow = { id: string; inv_number: string; name: string; code?: string; cost?: number };
@@ -43,8 +49,29 @@ export function ActModal({ act, locations, onClose }: {
     ? locations.find((l) => l.id === act.locationId)?.name || 'место удалено'
     : 'всё оборудование';
 
-  /** Файл акта: те же колонки, что на экране, плюс шапка документа. */
-  function download() {
+  const inv3Data = useMemo<Inv3Data>(() => ({
+    organization: 'OOO "The Lokmaco Fergana"',
+    department: place,
+    docNumber: act.id ? String(act.id).slice(0, 8) : '1',
+    docDate: day(act.actDate || act.startedAt),
+    startDate: day(act.startedAt),
+    endDate: act.finishedAt ? day(act.finishedAt) : day(act.startedAt),
+    performedBy: act.performedBy || act.startedBy || 'Материально ответственное лицо',
+    responsiblePerson: act.performedBy || act.startedBy || 'Материально ответственное лицо',
+    items: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      inv_number: r.inv_number,
+      code: r.code || r.inv_number,
+      cost: r.cost || 0,
+      unit: 'шт',
+      fact: r.fact,
+      book: r.book,
+    })),
+  }), [act, place, rows]);
+
+  /** Файл акта в CSV */
+  function downloadCsv() {
     const esc = (v: string | number) => {
       const t = String(v);
       return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
@@ -84,7 +111,7 @@ export function ActModal({ act, locations, onClose }: {
       <div className="scan-sheet act-sheet">
         <div className="scan-sheet__head">
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>📄 Акт инвентаризации</div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>📄 Акт инвентаризации (ИНВ-3)</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
               {day(act.actDate || act.startedAt)} · {place} · проводит {act.performedBy || act.startedBy}
             </div>
@@ -150,9 +177,22 @@ export function ActModal({ act, locations, onClose }: {
           {act.note && <div className="banner">💬 {act.note}</div>}
         </div>
 
-        <div className="scan-sheet__foot">
+        <div className="scan-sheet__foot" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <button type="button" className="btn" onClick={onClose}>Закрыть</button>
-          <button type="button" className="btn btn--primary" onClick={download}>📥 Скачать акт</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn--sm" onClick={() => printInv3Window(inv3Data)}>
+              🖨️ Печать
+            </button>
+            <button type="button" className="btn btn--sm" onClick={() => downloadInv3ExcelFile(inv3Data)}>
+              📊 Excel (.xls)
+            </button>
+            <button type="button" className="btn btn--sm btn--primary" onClick={() => downloadInv3HtmlFile(inv3Data)}>
+              📥 Скачать ИНВ-3 (.html)
+            </button>
+            <button type="button" className="btn btn--sm" onClick={downloadCsv} title="Скачать простой CSV">
+              CSV
+            </button>
+          </div>
         </div>
       </div>
     </div>

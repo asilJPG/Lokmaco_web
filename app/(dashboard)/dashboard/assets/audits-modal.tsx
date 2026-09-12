@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import type { AssetLocation } from '@/db/schema';
 import type { Act } from './act-modal';
+import { downloadInv3HtmlFile, type Inv3Data } from '@/lib/inv3-export';
 
 type Audit = Act;
 
 const dt = (v: string | Date | null) => (v ? new Date(v).toLocaleString('ru-RU') : '—');
+const day = (v: string | Date | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
 /**
  * История обходов — то, ради чего инвентаризация вообще документ.
@@ -36,6 +38,37 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
   }, []);
 
   const placeName = (id: string | null) => (id ? locations.find((l) => l.id === id)?.name || 'место удалено' : 'всё оборудование');
+
+  /** Скачивание в формате ИНВ-3 */
+  function exportInv3(a: Audit) {
+    const place = placeName(a.locationId);
+    const rows = [
+      ...a.missing.map((r) => ({ ...r, fact: 0, book: 1 })),
+      ...a.surplus.map((r) => ({ ...r, fact: 1, book: 0 })),
+      ...a.scanned.map((r) => ({ ...r, fact: 1, book: 1 })),
+    ];
+    const data: Inv3Data = {
+      organization: 'OOO "The Lokmaco Fergana"',
+      department: place,
+      docNumber: a.id ? String(a.id).slice(0, 8) : '1',
+      docDate: day(a.actDate || a.startedAt),
+      startDate: day(a.startedAt),
+      endDate: a.finishedAt ? day(a.finishedAt) : day(a.startedAt),
+      performedBy: a.performedBy || a.startedBy || 'Материально ответственное лицо',
+      responsiblePerson: a.performedBy || a.startedBy || 'Материально ответственное лицо',
+      items: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        inv_number: r.inv_number,
+        code: r.code || r.inv_number,
+        cost: r.cost || 0,
+        unit: 'шт',
+        fact: r.fact,
+        book: r.book,
+      })),
+    };
+    downloadInv3HtmlFile(data);
+  }
 
   /** Акт обхода в CSV — то, что распечатывают и подписывают с МОЛ. */
   function exportCsv(a: Audit) {
@@ -99,8 +132,9 @@ export function AuditsModal({ locations, onClose, onOpenAct }: {
                   {/* Акт — отдельным окном: в нём и недостача, и излишки, и
                       книжный остаток. Список «показать позиции» остаётся для
                       быстрого взгляда, не открывая документ. */}
-                  <button type="button" className="btn btn--sm btn--primary" onClick={() => onOpenAct(a)}>📄 Акт</button>
-                  <button type="button" className="btn btn--sm" onClick={() => exportCsv(a)}>📥 CSV</button>
+                  <button type="button" className="btn btn--sm btn--primary" onClick={() => onOpenAct(a)}>📄 Акт (ИНВ-3)</button>
+                  <button type="button" className="btn btn--sm" onClick={() => exportInv3(a)}>📥 ИНВ-3</button>
+                  <button type="button" className="btn btn--sm" onClick={() => exportCsv(a)}>CSV</button>
                 </div>
               )}
 
