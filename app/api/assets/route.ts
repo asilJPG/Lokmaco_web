@@ -109,6 +109,31 @@ export async function PUT(req: Request) {
   // запрос на каждую превращал сохранение в минуту ожидания на телефоне, и
   // любой обрыв связи посреди списка оставлял инвентаризацию наполовину
   // сохранённой.
+  /**
+   * Массовая правка стоимости партии.
+   *
+   * Асиль просил (12.09.2026): «одинаковых сорок штук, вбиваю одну сумму — она
+   * встаёт каждому; исключение правлю после отдельно». Именно так — простая
+   * перезапись всех. Роль проверяем ту же, что и обычную правку карточки, —
+   * это редактирование, а не сверка.
+   */
+  if (b.action === 'set_cost') {
+    if (!CAN_EDIT.includes(session.role.split(':')[0])) {
+      return Response.json({ error: 'Доступ только для администратора и менеджера' }, { status: 403 });
+    }
+    const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String).filter(Boolean) : [];
+    if (ids.length === 0) return Response.json({ error: 'Нет позиций для правки' }, { status: 400 });
+    const cost = Number(b.cost);
+    if (!Number.isFinite(cost) || cost < 0) return Response.json({ error: 'Стоимость должна быть числом ≥ 0' }, { status: 400 });
+
+    const now = new Date();
+    await db.update(schema.assets)
+      .set({ initialCost: String(cost), updatedAt: now })
+      .where(inArray(schema.assets.id, ids));
+    await logAssetAction('asset_batch_cost', String(ids.length), { ids, cost }, session);
+    return Response.json({ success: true, updated: ids.length });
+  }
+
   if (b.action === 'audit') {
     const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String).filter(Boolean) : (b.id ? [String(b.id)] : []);
     if (ids.length === 0) return Response.json({ error: 'Нечего отмечать' }, { status: 400 });

@@ -8,6 +8,7 @@ import { TagsModal } from './tags-modal';
 import { AuditsModal } from './audits-modal';
 import { ActModal, type Act } from './act-modal';
 import { LocationsModal } from './locations-modal';
+import { BatchCostModal } from './batch-cost-modal';
 import { baseInvNumber, unitLabel } from '@/lib/inv-number';
 import { SortTh, useSort } from '@/components/sortable';
 
@@ -85,6 +86,8 @@ export function AssetsClient() {
   const [rowMenu, setRowMenu] = useState<Asset | null>(null);
   /** Открытый акт инвентаризации. */
   const [act, setAct] = useState<Act | null>(null);
+  /** Правка стоимости целой партии — одно поле, применяется ко всем экземплярам. */
+  const [batchCost, setBatchCost] = useState<Asset[] | null>(null);
   const [sheet, setSheet] = useState<'tags' | 'audits' | 'places' | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -531,9 +534,14 @@ export function AssetsClient() {
                         <td className="xls__mono col-seen">{k.lastDay ? day(k.lastDay) : '—'}</td>
                         <td className="xls__acts">
                           {many ? (
-                            <button type="button" className="btn btn--sm btn--icon" title="Показать экземпляры" onClick={() => toggleRow(k.key)}>
-                              {expanded ? '▾' : '▸'}
-                            </button>
+                            <>
+                              {/* Общая стоимость партии — правится в один клик,
+                                  форма перезаписывает всех экземпляров. */}
+                              <button type="button" className="btn btn--sm btn--icon" title="Стоимость всей партии" onClick={() => setBatchCost(k.units)}>💰</button>
+                              <button type="button" className="btn btn--sm btn--icon" title="Показать экземпляры" onClick={() => toggleRow(k.key)}>
+                                {expanded ? '▾' : '▸'}
+                              </button>
+                            </>
                           ) : (
                             <>
                               {/* ⚠️ На телефоне в ячейке помещается ровно одна
@@ -660,6 +668,11 @@ export function AssetsClient() {
                         ➕ Дописать экземпляр
                       </button>
                     )}
+                    {many && (
+                      <button type="button" className="btn btn--sm" onClick={() => setBatchCost(k.units)}>
+                        💰 Стоимость всей партии
+                      </button>
+                    )}
 
                     {k.units.map((u) => (
                       /* Строка экземпляра — ровно одна, даже когда их двадцать:
@@ -709,6 +722,13 @@ export function AssetsClient() {
       {qrAsset && <QrStickerModal asset={qrAsset} onClose={() => setQrAsset(null)} />}
       {sheet === 'audits' && <AuditsModal locations={locations} onClose={() => setSheet(null)} onOpenAct={(a) => setAct(a)} />}
       {act && <ActModal act={act} locations={locations} onClose={() => setAct(null)} />}
+      {batchCost && (
+        <BatchCostModal
+          units={batchCost}
+          onClose={() => setBatchCost(null)}
+          onSaved={async () => { setMsg({ ok: true, text: 'Стоимость применена ко всей партии' }); await load(); }}
+        />
+      )}
       {sheet === 'places' && <LocationsModal onClose={() => setSheet(null)} onChanged={load} />}
       {sheet === 'tags' && <TagsModal locations={locations} onClose={() => setSheet(null)} onChanged={load} />}
       {scanMode && (
