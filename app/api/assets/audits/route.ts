@@ -82,7 +82,9 @@ export async function PATCH(req: Request) {
 
   const scannedIds: string[] = Array.isArray(b?.scanned) ? b.scanned.map(String).filter(Boolean) : [];
 
-  const all = await db.select().from(schema.assets);
+  // ⚠️ Обход считает scope в пределах одного филиала: у audit.filial_id уже
+  // проставлен верный филиал (он в самой записи обхода), берём его.
+  const all = await db.select().from(schema.assets).where(eq(schema.assets.filialId, audit.filialId));
   const scope = all.filter((a) => (
     a.status !== 'archived' && (!audit.locationId || a.locationId === audit.locationId)
   ));

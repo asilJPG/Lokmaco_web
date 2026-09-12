@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, like } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -22,13 +22,13 @@ async function log(actionType: string, documentNumber: string, details: Record<s
   });
 }
 
-/** Наклейка вместе с карточкой, к которой привязана. */
-async function tagWithAsset(code: string) {
+/** Наклейка вместе с карточкой, к которой привязана — только своего филиала. */
+async function tagWithAsset(code: string, filialIds: number[]) {
   const [row] = await db
     .select({ tag: schema.assetTags, asset: schema.assets })
     .from(schema.assetTags)
     .leftJoin(schema.assets, eq(schema.assets.id, schema.assetTags.assetId))
-    .where(eq(schema.assetTags.code, code));
+    .where(and(eq(schema.assetTags.code, code), inArray(schema.assetTags.filialId, filialIds)));
   return row;
 }
 
@@ -38,13 +38,16 @@ export async function GET(req: Request) {
     return Response.json({ error: 'Доступ только для администратора и менеджера' }, { status: 403 });
   }
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ success: true, data: [], stats: { total: 0, free: 0 } });
+
   const sp = new URL(req.url).searchParams;
   const code = sp.get('code');
 
   if (code) {
     const norm = normalizeTagCode(code);
     if (!norm) return Response.json({ error: 'Некорректный код наклейки' }, { status: 400 });
-    const row = await tagWithAsset(norm);
+    const row = await tagWithAsset(norm, filialIds);
     if (!row) return Response.json({ error: 'Наклейка не найдена', code: norm }, { status: 404 });
     return Response.json({ success: true, tag: { ...row.tag, asset: row.asset } });
   }
@@ -52,6 +55,7 @@ export async function GET(req: Request) {
   const batch = sp.get('batch');
   const onlyFree = sp.get('free') === '1';
   const where = [
+    inArray(schema.assetTags.filialId, filialIds),
     batch ? eq(schema.assetTags.batch, batch) : undefined,
     onlyFree ? isNull(schema.assetTags.assetId) : undefined,
   ].filter(Boolean);
@@ -83,8 +87,13 @@ export async function POST(req: Request) {
   if (!Number.isFinite(n) || n < 1) return Response.json({ error: 'Укажите количество наклеек' }, { status: 400 });
   if (n > MAX_BATCH) return Response.json({ error: `За раз можно напечатать не больше ${MAX_BATCH}` }, { status: 400 });
 
-  // Нумерация продолжается от последнего кода: новая пачка не должна
-  // пересечься со старой, иначе в зале окажутся две наклейки с одним кодом.
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+
+  // ⚠️ Нумерация продолжается от последнего кода **по всей базе**, а не
+  // только по своему филиалу: код `LKM-0001` — первичный ключ, и два филиала
+  // не могут иметь свой независимый `LKM-0007`. В зале окажется две
+  // одинаковые наклейки.
   const [last] = await db
     .select({ code: schema.assetTags.code })
     .from(schema.assetTags)
@@ -97,6 +106,7 @@ export async function POST(req: Request) {
   const rows = Array.from({ length: n }, (_, i) => ({
     code: `${TAG_PREFIX}${String(lastNum + i + 1).padStart(4, '0')}`,
     batch,
+    filialId: filialIds[0],
   }));
 
   const created = await db.insert(schema.assetTags).values(rows).returning();
@@ -114,11 +124,14 @@ export async function PATCH(req: Request) {
     return Response.json({ error: 'Доступ только для администратора и менеджера' }, { status: 403 });
   }
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+
   const b = await req.json().catch(() => ({}));
   const code = normalizeTagCode(b?.code);
   if (!code) return Response.json({ error: 'Некорректный код наклейки' }, { status: 400 });
 
-  const row = await tagWithAsset(code);
+  const row = await tagWithAsset(code, filialIds);
   if (!row) return Response.json({ error: 'Такой наклейки нет в системе' }, { status: 404 });
 
   if (b.unbind) {
@@ -165,10 +178,15 @@ export async function DELETE(req: Request) {
     return Response.json({ error: 'Доступ только для администратора и менеджера' }, { status: 403 });
   }
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+
   const sp = new URL(req.url).searchParams;
 
   if (sp.get('free') === '1') {
-    const res = await db.delete(schema.assetTags).where(isNull(schema.assetTags.assetId)).returning({ code: schema.assetTags.code });
+    const res = await db.delete(schema.assetTags)
+      .where(and(isNull(schema.assetTags.assetId), inArray(schema.assetTags.filialId, filialIds)))
+      .returning({ code: schema.assetTags.code });
     await log('asset_tags_delete', 'free', { removed: res.length }, session);
     return Response.json({ success: true, removed: res.length });
   }
@@ -176,7 +194,7 @@ export async function DELETE(req: Request) {
   const code = normalizeTagCode(sp.get('code'));
   if (!code) return Response.json({ error: 'Не указан код наклейки' }, { status: 400 });
 
-  const row = await tagWithAsset(code);
+  const row = await tagWithAsset(code, filialIds);
   if (!row) return Response.json({ error: 'Наклейка не найдена' }, { status: 404 });
   if (row.tag.assetId) {
     return Response.json({ error: 'Наклейка привязана к оборудованию — сначала отвяжите её' }, { status: 400 });

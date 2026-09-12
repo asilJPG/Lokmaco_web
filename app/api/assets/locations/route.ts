@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -21,10 +21,11 @@ async function log(actionType: string, documentNumber: string, details: Record<s
 }
 
 /** Сколько карточек числится в каждом месте — по нему же решаем, можно ли удалить. */
-async function countByLocation(): Promise<Record<string, number>> {
+async function countByLocation(filialIds: number[]): Promise<Record<string, number>> {
   const rows = await db
     .select({ id: schema.assets.locationId, n: sql<number>`count(*)::int` })
     .from(schema.assets)
+    .where(inArray(schema.assets.filialId, filialIds))
     .groupBy(schema.assets.locationId);
   const out: Record<string, number> = {};
   for (const r of rows) if (r.id) out[r.id] = Number(r.n);
@@ -37,9 +38,13 @@ export async function GET() {
     return Response.json({ error: 'Доступ только для администратора и менеджера' }, { status: 403 });
   }
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ success: true, data: [] });
   const [locations, counts] = await Promise.all([
-    db.select().from(schema.assetLocations).orderBy(asc(schema.assetLocations.sortOrder), asc(schema.assetLocations.name)),
-    countByLocation(),
+    db.select().from(schema.assetLocations)
+      .where(inArray(schema.assetLocations.filialId, filialIds))
+      .orderBy(asc(schema.assetLocations.sortOrder), asc(schema.assetLocations.name)),
+    countByLocation(filialIds),
   ]);
   return Response.json({ success: true, data: locations.map((l) => ({ ...l, assets_count: counts[l.id] || 0 })) });
 }
@@ -55,7 +60,10 @@ export async function POST(req: Request) {
   if (!name) return Response.json({ error: 'Укажите название места' }, { status: 400 });
 
   try {
+    const filialIds = await getCurrentFilialIds();
+    if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
     const [row] = await db.insert(schema.assetLocations).values({
+      filialId: filialIds[0],
       name, note: String(b?.note || '').trim(), sortOrder: Number(b?.sort_order) || 0,
     }).returning();
     await log('asset_location_create', name, { name }, session);
@@ -90,7 +98,10 @@ export async function PATCH(req: Request) {
   if (b.sort_order !== undefined) patch.sortOrder = Number(b.sort_order) || 0;
   if (Object.keys(patch).length === 0) return Response.json({ success: true, unchanged: true });
 
-  await db.update(schema.assetLocations).set(patch).where(eq(schema.assetLocations.id, b.id));
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+  await db.update(schema.assetLocations).set(patch)
+    .where(and(eq(schema.assetLocations.id, b.id), inArray(schema.assetLocations.filialId, filialIds)));
   return Response.json({ success: true });
 }
 
@@ -103,9 +114,12 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return Response.json({ error: 'Не указан id места' }, { status: 400 });
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+
   // ⚠️ Место с оборудованием не удаляем: карточки остались бы без привязки,
   // а человек бы этого не заметил.
-  const counts = await countByLocation();
+  const counts = await countByLocation(filialIds);
   if (counts[id]) {
     return Response.json(
       { error: `В этом месте числится оборудование (${counts[id]} шт.). Сначала перенесите его.` },
@@ -113,6 +127,7 @@ export async function DELETE(req: Request) {
     );
   }
 
-  await db.delete(schema.assetLocations).where(eq(schema.assetLocations.id, id));
+  await db.delete(schema.assetLocations)
+    .where(and(eq(schema.assetLocations.id, id), inArray(schema.assetLocations.filialId, filialIds)));
   return Response.json({ success: true });
 }

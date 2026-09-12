@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -30,8 +30,11 @@ export async function POST(req: Request) {
   const id = String(b?.id || '');
   if (!id) return Response.json({ error: 'Не указана позиция' }, { status: 400 });
 
-  const [asset] = await db.select().from(schema.assets).where(eq(schema.assets.id, id));
-  if (!asset) return Response.json({ error: 'Позиция не найдена' }, { status: 404 });
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+  const [asset] = await db.select().from(schema.assets)
+    .where(and(eq(schema.assets.id, id), inArray(schema.assets.filialId, filialIds)));
+  if (!asset) return Response.json({ error: 'Позиция не найдена в этом филиале' }, { status: 404 });
 
   // Досчитать партию: разбили на 5, а их оказалось 6.
   if (b?.add) return addToBatch(asset, parseInt(String(b.add), 10) || 1, session);
@@ -72,6 +75,7 @@ export async function POST(req: Request) {
   const rest = Array.from({ length: n - 1 }, (_, k) => {
     const i = k + 2;
     return {
+      filialId: asset.filialId,
       invNumber: unitInvNumber(base, i, n),
       name: asset.name,
       category: asset.category || 'Оборудование',
@@ -91,14 +95,11 @@ export async function POST(req: Request) {
 
   const created = await db.insert(schema.assets).values(rest).returning({ id: schema.assets.id, invNumber: schema.assets.invNumber });
 
-  const filialIds = await getCurrentFilialIds();
-  if (filialIds.length > 0) {
-    await db.insert(schema.botActions).values({
-      filialId: filialIds[0], tgId: session.tgId, userName: session.name,
+  await db.insert(schema.botActions).values({
+      filialId: asset.filialId, tgId: session.tgId, userName: session.name,
       actionType: 'asset_split', documentNumber: asset.invNumber || id,
       details: { source_id: id, name: asset.name, count: n, total_cost: total },
-    });
-  }
+  });
 
   return Response.json({
     success: true,
@@ -128,7 +129,7 @@ async function addToBatch(
   if (!Number.isFinite(add) || add < 1) return Response.json({ error: 'Сколько экземпляров добавить?' }, { status: 400 });
 
   const base = baseInvNumber(asset.invNumber);
-  const all = (await db.select().from(schema.assets))
+  const all = (await db.select().from(schema.assets).where(eq(schema.assets.filialId, asset.filialId)))
     .filter((a) => baseInvNumber(a.invNumber) === base && a.name === asset.name);
   if (all.length === 0) return Response.json({ error: 'Партия не найдена' }, { status: 404 });
 
@@ -146,6 +147,7 @@ async function addToBatch(
   const rest = Array.from({ length: add }, (_, k) => {
     const i = maxIndex + k + 1;
     return {
+      filialId: asset.filialId,
       invNumber: unitInvNumber(base, i, total),
       name: asset.name,
       category: asset.category || 'Оборудование',

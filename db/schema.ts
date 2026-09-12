@@ -111,6 +111,12 @@ export const assets = pgTable('assets', {
   serialNumber: varchar('serial_number'),
   notes: text('notes'),
   photoUrl: text('photo_url'),
+  /**
+   * Филиал. У легаси одна точка (Fergana, id=1), поэтому DEFAULT 1 стоит на
+   * колонке в БД — легаси инсертит без этого поля, и без дефолта его запись
+   * упала бы. У v2 два филиала и своя опись, поэтому все API фильтруют.
+   */
+  filialId: integer('filial_id').notNull().default(1),
   lastInventoriedAt: timestamp('last_inventoried_at', { withTimezone: true }),
   /** Место размещения. Текстовое `location` остаётся: в него пишет легаси-бот. */
   locationId: uuid('location_id'),
@@ -130,6 +136,8 @@ export const assetLocations = pgTable('asset_locations', {
   name: text('name').notNull(),
   note: text('note').notNull().default(''),
   sortOrder: integer('sort_order').notNull().default(0),
+  /** Места у каждого филиала свои — «Кухня 1-этаж» у Ферганы это не «Кухня» у Самарканда. */
+  filialId: integer('filial_id').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -147,6 +155,8 @@ export const assetTags = pgTable('asset_tags', {
   batch: text('batch').notNull().default(''),
   boundAt: timestamp('bound_at', { withTimezone: true }),
   boundBy: text('bound_by'),
+  /** Наклейка привязана к филиалу: чужие сканер не показывает и не отдаёт для оклейки. */
+  filialId: integer('filial_id').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

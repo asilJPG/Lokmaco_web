@@ -1,4 +1,4 @@
-import { eq, desc, inArray } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import { db, schema } from '@/db/client';
 import { requireSession } from '@/lib/auth-session';
 import { getCurrentFilialIds } from '@/lib/current-filial';
@@ -27,7 +27,14 @@ export async function GET(req: Request) {
   const status = sp.get('status');
   const search = (sp.get('search') || '').toLowerCase().trim();
 
-  let rows = await db.select().from(schema.assets).orderBy(desc(schema.assets.createdAt));
+  // ⚠️ Каждая ветка — от текущего филиала. У легаси одна Fergana, у v2 два, и
+  // Самарканд не должен видеть фергантские наклейки, места и оборудование.
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ data: [], tags: [], locations: [] });
+
+  let rows = await db.select().from(schema.assets)
+    .where(inArray(schema.assets.filialId, filialIds))
+    .orderBy(desc(schema.assets.createdAt));
 
   if (location && location !== 'all') rows = rows.filter((a) => a.location === location);
   if (status && status !== 'all') rows = rows.filter((a) => a.status === status);
@@ -44,8 +51,10 @@ export async function GET(req: Request) {
   // наклейки в карточку, а грузить их отдельным запросом с телефона — лишний
   // круг ожидания перед обходом.
   const [tags, locations] = await Promise.all([
-    db.select().from(schema.assetTags),
-    db.select().from(schema.assetLocations).orderBy(schema.assetLocations.sortOrder, schema.assetLocations.name),
+    db.select().from(schema.assetTags).where(inArray(schema.assetTags.filialId, filialIds)),
+    db.select().from(schema.assetLocations)
+      .where(inArray(schema.assetLocations.filialId, filialIds))
+      .orderBy(schema.assetLocations.sortOrder, schema.assetLocations.name),
   ]);
 
   return Response.json({ data: rows, tags, locations });
@@ -74,7 +83,11 @@ export async function POST(req: Request) {
     invNumber = `INV-${Math.floor(10000 + Math.random() * 90000)}`;
   }
 
+  const filialIds = await getCurrentFilialIds();
+  if (filialIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+
   const [created] = await db.insert(schema.assets).values({
+    filialId: filialIds[0],
     invNumber,
     name: String(b.name).trim(),
     category: b.category || 'Оборудование',
@@ -123,13 +136,16 @@ export async function PUT(req: Request) {
     }
     const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String).filter(Boolean) : [];
     if (ids.length === 0) return Response.json({ error: 'Нет позиций для правки' }, { status: 400 });
+    // Нельзя править чужой филиал даже прицельно по id: id клиентский.
+    const fIds = await getCurrentFilialIds();
+    if (fIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
     const cost = Number(b.cost);
     if (!Number.isFinite(cost) || cost < 0) return Response.json({ error: 'Стоимость должна быть числом ≥ 0' }, { status: 400 });
 
     const now = new Date();
     await db.update(schema.assets)
       .set({ initialCost: String(cost), updatedAt: now })
-      .where(inArray(schema.assets.id, ids));
+      .where(and(inArray(schema.assets.id, ids), inArray(schema.assets.filialId, fIds)));
     await logAssetAction('asset_batch_cost', String(ids.length), { ids, cost }, session);
     return Response.json({ success: true, updated: ids.length });
   }
@@ -137,11 +153,13 @@ export async function PUT(req: Request) {
   if (b.action === 'audit') {
     const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String).filter(Boolean) : (b.id ? [String(b.id)] : []);
     if (ids.length === 0) return Response.json({ error: 'Нечего отмечать' }, { status: 400 });
+    const fIds2 = await getCurrentFilialIds();
+    if (fIds2.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
 
     const now = new Date();
     await db.update(schema.assets)
       .set({ lastInventoriedAt: now, updatedAt: now })
-      .where(inArray(schema.assets.id, ids));
+      .where(and(inArray(schema.assets.id, ids), inArray(schema.assets.filialId, fIds2)));
     await logAssetAction('asset_audit', String(ids.length), { action: 'inventory_audit', ids }, session);
     return Response.json({ success: true, marked: ids.length });
   }
@@ -165,7 +183,10 @@ export async function PUT(req: Request) {
   if (b.photo_url !== undefined) patch.photoUrl = b.photo_url || '';
   if (b.location_id !== undefined) patch.locationId = b.location_id || null;
 
-  await db.update(schema.assets).set(patch).where(eq(schema.assets.id, b.id));
+  const fIds3 = await getCurrentFilialIds();
+  if (fIds3.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+  await db.update(schema.assets).set(patch)
+    .where(and(eq(schema.assets.id, b.id), inArray(schema.assets.filialId, fIds3)));
   await logAssetAction('asset_update', String(b.id), patch as Record<string, unknown>, session);
   return Response.json({ success: true });
 }
@@ -178,7 +199,11 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return Response.json({ error: 'Missing asset id' }, { status: 400 });
 
-  const [gone] = await db.select().from(schema.assets).where(eq(schema.assets.id, id));
+  const fIds = await getCurrentFilialIds();
+  if (fIds.length === 0) return Response.json({ error: 'Филиал не выбран' }, { status: 400 });
+  const [gone] = await db.select().from(schema.assets)
+    .where(and(eq(schema.assets.id, id), inArray(schema.assets.filialId, fIds)));
+  if (!gone) return Response.json({ error: 'Позиция не найдена в этом филиале' }, { status: 404 });
   await db.delete(schema.assets).where(eq(schema.assets.id, id));
   await logAssetAction('asset_delete', id, { status: 'deleted', inv_number: gone?.invNumber }, session);
 
@@ -200,7 +225,7 @@ async function spreadCostOverBatch(gone: typeof schema.assets.$inferSelect): Pro
   if (unitSuffix(gone.invNumber) === null) return null;
 
   const base = baseInvNumber(gone.invNumber);
-  const rest = (await db.select().from(schema.assets))
+  const rest = (await db.select().from(schema.assets).where(eq(schema.assets.filialId, gone.filialId)))
     .filter((a) => baseInvNumber(a.invNumber) === base && a.name === gone.name);
   if (rest.length === 0) return null;
 

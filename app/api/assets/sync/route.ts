@@ -29,7 +29,11 @@ export async function POST() {
 
   if ('error' in equipment) return Response.json({ error: equipment.error }, { status: 502 });
 
-  const existing = await db.select().from(schema.assets);
+  // ⚠️ Сверка ищет и добавляет **только по текущему филиалу**: чужие
+  // фергантские EQ-номера не должны заводить дубликаты у Самарканда, и
+  // наоборот. iiko-креды у нас тоже per-filial (resolveIikoCreds выше).
+  const existing = await db.select().from(schema.assets)
+    .where(eq(schema.assets.filialId, filialIds[0]));
   const byInv = new Map(existing.filter((a) => a.invNumber).map((a) => [a.invNumber, a]));
   const bySerial = new Map(existing.filter((a) => a.serialNumber).map((a) => [a.serialNumber as string, a]));
   // ⚠️ Разбитая партия лежит как EQ-00745-01…04, а из iiko приходит EQ-00745 —
@@ -67,6 +71,7 @@ export async function POST() {
       }
     } else {
       await db.insert(schema.assets).values({
+        filialId: filialIds[0],
         invNumber,
         name: p.name,
         category: 'Оборудование',
