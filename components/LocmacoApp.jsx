@@ -1309,7 +1309,9 @@ export default function LocmacoApp() {
       case "tax_report":
         return ["director"].includes(role);
       case "balances":
-        return role !== "manager";
+        // Кассиру остатки складов не нужны: он работает с кассой и обедами
+        // руководства, а складской учёт не его зона.
+        return !["manager", "cashier"].includes(role);
       default:
         return false;
     }
@@ -8896,6 +8898,281 @@ function BalancesView({ stores, showToast, loggedInUser }) {
 //  CASH — отчет кассы (наличные, терминал, Click/Payme, излишки/недостачи)
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Обеды руководства.
+ *
+ * Руководители едят бесплатно. Раньше это проводилось бонусами iikoCard и
+ * садилось на выручку, искажая отчётность для франчайзера. Теперь в iiko такие
+ * заказы закрываются «без оплаты», а лимиты считаются здесь.
+ *
+ * Блок намеренно живёт ВНЕ формы закрытия смены и сохраняет каждую запись
+ * сразу: кассир вносит обед в любой момент дня, а не только когда сдаёт кассу.
+ */
+function ManagerMealsBlock({ showToast, loggedInUser }) {
+  const todayTashkent = () =>
+    new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [limits, setLimits] = useState([]);
+  const [meals, setMeals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [manager, setManager] = useState("");
+  const [amount, setAmount] = useState("");
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const today = todayTashkent();
+  const isAdmin = loggedInUser?.baseRole === "admin";
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [lr, mr] = await Promise.all([
+        fetch("/api/iiko/manager-meals/limits"),
+        fetch(`/api/iiko/manager-meals?date=${today}`),
+      ]);
+      const lj = await lr.json();
+      const mj = await mr.json();
+      if (lj.success) setLimits(lj.data || []);
+      if (mj.success) setMeals(mj.data || []);
+      if (!lj.success && lj.error) showToast?.(lj.error, "error");
+    } catch (e) {
+      console.error("[meals] load:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selected = limits.find((l) => l.manager_name === manager);
+
+  const add = async () => {
+    const sum = Math.round(Number(amount));
+    if (!manager) return showToast?.("Выберите руководителя", "error");
+    if (!Number.isFinite(sum) || sum <= 0) {
+      return showToast?.("Укажите сумму больше нуля", "error");
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/iiko/manager-meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: today,
+          manager_name: manager,
+          amount: sum,
+          comment: comment.trim() || null,
+        }),
+      });
+      const j = await res.json();
+      if (!j.success) return showToast?.(j.error || "Не удалось сохранить", "error");
+
+      setAmount("");
+      setComment("");
+      await load();
+      showToast?.(`Записано: ${manager} — ${fmtPrice(sum)}`);
+    } catch (e) {
+      console.error("[meals] add:", e);
+      showToast?.("Ошибка сохранения", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (meal) => {
+    if (!confirm(`Удалить запись «${meal.manager_name} — ${fmtPrice(meal.amount)}»?`)) return;
+    const res = await fetch(`/api/iiko/manager-meals?id=${meal.id}`, { method: "DELETE" });
+    const j = await res.json();
+    if (j.success) {
+      await load();
+      showToast?.("Запись удалена");
+    } else showToast?.(j.error || "Не удалось удалить", "error");
+  };
+
+  const canDelete = (meal) =>
+    isAdmin ||
+    (String(meal.entered_by_tg_id) === String(loggedInUser?.tg_id) && meal.date === today);
+
+  const todayTotal = meals.reduce((s, m) => s + Number(m.amount || 0), 0);
+
+  return (
+    <div
+      style={{
+        background: "var(--bg-card)",
+        borderRadius: 14,
+        border: "1px solid var(--border-color)",
+        padding: 24,
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}>
+          🍽 Обеды руководства
+        </h3>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {new Date(today).toLocaleDateString("ru-RU")}
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
+        Сохраняется сразу и не связано со сдачей кассы. В iiko такой заказ
+        закрывается «без оплаты» — на выручку не влияет.
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Загрузка…</div>
+      ) : limits.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#b45309", fontStyle: "italic" }}>
+          Список руководителей пуст — таблица `manager_limits` не заполнена.
+        </div>
+      ) : (
+        <>
+          <div className="stack-mobile" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <select
+              value={manager}
+              onChange={(e) => setManager(e.target.value)}
+              style={{ ...inp, margin: 0, flex: 2, cursor: "pointer" }}
+            >
+              <option value="">— выберите руководителя —</option>
+              {limits.map((l) => (
+                <option key={l.manager_name} value={l.manager_name}>
+                  {l.manager_name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add()}
+              placeholder="Сумма (сум)"
+              style={{ ...inp, margin: 0, flex: 1 }}
+            />
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Комментарий (необязательно)"
+              style={{ ...inp, margin: 0, flex: 2 }}
+            />
+            <Btn onClick={add} disabled={saving || !manager}>
+              {saving ? "…" : "Добавить"}
+            </Btn>
+          </div>
+
+          {selected && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                background: selected.exceeded ? "#fffbeb" : "var(--bg-hover)",
+                color: selected.exceeded ? "#b45309" : "var(--text-main)",
+                border: selected.exceeded ? "1px solid #fde68a" : "1px solid transparent",
+              }}
+            >
+              {selected.exceeded ? "⚠️ Лимит исчерпан. " : ""}
+              Остаток: {fmtPrice(selected.remaining)} / {fmtPrice(selected.monthly_limit)}
+              {selected.exceeded && " — запись всё равно сохранится, решение за администратором"}
+            </div>
+          )}
+
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
+              Записи за сегодня
+            </div>
+            {meals.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                Сегодня обедов не вносили
+              </div>
+            ) : (
+              <div style={{ border: "1px solid var(--border-color)", borderRadius: 10, overflow: "hidden" }}>
+                {meals.map((m, i) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "9px 12px",
+                      borderTop: i ? "1px solid var(--border-color)" : "none",
+                      fontSize: 13,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, minWidth: 110 }}>{m.manager_name}</span>
+                    <span style={{ fontWeight: 700 }}>{fmtPrice(m.amount)}</span>
+                    {m.comment && (
+                      <span style={{ color: "var(--text-muted)", fontSize: 11, fontStyle: "italic" }}>
+                        {m.comment}
+                      </span>
+                    )}
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+                      {m.entered_by_name}
+                    </span>
+                    {canDelete(m) && (
+                      <button
+                        type="button"
+                        onClick={() => remove(m)}
+                        title="Удалить запись"
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", display: "flex" }}
+                      >
+                        {I.trash}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div
+                  style={{
+                    padding: "9px 12px",
+                    borderTop: "1px solid var(--border-color)",
+                    background: "var(--bg-hover)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  <span>Итого за день</span>
+                  <span>{fmtPrice(todayTotal)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16, borderTop: "1px dashed var(--border-color)", paddingTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
+              Лимиты на месяц
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {limits.map((l) => (
+                <div
+                  key={l.manager_name}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    background: l.exceeded ? "#fffbeb" : "var(--bg-pill)",
+                    color: l.exceeded ? "#b45309" : "var(--text-muted)",
+                    border: l.exceeded ? "1px solid #fde68a" : "1px solid transparent",
+                  }}
+                >
+                  <b style={{ color: l.exceeded ? "#b45309" : "var(--text-main)" }}>{l.manager_name}</b>
+                  {" — "}
+                  {fmtPrice(l.remaining)} / {fmtPrice(l.monthly_limit)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CashView({
   showToast,
   loggedInUser,
@@ -9439,6 +9716,8 @@ function CashView({
           </div>
         </form>
       </div>
+
+      <ManagerMealsBlock showToast={showToast} loggedInUser={loggedInUser} />
 
       {!isManager && (
         <div style={{ marginTop: 24 }}>
