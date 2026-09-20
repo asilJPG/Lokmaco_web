@@ -10,23 +10,33 @@ import { guard, monthRange } from "@/lib/manager-meals";
 export const dynamic = "force-dynamic";
 
 /**
- * Руководители с лимитом и остатком на месяц.
+ * Руководители, а для админа — ещё лимиты и остатки.
  *
- * Остаток может уйти в минус — это осознанно: превышение показываем, но не
- * запрещаем. Решение, что делать с перерасходом, за администратором, а не за
- * кассиром у стойки.
+ * ⚠️ Кассиру отдаётся **только список имён**. Остаток он видит единственным
+ * способом — отсканировав QR руководителя (`/scan`): код предъявляет сам
+ * руководитель, а знать чужие лимиты кассиру незачем. Прятать цифры в
+ * интерфейсе было бы недостаточно — они всё равно лежали бы в ответе API.
+ *
+ * Остаток может уйти в минус: превышение показываем, но не запрещаем.
+ * Решение по перерасходу за администратором, а не за кассиром у стойки.
  */
 export async function GET(request) {
   const g = guard(request);
   if (g.error) return Response.json({ error: g.error }, { status: g.status });
 
   const { month, from, to } = monthRange(new URL(request.url).searchParams.get("month"));
+  const limits = await getManagerLimits();
 
-  const [limits, meals] = await Promise.all([
-    getManagerLimits(),
-    getManagerMeals(from, to),
-  ]);
+  if (g.baseRole !== "admin") {
+    return Response.json({
+      success: true,
+      month,
+      limits_hidden: true,
+      data: limits.map((l) => ({ manager_name: l.manager_name })),
+    });
+  }
 
+  const meals = await getManagerMeals(from, to);
   const spent = {};
   for (const m of meals) {
     spent[m.manager_name] = (spent[m.manager_name] || 0) + Number(m.amount || 0);
@@ -41,6 +51,7 @@ export async function GET(request) {
       spent: used,
       remaining: limit - used,
       exceeded: used > limit,
+      qr_token: l.qr_token,
     };
   });
 

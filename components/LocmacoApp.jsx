@@ -8908,6 +8908,216 @@ function BalancesView({ stores, showToast, loggedInUser }) {
  * Блок намеренно живёт ВНЕ формы закрытия смены и сохраняет каждую запись
  * сразу: кассир вносит обед в любой момент дня, а не только когда сдаёт кассу.
  */
+/**
+ * Скан QR руководителя: камера → окно с суммой.
+ *
+ * Остаток лимита показывается только здесь. При ручном выборе из списка
+ * кассир его не видит — QR предъявляет сам руководитель, и это подтверждает,
+ * что он рядом.
+ */
+/**
+ * QR руководителя: его показывают самому руководителю, чтобы он предъявлял
+ * код кассиру. В коде зашита ссылка вида `/m/<token>` — токен непредсказуем,
+ * по нему нельзя угадать чужой.
+ */
+function ManagerQrModal({ manager, onClose }) {
+  const url =
+    typeof window !== "undefined" ? `${window.location.origin}/m/${manager.qr_token}` : "";
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=${encodeURIComponent(url)}`;
+
+  return (
+    <div className="sheet-wrap-mobile" style={{ ...modalWrap, zIndex: 1400 }} onClick={onClose}>
+      <div
+        className="sheet-mobile"
+        style={{ ...modalCard, maxWidth: 380, textAlign: "center" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>{manager.manager_name}</h3>
+          <button
+            onClick={onClose}
+            className="touch-btn"
+            style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "var(--text-muted)" }}
+          >
+            ×
+          </button>
+        </div>
+
+        <img
+          src={qr}
+          alt=""
+          style={{ width: "100%", maxWidth: 260, margin: "0 auto", display: "block", borderRadius: 12, background: "#fff", padding: 8 }}
+        />
+
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12, lineHeight: 1.5 }}>
+          Передайте этот код руководителю — кассир сканирует его при обеде.
+          Лимит кассиру показывается только по скану.
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "center" }}>
+          <Btn outline onClick={() => window.open(qr, "_blank")}>
+            Открыть картинку
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManagerMealScanModal({ onClose, onSaved, showToast }) {
+  const [manager, setManager] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const lastRef = useRef("");
+
+  const handleCode = async (raw) => {
+    const m = String(raw).match(/\/m\/([0-9a-fA-F-]{36})/);
+    const token = (m ? m[1] : String(raw).trim()).toLowerCase();
+    if (!token || token === lastRef.current) return;
+    lastRef.current = token;
+
+    const res = await fetch(`/api/iiko/manager-meals/scan?token=${encodeURIComponent(token)}`);
+    const j = await res.json();
+    if (!j.success) {
+      setError(j.error || "Код не распознан");
+      setTimeout(() => (lastRef.current = ""), 1500);
+      return;
+    }
+    if (navigator.vibrate) navigator.vibrate(60);
+    setError("");
+    setManager(j.manager);
+  };
+
+  const save = async () => {
+    const sum = Math.round(Number(amount));
+    if (!Number.isFinite(sum) || sum <= 0) {
+      return showToast?.("Укажите сумму больше нуля", "error");
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/iiko/manager-meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manager_name: manager.manager_name,
+          amount: sum,
+          comment: comment.trim() || null,
+        }),
+      });
+      const j = await res.json();
+      if (!j.success) return showToast?.(j.error || "Не удалось сохранить", "error");
+      showToast?.(`Записано: ${manager.manager_name} — ${fmtPrice(sum)}`);
+      await onSaved?.();
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="sheet-wrap-mobile" style={{ ...modalWrap, zIndex: 1350 }} onClick={onClose}>
+      <div className="sheet-mobile" style={modalCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>🍽 Обед по QR</h3>
+          <button
+            onClick={onClose}
+            className="touch-btn"
+            style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "var(--text-muted)" }}
+          >
+            ×
+          </button>
+        </div>
+
+        {!manager ? (
+          <>
+            <CameraQrReader onCode={handleCode} height={240} />
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, textAlign: "center" }}>
+              Наведите на QR-код руководителя
+            </div>
+            {error && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  color: "#92400e",
+                  fontSize: 13,
+                }}
+              >
+                {error}
+              </div>
+            )}
+          </>
+        ) : (
+          <div>
+            <div
+              style={{
+                background: manager.exceeded ? "#fffbeb" : "var(--bg-hover)",
+                border: manager.exceeded ? "1px solid #fde68a" : "1px solid transparent",
+                borderRadius: 10,
+                padding: "12px 14px",
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ fontSize: 17, fontWeight: 800 }}>{manager.manager_name}</div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginTop: 4,
+                  color: manager.exceeded ? "#b45309" : "var(--text-muted)",
+                }}
+              >
+                {manager.exceeded && "⚠️ Лимит исчерпан. "}
+                Остаток: {fmtPrice(manager.remaining)} / {fmtPrice(manager.monthly_limit)}
+              </div>
+            </div>
+
+            <label style={lbl}>Сумма обеда</label>
+            <input
+              autoFocus
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && save()}
+              placeholder="0"
+              style={inp}
+            />
+
+            <label style={lbl}>Комментарий</label>
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Необязательно"
+              style={inp}
+            />
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+              <Btn
+                outline
+                onClick={() => {
+                  setManager(null);
+                  setAmount("");
+                  lastRef.current = "";
+                }}
+              >
+                ← Другой код
+              </Btn>
+              <Btn onClick={save} disabled={saving || !amount}>
+                {saving ? "Сохранение..." : "Записать обед"}
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ManagerMealsBlock({ showToast, loggedInUser }) {
   const todayTashkent = () =>
     new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -8920,6 +9130,10 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [editLimits, setEditLimits] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [qrFor, setQrFor] = useState(null);
+  // Кассиру API отдаёт только имена: остаток он узнаёт исключительно сканом
+  const [limitsHidden, setLimitsHidden] = useState(false);
   const [newName, setNewName] = useState("");
   const [newLimit, setNewLimit] = useState("");
 
@@ -8969,7 +9183,10 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
       ]);
       const lj = await lr.json();
       const mj = await mr.json();
-      if (lj.success) setLimits(lj.data || []);
+      if (lj.success) {
+        setLimits(lj.data || []);
+        setLimitsHidden(Boolean(lj.limits_hidden));
+      }
       if (mj.success) setMeals(mj.data || []);
       if (!lj.success && lj.error) showToast?.(lj.error, "error");
     } catch (e) {
@@ -9051,6 +9268,22 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
           🍽 Обеды руководства
         </h3>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => setScanOpen(true)}
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+              border: "none",
+              borderRadius: 8,
+              padding: "6px 12px",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            📷 Сканировать QR
+          </button>
           {isAdmin && (
             <button
               type="button"
@@ -9121,7 +9354,8 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
             </Btn>
           </div>
 
-          {selected && (
+          {/* Остаток при ручном выборе намеренно не показываем — только по скану QR */}
+          {selected && !limitsHidden && (
             <div
               style={{
                 marginTop: 10,
@@ -9202,6 +9436,8 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
             )}
           </div>
 
+          {/* Весь блок лимитов — только админу: кассир видит остаток лишь по скану */}
+          {!limitsHidden && (
           <div style={{ marginTop: 16, borderTop: "1px dashed var(--border-color)", paddingTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
               Лимиты на месяц
@@ -9232,6 +9468,23 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
                       }}
                       style={{ ...inp, margin: 0, width: 150 }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setQrFor(l)}
+                      title="Показать QR-код руководителя"
+                      style={{
+                        background: "var(--bg-pill)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: 8,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        color: "var(--text-main)",
+                      }}
+                    >
+                      QR
+                    </button>
                     <button
                       type="button"
                       onClick={() => removeLimit(l.manager_name)}
@@ -9288,8 +9541,19 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
               ))}
             </div>
           </div>
+          )}
         </>
       )}
+
+      {scanOpen && (
+        <ManagerMealScanModal
+          showToast={showToast}
+          onClose={() => setScanOpen(false)}
+          onSaved={load}
+        />
+      )}
+
+      {qrFor && <ManagerQrModal manager={qrFor} onClose={() => setQrFor(null)} />}
     </div>
   );
 }
