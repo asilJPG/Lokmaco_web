@@ -28,12 +28,6 @@ create table if not exists public.manager_limits (
   updated_at    timestamptz not null default now()
 );
 
--- Список руководителей. on conflict do nothing — повторный прогон миграции
--- не должен затирать лимиты, изменённые вручную.
-insert into public.manager_limits (manager_name, monthly_limit) values
-  ('Равшан ака',   1000000),
-  ('Шерзод ака',   1000000),
-  ('Азамат ака',   1000000),
-  ('Нуриддин ака', 1000000),
-  ('Нодир ака',    1000000)
-on conflict (manager_name) do nothing;
+-- Список руководителей и лимиты НЕ предзаполняем: их заводит администратор
+-- сам, через «Настроить лимиты» в блоке обедов. Зашитые в миграцию суммы
+-- разошлись бы с реальными при первом же изменении.

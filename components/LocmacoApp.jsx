@@ -8919,9 +8919,46 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
   const [amount, setAmount] = useState("");
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editLimits, setEditLimits] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newLimit, setNewLimit] = useState("");
 
   const today = todayTashkent();
   const isAdmin = loggedInUser?.baseRole === "admin";
+
+  /** Завести руководителя или поменять лимит. Имя — ключ, повтор перезапишет. */
+  const saveLimit = async (name, limit) => {
+    const clean = String(name || "").trim();
+    const sum = Math.round(Number(limit));
+    if (!clean) return showToast?.("Укажите имя", "error");
+    if (!Number.isFinite(sum) || sum < 0) return showToast?.("Некорректный лимит", "error");
+
+    const res = await fetch("/api/iiko/manager-meals/limits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manager_name: clean, monthly_limit: sum }),
+    });
+    const j = await res.json();
+    if (!j.success) return showToast?.(j.error || "Не удалось сохранить", "error");
+    setNewName("");
+    setNewLimit("");
+    await load();
+    showToast?.(`Лимит сохранён: ${clean}`);
+  };
+
+  const removeLimit = async (name) => {
+    if (!confirm(`Убрать «${name}» из списка? Внесённые обеды останутся в истории.`)) return;
+    const res = await fetch(
+      `/api/iiko/manager-meals/limits?manager_name=${encodeURIComponent(name)}`,
+      { method: "DELETE" }
+    );
+    const j = await res.json();
+    if (j.success) {
+      if (manager === name) setManager("");
+      await load();
+      showToast?.("Руководитель убран из списка");
+    } else showToast?.(j.error || "Не удалось удалить", "error");
+  };
 
   const load = async () => {
     setLoading(true);
@@ -9013,9 +9050,29 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
         <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}>
           🍽 Обеды руководства
         </h3>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {new Date(today).toLocaleDateString("ru-RU")}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setEditLimits((v) => !v)}
+              style={{
+                background: "none",
+                border: "1px solid var(--border-color)",
+                borderRadius: 8,
+                padding: "4px 10px",
+                color: "var(--text-muted)",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {editLimits ? "Готово" : "⚙️ Лимиты"}
+            </button>
+          )}
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {new Date(today).toLocaleDateString("ru-RU")}
+          </span>
+        </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
         Сохраняется сразу и не связано со сдачей кассы. В iiko такой заказ
@@ -9026,7 +9083,9 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Загрузка…</div>
       ) : limits.length === 0 ? (
         <div style={{ fontSize: 12, color: "#b45309", fontStyle: "italic" }}>
-          Список руководителей пуст — таблица `manager_limits` не заполнена.
+          {isAdmin
+            ? "Список пуст — заведите руководителей через «⚙️ Лимиты»."
+            : "Список руководителей пуст — попросите администратора его заполнить."}
         </div>
       ) : (
         <>
@@ -9147,6 +9206,68 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
               Лимиты на месяц
             </div>
+
+            {editLimits && (
+              <div
+                style={{
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                  background: "var(--bg-hover)",
+                }}
+              >
+                {limits.map((l) => (
+                  <div
+                    key={l.manager_name}
+                    style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}
+                  >
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{l.manager_name}</span>
+                    <input
+                      type="number"
+                      defaultValue={l.monthly_limit}
+                      onBlur={(e) => {
+                        const v = Math.round(Number(e.target.value));
+                        if (v !== Number(l.monthly_limit)) saveLimit(l.manager_name, v);
+                      }}
+                      style={{ ...inp, margin: 0, width: 150 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLimit(l.manager_name)}
+                      title="Убрать из списка"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", display: "flex" }}
+                    >
+                      {I.trash}
+                    </button>
+                  </div>
+                ))}
+
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--border-color)" }}>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Имя руководителя"
+                    style={{ ...inp, margin: 0, flex: 1 }}
+                  />
+                  <input
+                    type="number"
+                    value={newLimit}
+                    onChange={(e) => setNewLimit(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveLimit(newName, newLimit)}
+                    placeholder="Лимит в месяц"
+                    style={{ ...inp, margin: 0, width: 150 }}
+                  />
+                  <Btn outline onClick={() => saveLimit(newName, newLimit)} disabled={!newName.trim()}>
+                    Добавить
+                  </Btn>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+                  Лимит только предупреждает о перерасходе — вносить обеды сверх него можно.
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {limits.map((l) => (
                 <div
