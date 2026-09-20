@@ -27,17 +27,7 @@ function tag(xml, name) {
   return m ? m[1].trim() : "";
 }
 
-// Остатки складов закрыты для кассира и менеджера — тот же список, что во
-// вкладке `balances` в hasAccess. Проверка нужна и здесь: скрытая вкладка
-// правило не обеспечивает, эндпоинт дёргается напрямую.
-const DENIED_ROLES = ["cashier", "manager"];
-
 export async function GET(_request) {
-  const [baseRole] = (_request.headers.get("x-user-role") || "").split(":");
-  if (DENIED_ROLES.includes(baseRole)) {
-    return Response.json({ error: "Доступ запрещен для вашей роли" }, { status: 403 });
-  }
-
   try {
     const data = await withIikoSession(async (token) => {
       const timestamp = new Date().toISOString().split('.')[0];
