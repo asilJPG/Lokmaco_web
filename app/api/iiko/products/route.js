@@ -40,6 +40,13 @@ export async function GET() {
           code: p.code || "",
           num: p.num || "",
           mainUnit: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт",
+          containers: (p.containers || [])
+            .filter((c) => !c.deleted)
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              count: Number(c.count) || 1,
+            })),
         }));
     });
 

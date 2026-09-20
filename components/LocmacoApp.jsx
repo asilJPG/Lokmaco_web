@@ -4214,6 +4214,8 @@ function IncomingView({
         quantity: "",
         unit: p.mainUnit || "шт",
         totalPrice: "",
+        containers: p.containers || [],
+        containerId: "",
       },
     ]);
   };
@@ -4231,16 +4233,20 @@ function IncomingView({
     }
     const prepared = items
       .map((it) => {
-        const qty = parseFloat(it.quantity) || 0;
+        const selectedCont = (it.containers || []).find((c) => c.id === it.containerId);
+        const mult = selectedCont ? (Number(selectedCont.count) || 1) : 1;
+        const rawQty = parseFloat(it.quantity) || 0;
+        const finalBaseQty = selectedCont ? (rawQty * mult) : rawQty;
         const total = parseFloat(it.totalPrice) || 0;
-        const price = qty > 0 ? total / qty : 0;
+        const price = finalBaseQty > 0 ? total / finalBaseQty : 0;
         return {
           product_id: it.product_id,
           product_name: it.product_name,
-          quantity: qty,
+          quantity: finalBaseQty,
           unit: it.unit,
           price,
           total,
+          package_info: selectedCont ? `${rawQty} ${selectedCont.name} (${finalBaseQty} ${it.unit})` : undefined,
         };
       })
       .filter((it) => it.quantity > 0);
@@ -4443,15 +4449,20 @@ function IncomingView({
                       comment: act.details.comment || "",
                     });
                     setItems(
-                      (act.details.items || []).map((it) => ({
-                        product_id: it.product_id,
-                        product_name: it.product_name,
-                        quantity: it.quantity,
-                        unit: it.unit || "шт",
-                        totalPrice: it.price
-                          ? String(it.price * it.quantity)
-                          : "",
-                      }))
+                      (act.details.items || []).map((it) => {
+                        const matchedProduct = products.find((p) => p.id === it.product_id);
+                        return {
+                          product_id: it.product_id,
+                          product_name: it.product_name,
+                          quantity: it.quantity,
+                          unit: it.unit || "шт",
+                          totalPrice: it.price
+                            ? String(it.price * it.quantity)
+                            : (it.total ? String(it.total) : ""),
+                          containers: matchedProduct?.containers || [],
+                          containerId: "",
+                        };
+                      })
                     );
                     setMode("new");
                     setStep(2);
@@ -4619,9 +4630,9 @@ function IncomingView({
                           <tr style={{ background: "#f8fafb" }}>
                             <th style={th}>Товар</th>
                             <th
-                              style={{ ...th, textAlign: "center", width: 100 }}
+                              style={{ ...th, textAlign: "center", minWidth: 140 }}
                             >
-                              Кол-во
+                              Кол-во / Фасовка
                             </th>
                             <th
                               style={{ ...th, textAlign: "center", width: 120 }}
@@ -4642,7 +4653,7 @@ function IncomingView({
                                   {it.product_name}
                                 </div>
                                 <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                                  {it.unit}
+                                  Баз. ед: {it.unit}
                                 </div>
                                 <div style={{ marginTop: 6 }}>
                                   <PhotoPicker
@@ -4667,40 +4678,112 @@ function IncomingView({
                               <td style={{ ...td, textAlign: "center" }}>
                                 <div
                                   style={{
-                                    display: "inline-flex",
+                                    display: "flex",
+                                    flexDirection: "column",
                                     alignItems: "center",
-                                    gap: 6,
-                                    justifyContent: "center",
+                                    gap: 5,
                                   }}
                                 >
-                                  <input
-                                    type="number"
-                                    value={it.quantity}
-                                    onChange={(e) =>
-                                      updateItem(
-                                        idx,
-                                        "quantity",
-                                        it.unit === "шт"
-                                          ? e.target.value
-                                              .split(".")[0]
-                                              .split(",")[0]
-                                          : e.target.value
-                                      )
-                                    }
-                                    placeholder="0"
-                                    style={numInput}
-                                  />
-                                  <span
+                                  <div
                                     style={{
-                                      fontSize: 12,
-                                      color: "var(--text-muted)",
-                                      minWidth: 24,
-                                      textAlign: "left",
-                                      fontWeight: 600,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      justifyContent: "center",
+                                      flexWrap: "wrap",
                                     }}
                                   >
-                                    {it.unit || "шт"}
-                                  </span>
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      value={it.quantity}
+                                      onChange={(e) =>
+                                        updateItem(
+                                          idx,
+                                          "quantity",
+                                          !it.containerId && it.unit === "шт"
+                                            ? e.target.value
+                                                .split(".")[0]
+                                                .split(",")[0]
+                                            : e.target.value
+                                        )
+                                      }
+                                      placeholder="0"
+                                      style={{ ...numInput, width: 68 }}
+                                    />
+                                    {it.containers && it.containers.length > 0 ? (
+                                      <select
+                                        value={it.containerId || ""}
+                                        onChange={(e) =>
+                                          updateItem(idx, "containerId", e.target.value)
+                                        }
+                                        style={{
+                                          fontSize: 11,
+                                          padding: "5px 6px",
+                                          borderRadius: 7,
+                                          border: "1px solid var(--border-color)",
+                                          background: "var(--bg-input, #fff)",
+                                          color: "var(--text-main, #111)",
+                                          fontWeight: 600,
+                                          cursor: "pointer",
+                                          maxWidth: 120,
+                                        }}
+                                        title="Выберите фасовку или базовую единицу"
+                                      >
+                                        <option value="">{it.unit || "шт"}</option>
+                                        {it.containers.map((c) => (
+                                          <option key={c.id} value={c.id}>
+                                            {c.name} ({c.count} {it.unit})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: 12,
+                                          color: "var(--text-muted)",
+                                          minWidth: 24,
+                                          textAlign: "left",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {it.unit || "шт"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {(() => {
+                                    const selectedCont = (it.containers || []).find(
+                                      (c) => c.id === it.containerId
+                                    );
+                                    if (
+                                      selectedCont &&
+                                      it.quantity &&
+                                      parseFloat(it.quantity) > 0
+                                    ) {
+                                      const totalBase =
+                                        parseFloat(it.quantity) *
+                                        (Number(selectedCont.count) || 1);
+                                      const formattedTotal = Number(totalBase.toFixed(3));
+                                      return (
+                                        <div
+                                          style={{
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: "#0369a1",
+                                            background: "#e0f2fe",
+                                            padding: "2px 6px",
+                                            borderRadius: 5,
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 3,
+                                          }}
+                                        >
+                                          В iiko: <strong>{formattedTotal} {it.unit}</strong>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </td>
                               <td style={{ ...td, textAlign: "center" }}>
