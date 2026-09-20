@@ -9073,7 +9073,7 @@ function ManagerMealScanModal({ onClose, onSaved, showToast }) {
                 }}
               >
                 {manager.exceeded && "⚠️ Лимит исчерпан. "}
-                Остаток: {fmtPrice(manager.remaining)} / {fmtPrice(manager.monthly_limit)}
+                Остаток: {fmtPrice(manager.remaining)}
               </div>
             </div>
 
@@ -9308,8 +9308,8 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
-        Сохраняется сразу и не связано со сдачей кассы. В iiko такой заказ
-        закрывается «без оплаты» — на выручку не влияет.
+        В iiko закройте заказ как <b>«Без оплаты»</b>, а сумму внесите здесь.
+        Запись сохраняется сразу — дожидаться сдачи кассы не нужно.
       </div>
 
       {loading ? (
@@ -9369,7 +9369,7 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
               }}
             >
               {selected.exceeded ? "⚠️ Лимит исчерпан. " : ""}
-              Остаток: {fmtPrice(selected.remaining)} / {fmtPrice(selected.monthly_limit)}
+              Остаток: {fmtPrice(selected.remaining)}
               {selected.exceeded && " — запись всё равно сохранится, решение за администратором"}
             </div>
           )}
@@ -9536,7 +9536,7 @@ function ManagerMealsBlock({ showToast, loggedInUser }) {
                 >
                   <b style={{ color: l.exceeded ? "#b45309" : "var(--text-main)" }}>{l.manager_name}</b>
                   {" — "}
-                  {fmtPrice(l.remaining)} / {fmtPrice(l.monthly_limit)}
+                  {fmtPrice(l.remaining)}
                 </div>
               ))}
             </div>
