@@ -3842,17 +3842,17 @@ function loadImage(src) {
 
 /**
  * Клеит фотографии позиций в один коллаж с подписями — его бот кидает в группу
- * под снимком накладной. Собираем в браузере: на сервере нет ни sharp, ни
- * canvas, а исходники и так лежат тут же.
+ * под снимком накладной. Вписываем фотографии ЦЕЛИКОМ (contain), чтобы ни один край
+ * и ни одна надпись на товаре не обрезались.
  */
 async function buildCollage(entries) {
   if (!entries.length) return null;
   try {
     const cols = Math.min(3, entries.length);
     const rows = Math.ceil(entries.length / cols);
-    const CELL = 420;
-    const PAD = 10;
-    const LABEL = 46;
+    const CELL = 600;
+    const PAD = 14;
+    const LABEL = 56;
 
     const canvas = document.createElement("canvas");
     canvas.width = cols * CELL + PAD * (cols + 1);
@@ -3868,32 +3868,40 @@ async function buildCollage(entries) {
       const x = PAD + col * (CELL + PAD);
       const y = PAD + row * (CELL + LABEL + PAD);
 
+      // Фон ячейки
+      ctx.fillStyle = "#f1f5f9";
+      ctx.fillRect(x, y, CELL, CELL);
+
       try {
         const img = await loadImage(entries[i].url);
-        // вписываем по короткой стороне и обрезаем по центру
-        const scale = Math.max(CELL / img.width, CELL / img.height);
-        const sw = CELL / scale;
-        const sh = CELL / scale;
-        const sx = (img.width - sw) / 2;
-        const sy = (img.height - sh) / 2;
-        ctx.drawImage(img, sx, sy, sw, sh, x, y, CELL, CELL);
+        // Вписываем всё изображение полностью без обрезки
+        const scale = Math.min(CELL / img.width, CELL / img.height);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+        const dx = x + (CELL - dw) / 2;
+        const dy = y + (CELL - dh) / 2;
+        ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
       } catch {
         ctx.fillStyle = "#e2e8f0";
         ctx.fillRect(x, y, CELL, CELL);
       }
 
+      // Подложка под подпись
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(x, y + CELL, CELL, LABEL);
+
       ctx.fillStyle = "#0f172a";
-      ctx.font = "bold 24px system-ui, -apple-system, sans-serif";
+      ctx.font = "bold 26px system-ui, -apple-system, sans-serif";
       ctx.textBaseline = "middle";
       let label = entries[i].label || "";
-      while (ctx.measureText(label).width > CELL - 8 && label.length > 4) {
+      while (ctx.measureText(label).width > CELL - 16 && label.length > 4) {
         label = label.slice(0, -2);
       }
       if (label !== entries[i].label) label += "…";
-      ctx.fillText(label, x, y + CELL + LABEL / 2);
+      ctx.fillText(label, x + 10, y + CELL + LABEL / 2);
     }
 
-    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.90));
     if (!blob) return null;
     return new File([blob], "collage.jpg", { type: "image/jpeg" });
   } catch (e) {
