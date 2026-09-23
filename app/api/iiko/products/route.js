@@ -22,8 +22,16 @@ const UNIT_MAP = {
 export async function GET() {
   try {
     const products = await withIikoSession(async (token) => {
-      const data = await iikoGetJson("v2/entities/products/list?includeDeleted=true", token);
+      const [data, groups] = await Promise.all([
+        iikoGetJson("v2/entities/products/list?includeDeleted=true", token),
+        iikoGetJson("v2/entities/products/group/list?includeDeleted=false", token).catch(() => []),
+      ]);
       if (!data) return [];
+
+      const groupMap = {};
+      (groups || []).forEach((g) => {
+        if (g && g.id) groupMap[g.id] = g.name;
+      });
 
       return data
         .filter((p) => {
@@ -39,6 +47,8 @@ export async function GET() {
           type: p.type,
           code: p.code || "",
           num: p.num || "",
+          parentId: p.parent || "",
+          groupName: (p.parent && groupMap[p.parent]) ? groupMap[p.parent] : "Прочее",
           mainUnit: p.mainUnit ? (UNIT_MAP[p.mainUnit] || "шт") : "шт",
           containers: (p.containers || [])
             .filter((c) => !c.deleted)

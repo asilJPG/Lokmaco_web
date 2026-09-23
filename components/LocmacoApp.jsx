@@ -126,6 +126,24 @@ const API = {
       return { success: false, error: e.message };
     }
   },
+  async recognizeProductByPhoto(file, candidates) {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (candidates && candidates.length) {
+        fd.append("candidates", JSON.stringify(candidates.slice(0, 300)));
+      }
+      const r = await fetch("/api/iiko/ai-recognize-product", { method: "POST", body: fd });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        return { success: false, error: data?.error || `Error ${r.status}` };
+      }
+      return data;
+    } catch (e) {
+      console.error("API recognize product:", e);
+      return { success: false, error: e.message };
+    }
+  },
   createService(data) {
     return this.post("/services", data);
   },
@@ -4132,26 +4150,37 @@ function IncomingView({
   history,
   historyLoading,
 }) {
+  const DEFAULT_STORE_ID = "1239d270-1bbe-f64f-b7ea-5f00518ef508";
+  const DEFAULT_STORE_NAME = "Основной склад";
+
   const [mode, setMode] = useState("idle");
   const [subTab, setSubTab] = useState("db_history");
 
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0); // 0: Поставщик, 1: Накладная, 2: Товары
   const [form, setForm] = useState({
     supplierId: "",
     supplierName: "",
-    storeId: "",
-    storeName: "",
+    storeId: DEFAULT_STORE_ID,
+    storeName: DEFAULT_STORE_NAME,
     comment: "",
   });
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Категории и поиск товаров
+  const [selectedCategory, setSelectedCategory] = useState("Все");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeItemModal, setActiveItemModal] = useState(null); // Товар, для которого открыт ввод кол-ва и суммы
+
+  // AI Camera recognition
+  const [aiRecognizing, setAiRecognizing] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const aiCameraInputRef = useRef(null);
+
   // Фотографии: ключ — product_id для товаров, "__invoice__" для накладной.
   const INVOICE_KEY = "__invoice__";
   const [draftId, setDraftId] = useState(makeDraftId);
   const [photos, setPhotos] = useState({});
-  // Если хранилище не настроено, фото загрузить физически нельзя — тогда
-  // требование снимка накладной снимается, иначе приход вообще не провести.
   const [storageError, setStorageError] = useState("");
 
   const photosOf = (key) => photos[key] || [];
@@ -4213,32 +4242,126 @@ function IncomingView({
   const itemsWithoutPhoto = items.filter((it) => photosOf(it.product_id).length === 0);
   const hasInvoicePhoto = photosOf(INVOICE_KEY).length > 0;
 
-  const addItem = (p) => {
-    setItems((prev) => [
-      ...prev,
-      {
-        product_id: p.id,
-        product_name: p.name,
-        quantity: "",
-        unit: p.mainUnit || "шт",
-        totalPrice: "",
-        containers: p.containers || [],
-        containerId: "",
-      },
-    ]);
+  // Динамические категории из номенклатуры
+  const categoriesList = useMemo(() => {
+    const set = new Set();
+    products.forEach((p) => {
+      if (p.groupName) set.add(p.groupName);
+    });
+    const sorted = Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
+    return ["Все", ...sorted];
+  }, [products]);
+
+  // Фильтрация товаров по категории и поиску
+  const filteredProducts = useMemo(() => {
+    let list = products || [];
+    if (selectedCategory && selectedCategory !== "Все") {
+      list = list.filter((p) => p.groupName === selectedCategory);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (p) =>
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.code && p.code.toLowerCase().includes(q)) ||
+          (p.num && p.num.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [products, selectedCategory, searchQuery]);
+
+  // AI-распознавание фото товара
+  const handleAiPhotoCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAiRecognizing(true);
+    setAiResult(null);
+    showToast("🤖 Нейросеть распознает товар по фото...", "info");
+
+    const res = await API.recognizeProductByPhoto(file, products);
+    setAiRecognizing(false);
+    e.target.value = "";
+
+    if (res?.success) {
+      const matchedProds = (res.matched_product_ids || [])
+        .map((id) => products.find((p) => p.id === id))
+        .filter(Boolean);
+
+      setAiResult({
+        detected_item: res.detected_item,
+        search_keyword: res.search_keyword,
+        matches: matchedProds,
+        explanation: res.explanation,
+      });
+
+      if (matchedProds.length > 0) {
+        showToast(`✨ Найдено: ${res.detected_item || matchedProds[0].name}`);
+      } else if (res.search_keyword) {
+        setSearchQuery(res.search_keyword);
+        showToast(`🔍 Поиск по фото: ${res.search_keyword}`);
+      }
+    } else {
+      showToast(res?.error || "Не удалось распознать товар", "error");
+    }
   };
 
-  const updateItem = (idx, field, value) => {
-    setItems((p) =>
-      p.map((x, i) => (i === idx ? { ...x, [field]: value } : x))
-    );
+  // Открытие модалки ввода параметров товара
+  const openProductEntry = (p) => {
+    const existing = items.find((it) => it.product_id === p.id);
+    setActiveItemModal({
+      product_id: p.id,
+      product_name: p.name,
+      groupName: p.groupName || "Прочее",
+      unit: p.mainUnit || "шт",
+      containers: p.containers || [],
+      containerId: existing?.containerId || "",
+      quantity: existing?.quantity || "",
+      totalPrice: existing?.totalPrice || "",
+      isEditing: !!existing,
+    });
+  };
+
+  const saveProductModal = () => {
+    if (!activeItemModal) return;
+    const { product_id, product_name, unit, containers, containerId, quantity, totalPrice, isEditing } = activeItemModal;
+    
+    if (!quantity || parseFloat(quantity) <= 0) {
+      showToast("Укажите количество", "error");
+      return;
+    }
+
+    setItems((prev) => {
+      const exists = prev.some((it) => it.product_id === product_id);
+      const newItem = {
+        product_id,
+        product_name,
+        unit,
+        containers,
+        containerId,
+        quantity: String(quantity),
+        totalPrice: String(totalPrice || ""),
+      };
+      if (exists) {
+        return prev.map((it) => (it.product_id === product_id ? newItem : it));
+      }
+      return [...prev, newItem];
+    });
+
+    setActiveItemModal(null);
+    showToast(`Товар добавлен: ${product_name}`);
+  };
+
+  const removeItem = (pid) => {
+    setItems((prev) => prev.filter((it) => it.product_id !== pid));
+    removePhoto(pid);
   };
 
   const handleSubmit = async () => {
-    if (!form.supplierId || !form.storeId || items.length === 0) {
-      showToast("Заполните все поля", "error");
+    if (!form.supplierId || items.length === 0) {
+      showToast("Заполните поставщика и добавьте товары", "error");
       return;
     }
+
     const prepared = items
       .map((it) => {
         const selectedCont = (it.containers || []).find((c) => c.id === it.containerId);
@@ -4258,8 +4381,9 @@ function IncomingView({
         };
       })
       .filter((it) => it.quantity > 0);
+
     if (prepared.length === 0) {
-      showToast("Укажите количество", "error");
+      showToast("Укажите количество для товаров", "error");
       return;
     }
     if (uploadingCount > 0) {
@@ -4269,8 +4393,7 @@ function IncomingView({
 
     setSubmitting(true);
 
-    // Коллаж позиций для фотоотчёта в группу — по одному снимку на позицию,
-    // не больше 9 на картинку, иначе ячейки становятся нечитаемыми.
+    // Коллаж позиций для фотоотчёта в группу (без обрезки)
     const collageEntries = prepared.flatMap((it) => {
       const p = photosOf(it.product_id).find((x) => x.url && x.path);
       return p
@@ -4317,8 +4440,8 @@ function IncomingView({
     const result = await API.createInvoice({
       supplier_id: form.supplierId,
       supplier_name: form.supplierName,
-      store_id: form.storeId,
-      store_name: form.storeName,
+      store_id: DEFAULT_STORE_ID,
+      store_name: DEFAULT_STORE_NAME,
       items: prepared,
       comment: form.comment,
       attachments,
@@ -4328,22 +4451,26 @@ function IncomingView({
         role: loggedInUser.role,
       },
     });
+
     setSubmitting(false);
     if (result?.success) {
-      showToast("Накладная создана!");
+      showToast("✅ Приходная накладная успешно создана!");
       loadHistory();
       setMode("idle");
       setStep(0);
       setItems([]);
       resetPhotos();
+      setAiResult(null);
       setForm({
         supplierId: "",
         supplierName: "",
-        storeId: "",
-        storeName: "",
+        storeId: DEFAULT_STORE_ID,
+        storeName: DEFAULT_STORE_NAME,
         comment: "",
       });
-    } else showToast("Ошибка создания", "error");
+    } else {
+      showToast(result?.error || "Ошибка создания накладной", "error");
+    }
   };
 
   const grandTotal = items.reduce(
@@ -4351,8 +4478,34 @@ function IncomingView({
     0
   );
 
+  const getCategoryIcon = (cat) => {
+    const c = cat.toLowerCase();
+    if (c.includes("овощ") || c.includes("зелен")) return "🥦";
+    if (c.includes("фрукт") || c.includes("ягод") || c.includes("клубник")) return "🍓";
+    if (c.includes("молоч") || c.includes("сыр") || c.includes("сливк") || c.includes("масло")) return "🥛";
+    if (c.includes("мяс") || c.includes("птиц") || c.includes("куриц") || c.includes("говяд")) return "🥩";
+    if (c.includes("хлеб") || c.includes("выпечк") || c.includes("мучн")) return "🥖";
+    if (c.includes("упаков") || c.includes("посуд") || c.includes("коробк") || c.includes("пакет")) return "📦";
+    if (c.includes("бакале") || c.includes("круп") || c.includes("сахар") || c.includes("специ")) return "🧂";
+    if (c.includes("соус") || c.includes("топпинг") || c.includes("паст") || c.includes("сироп")) return "🥫";
+    if (c.includes("кофе") || c.includes("чай")) return "☕️";
+    if (c.includes("напит") || c.includes("сок") || c.includes("газиров")) return "🧃";
+    if (c.includes("хоз") || c.includes("хим") || c.includes("моющее")) return "🧰";
+    return "📁";
+  };
+
   return (
     <div style={{ animation: "fadeIn .25s ease" }}>
+      {/* Hidden AI camera input */}
+      <input
+        ref={aiCameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={handleAiPhotoCapture}
+      />
+
       <div
         style={{
           display: "flex",
@@ -4361,9 +4514,14 @@ function IncomingView({
           marginBottom: 20,
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
-          Приходная накладная
-        </h2>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+            Приход товаров на склад
+          </h2>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+            🏭 Склад поступления: <strong style={{ color: "#0369a1" }}>Основной склад</strong>
+          </div>
+        </div>
         {mode === "idle" ? (
           <Btn
             onClick={() => {
@@ -4381,12 +4539,14 @@ function IncomingView({
               setStep(0);
               setItems([]);
               resetPhotos();
+              setAiResult(null);
             }}
           >
             {I.x} Отмена
           </Btn>
         )}
       </div>
+
       {mode === "idle" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div className="horizontal-scroll-container" style={{ display: "flex", gap: 10, marginBottom: 12, marginTop: 4 }}>
@@ -4446,14 +4606,12 @@ function IncomingView({
                 viewerRole={loggedInUser?.baseRole}
                 emptyText="История приходов пуста"
                 onRestore={(act) => {
-                  // Фотографии в черновик не переносятся: снимок накладной
-                  // нужно приложить заново, поэтому возвращаем на её шаг.
                   if (act.details) {
                     setForm({
                       supplierId: act.details.supplier_id || "",
                       supplierName: act.details.supplier_name || "",
-                      storeId: act.details.store_id || "",
-                      storeName: act.details.store_name || "",
+                      storeId: DEFAULT_STORE_ID,
+                      storeName: DEFAULT_STORE_NAME,
                       comment: act.details.comment || "",
                     });
                     setItems(
@@ -4462,7 +4620,7 @@ function IncomingView({
                         return {
                           product_id: it.product_id,
                           product_name: it.product_name,
-                          quantity: it.quantity,
+                          quantity: String(it.quantity || ""),
                           unit: it.unit || "шт",
                           totalPrice: it.price
                             ? String(it.price * it.quantity)
@@ -4473,8 +4631,8 @@ function IncomingView({
                       })
                     );
                     setMode("new");
-                    setStep(2);
-                    showToast("Черновик успешно восстановлен!");
+                    setStep(1); // На шаг накладной
+                    showToast("Черновик восстановлен! Прикрепите фото накладной.");
                   }
                 }}
               />
@@ -4482,437 +4640,802 @@ function IncomingView({
           )}
         </div>
       )}
+
       {mode === "new" && (
         <div
           style={{
             background: "var(--bg-card)",
-            borderRadius: 14,
+            borderRadius: 16,
             border: "1px solid var(--border-color)",
-            padding: 24,
+            padding: 20,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
           }}
         >
-          <StepBar steps={["Поставщик", "Склад", "Накладная", "Товары"]} current={step} />
+          <StepBar steps={["1. Поставщик и Оплата", "2. Фото накладной", "3. Товары и Суммы"]} current={step} />
 
+          {/* ════════ ШАГ 0: ВЫБОР ОПЛАТЫ / ПОСТАВЩИКА ════════ */}
           {step === 0 && (
             <div>
-              <label style={lbl}>Поставщик</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {suppliers.map((s) => (
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: "var(--text-main)" }}>
+                Выберите форму оплаты / поставщика:
+              </div>
+
+              {/* 3 быстрых карточки */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 20 }}>
+                {[
+                  {
+                    id: "16c6e655-945c-4002-a117-934749aea133",
+                    name: "Корпоративная карта",
+                    icon: "💳",
+                    desc: "Оплата с корпоративной карты",
+                    grad: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                    border: "#bfdbfe",
+                    color: "#1d4ed8",
+                  },
+                  {
+                    id: "3bdcfdbb-e66c-4b16-9025-03dedb7905fa",
+                    name: "Наличные",
+                    icon: "💵",
+                    desc: "Оплата наличными средствами",
+                    grad: "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)",
+                    border: "#a7f3d0",
+                    color: "#047857",
+                  },
+                  {
+                    id: "4268b082-79b2-4df6-8335-4b6b2e610f37",
+                    name: "Оплата по счету",
+                    icon: "📄",
+                    desc: "Безналичный расчет / Перечисление",
+                    grad: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)",
+                    border: "#ddd6fe",
+                    color: "#6d28d9",
+                  },
+                ].map((item) => (
                   <button
-                    key={s.id}
+                    key={item.id}
                     onClick={() => {
                       setForm({
                         ...form,
-                        supplierId: s.id,
-                        supplierName: s.name,
+                        supplierId: item.id,
+                        supplierName: item.name,
+                        storeId: DEFAULT_STORE_ID,
+                        storeName: DEFAULT_STORE_NAME,
                       });
                       setStep(1);
                     }}
-                    style={storeBtn}
+                    style={{
+                      background: item.grad,
+                      border: `1.5px solid ${item.border}`,
+                      borderRadius: 14,
+                      padding: "16px 14px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      transition: "transform 0.15s ease, box-shadow 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
                   >
-                    <span style={{ fontSize: 20 }}>🏢</span>
-                    <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 26 }}>{item.icon}</span>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: item.color }}>{item.name}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>{item.desc}</div>
                   </button>
                 ))}
               </div>
+
+              {/* Выбор других контрагентов из iiko */}
+              {suppliers.length > 3 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>
+                    Или выберите контрагента из базы iiko:
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+                    {suppliers
+                      .filter((s) => !["16c6e655-945c-4002-a117-934749aea133", "3bdcfdbb-e66c-4b16-9025-03dedb7905fa", "4268b082-79b2-4df6-8335-4b6b2e610f37"].includes(s.id))
+                      .map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setForm({
+                              ...form,
+                              supplierId: s.id,
+                              supplierName: s.name,
+                              storeId: DEFAULT_STORE_ID,
+                              storeName: DEFAULT_STORE_NAME,
+                            });
+                            setStep(1);
+                          }}
+                          style={{
+                            ...storeBtn,
+                            padding: "10px 14px",
+                            background: "var(--bg-hover)",
+                            justifyContent: "flex-start",
+                          }}
+                        >
+                          <span style={{ fontSize: 18 }}>🏢</span>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
+          {/* ════════ ШАГ 1: ФОТОГРАФИЯ НАКЛАДНОЙ ════════ */}
           {step === 1 && (
             <div>
-              <div style={crumb}>✅ {form.supplierName}</div>
-              <label style={lbl}>Склад</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {stores.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setForm({ ...form, storeId: s.id, storeName: s.name });
-                      setStep(2);
-                    }}
-                    style={storeBtn}
-                  >
-                    <span style={{ fontSize: 20 }}>
-                      {STORE_ICONS[s.id] || "📦"}
-                    </span>
-                    <div>{s.name}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div>
               <div style={crumb}>
-                ✅ {form.supplierName} → {form.storeName}
+                ✅ Поставщик: <strong>{form.supplierName}</strong> → 🏭 <strong>Основной склад</strong>
               </div>
-              <label style={lbl}>Фотография накладной</label>
+
               <div
                 style={{
-                  padding: 16,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 12,
-                  background: "var(--bg-hover)",
+                  background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                  border: "1.5px dashed var(--border-color)",
+                  borderRadius: 14,
+                  padding: 24,
+                  textAlign: "center",
+                  marginTop: 10,
+                  marginBottom: 16,
                 }}
               >
-                <PhotoPicker
-                  photos={photosOf(INVOICE_KEY)}
-                  onPick={(files) => addPhotos(INVOICE_KEY, files)}
-                  onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
-                />
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
-                  Снимите накладную поставщика целиком, чтобы читались позиции и
-                  суммы. Можно приложить несколько снимков или PDF.
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📸</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-main)", marginBottom: 4 }}>
+                  Сфотографируйте накладную / чек
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 420, margin: "0 auto 16px", lineHeight: 1.5 }}>
+                  Сделайте четкий снимок бумажной накладной от поставщика целиком, чтобы были видны все позиции и итоговая сумма.
+                </div>
+
+                <div style={{ display: "inline-block", textAlign: "left", width: "100%", maxWidth: 360 }}>
+                  <PhotoPicker
+                    photos={photosOf(INVOICE_KEY)}
+                    onPick={(files) => addPhotos(INVOICE_KEY, files)}
+                    onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
+                  />
                 </div>
               </div>
 
               {storageError ? (
                 <div
                   style={{
-                    marginTop: 12,
                     background: "#fffbeb",
                     border: "1px solid #fde68a",
                     borderRadius: 10,
-                    padding: "10px 12px",
-                    fontSize: 11,
+                    padding: "10px 14px",
+                    fontSize: 12,
                     color: "#92400e",
-                    lineHeight: 1.5,
+                    marginBottom: 16,
                   }}
                 >
                   ⚠️ {storageError}
-                  <div>Фото приложить не получится — приход можно провести без него.</div>
+                  <div>Фото временно недоступно — можно продолжить без него.</div>
                 </div>
               ) : (
                 !hasInvoicePhoto && (
-                  <div style={{ marginTop: 12, fontSize: 12, color: "#b45309", fontWeight: 600 }}>
-                    Без фотографии накладной перейти к товарам нельзя
+                  <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600, textAlign: "center", marginBottom: 14 }}>
+                    ⚠️ Пожалуйста, прикрепите фото накладной для перехода к товарам
                   </div>
                 )
               )}
 
-              <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
-                <Btn outline onClick={() => setStep(1)}>
-                  ← Назад
+              <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 16 }}>
+                <Btn outline onClick={() => setStep(0)}>
+                  ← Назад к поставщику
                 </Btn>
                 <Btn
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(2)}
                   disabled={uploadingCount > 0 || (!hasInvoicePhoto && !storageError)}
+                  style={{ minWidth: 180 }}
                 >
-                  {uploadingCount > 0 ? "Загрузка..." : "Далее — товары →"}
+                  {uploadingCount > 0 ? "Загрузка фото..." : "Далее — к товарам →"}
                 </Btn>
               </div>
             </div>
           )}
 
-          {step === 3 && (
+          {/* ════════ ШАГ 2: ВЫБОР ТОВАРОВ (AI КАМЕРА + ПОИСК + ПАПКИ) ════════ */}
+          {step === 2 && (
             <div>
               <div style={crumb}>
-                ✅ {form.supplierName} → {form.storeName}
-                {hasInvoicePhoto ? " · накладная приложена" : ""}
+                ✅ <strong>{form.supplierName}</strong> → 🏭 <strong>Основной склад</strong>
+                {hasInvoicePhoto && " · 📄 Накладная прикреплена"}
               </div>
+
               {loading ? (
-                <LoadingBlock text="Загрузка товаров..." />
+                <LoadingBlock text="Загрузка номенклатуры..." />
               ) : products.length === 0 ? (
                 <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
               ) : (
                 <>
-                  <ProductSearch products={products} onSelect={addItem} />
-                  {items.length > 0 && (
-                    <div
-                      style={{
-                        border: "1px solid var(--border-color)",
-                        borderRadius: 10,
-                        overflow: "hidden",
-                        marginTop: 12,
-                      }}
-                    >
-                      <table
+                  {/* Поисковая строка с AI камерой */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="🔍 Поиск товара по названию или коду..."
                         style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: 12,
+                          ...inp,
+                          paddingLeft: 38,
+                          paddingRight: searchQuery ? 36 : 12,
+                          height: 44,
+                          fontSize: 14,
+                          borderRadius: 12,
+                          border: "1.5px solid var(--border-color)",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: 12,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          fontSize: 16,
+                          color: "var(--text-muted)",
                         }}
                       >
-                        <thead>
-                          <tr style={{ background: "#f8fafb" }}>
-                            <th style={th}>Товар</th>
-                            <th
-                              style={{ ...th, textAlign: "center", minWidth: 140 }}
-                            >
-                              Кол-во / Фасовка
-                            </th>
-                            <th
-                              style={{ ...th, textAlign: "center", width: 120 }}
-                            >
-                              Сумма общая
-                            </th>
-                            <th style={{ ...th, width: 36 }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((it, idx) => (
-                            <tr
-                              key={idx}
-                              style={{ borderTop: "1px solid #f0f2f5" }}
-                            >
-                              <td style={td}>
-                                <div style={{ fontWeight: 500 }}>
-                                  {it.product_name}
-                                </div>
-                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                                  Баз. ед: {it.unit}
-                                </div>
-                                <div style={{ marginTop: 6 }}>
-                                  <PhotoPicker
-                                    compact
-                                    photos={photosOf(it.product_id)}
-                                    onPick={(files) => addPhotos(it.product_id, files)}
-                                    onRemove={(pid) => removePhoto(it.product_id, pid)}
-                                  />
-                                  {photosOf(it.product_id).length === 0 && (
-                                    <div
-                                      style={{
-                                        fontSize: 10,
-                                        color: "#b45309",
-                                        marginTop: 4,
-                                      }}
-                                    >
-                                      фото не прикреплено
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                              <td style={{ ...td, textAlign: "center" }}>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    gap: 5,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 6,
-                                      justifyContent: "center",
-                                      flexWrap: "wrap",
-                                    }}
-                                  >
-                                    <input
-                                      type="number"
-                                      step="any"
-                                      value={it.quantity}
-                                      onChange={(e) =>
-                                        updateItem(
-                                          idx,
-                                          "quantity",
-                                          !it.containerId && it.unit === "шт"
-                                            ? e.target.value
-                                                .split(".")[0]
-                                                .split(",")[0]
-                                            : e.target.value
-                                        )
-                                      }
-                                      placeholder="0"
-                                      style={{ ...numInput, width: 68 }}
-                                    />
-                                    {it.containers && it.containers.length > 0 ? (
-                                      <select
-                                        value={it.containerId || ""}
-                                        onChange={(e) =>
-                                          updateItem(idx, "containerId", e.target.value)
-                                        }
-                                        style={{
-                                          fontSize: 11,
-                                          padding: "5px 6px",
-                                          borderRadius: 7,
-                                          border: "1px solid var(--border-color)",
-                                          background: "var(--bg-input, #fff)",
-                                          color: "var(--text-main, #111)",
-                                          fontWeight: 600,
-                                          cursor: "pointer",
-                                          maxWidth: 120,
-                                        }}
-                                        title="Выберите фасовку или базовую единицу"
-                                      >
-                                        <option value="">{it.unit || "шт"}</option>
-                                        {it.containers.map((c) => (
-                                          <option key={c.id} value={c.id}>
-                                            {c.name} ({c.count} {it.unit})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span
-                                        style={{
-                                          fontSize: 12,
-                                          color: "var(--text-muted)",
-                                          minWidth: 24,
-                                          textAlign: "left",
-                                          fontWeight: 600,
-                                        }}
-                                      >
-                                        {it.unit || "шт"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {(() => {
-                                    const selectedCont = (it.containers || []).find(
-                                      (c) => c.id === it.containerId
-                                    );
-                                    if (
-                                      selectedCont &&
-                                      it.quantity &&
-                                      parseFloat(it.quantity) > 0
-                                    ) {
-                                      const totalBase =
-                                        parseFloat(it.quantity) *
-                                        (Number(selectedCont.count) || 1);
-                                      const formattedTotal = Number(totalBase.toFixed(3));
-                                      return (
-                                        <div
-                                          style={{
-                                            fontSize: 10,
-                                            fontWeight: 700,
-                                            color: "#0369a1",
-                                            background: "#e0f2fe",
-                                            padding: "2px 6px",
-                                            borderRadius: 5,
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: 3,
-                                          }}
-                                        >
-                                          В iiko: <strong>{formattedTotal} {it.unit}</strong>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                                </div>
-                              </td>
-                              <td style={{ ...td, textAlign: "center" }}>
-                                <input
-                                  type="number"
-                                  value={it.totalPrice}
-                                  onChange={(e) =>
-                                    updateItem(
-                                      idx,
-                                      "totalPrice",
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="0"
-                                  style={numInput}
-                                />
-                              </td>
-                              <td style={td}>
-                                <button
-                                  onClick={() =>
-                                    setItems((p) =>
-                                      p.filter((_, i) => i !== idx)
-                                    )
-                                  }
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    color: "#ef4444",
-                                    display: "flex",
-                                  }}
-                                >
-                                  {I.trash}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        🔍
+                      </span>
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery("")}
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            fontSize: 14,
+                            cursor: "pointer",
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          ✖
+                        </button>
+                      )}
                     </div>
-                  )}
-                  <div
-                    style={{
-                      marginTop: 16,
-                      padding: 12,
-                      border: "1px solid var(--border-color)",
-                      borderRadius: 10,
-                      background: "var(--bg-hover)",
-                    }}
-                  >
-                    <PhotoPicker
-                      compact
-                      label="📄 Накладная поставщика"
-                      photos={photosOf(INVOICE_KEY)}
-                      onPick={(files) => addPhotos(INVOICE_KEY, files)}
-                      onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
-                    />
-                  </div>
 
-                  <label style={{ ...lbl, marginTop: 16 }}>Комментарий</label>
-                  <input
-                    value={form.comment}
-                    onChange={(e) =>
-                      setForm({ ...form, comment: e.target.value })
-                    }
-                    placeholder="Необязательно"
-                    style={inp}
-                  />
-
-                  {items.length > 0 && (!hasInvoicePhoto || itemsWithoutPhoto.length > 0) && (
-                    <div
+                    {/* Кнопка AI Камера */}
+                    <button
+                      type="button"
+                      disabled={aiRecognizing}
+                      onClick={() => aiCameraInputRef.current?.click()}
+                      title="Сфотографировать товар для AI-распознавания"
                       style={{
-                        marginTop: 12,
-                        background: "#fffbeb",
-                        border: "1px solid #fde68a",
-                        borderRadius: 10,
-                        padding: "10px 12px",
-                        fontSize: 11,
-                        color: "#92400e",
-                        lineHeight: 1.5,
+                        height: 44,
+                        padding: "0 14px",
+                        borderRadius: 12,
+                        border: "none",
+                        background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
                       }}
                     >
-                      ⚠️ Приход пройдёт и без фотографий, но в истории он будет
-                      помечен как неполный.
-                      {!hasInvoicePhoto && <div>• нет фото накладной</div>}
-                      {itemsWithoutPhoto.length > 0 && (
+                      <span style={{ fontSize: 18 }}>📷</span>
+                      <span className="hide-on-mobile">{aiRecognizing ? "Распознаю..." : "AI Фото"}</span>
+                    </button>
+                  </div>
+
+                  {/* Результат AI распознавания */}
+                  {aiRecognizing && (
+                    <div
+                      style={{
+                        background: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                        borderRadius: 12,
+                        padding: "12px 16px",
+                        marginBottom: 14,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        color: "#3730a3",
+                        animation: "pulse 1.5s infinite ease-in-out",
+                      }}
+                    >
+                      <span style={{ fontSize: 22 }}>🤖</span>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        Нейросеть анализирует изображение товара...
+                      </div>
+                    </div>
+                  )}
+
+                  {aiResult && !aiRecognizing && (
+                    <div
+                      style={{
+                        background: "#f0fdf4",
+                        border: "1.5px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: 14,
+                        marginBottom: 14,
+                        position: "relative",
+                      }}
+                    >
+                      <button
+                        onClick={() => setAiResult(null)}
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          right: 8,
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#15803d",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✕
+                      </button>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#166534", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>✨ AI Распознал:</span>
+                        <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 6 }}>{aiResult.detected_item || "Товар с фото"}</span>
+                      </div>
+
+                      {aiResult.matches && aiResult.matches.length > 0 ? (
                         <div>
-                          • без фото товара:{" "}
-                          {itemsWithoutPhoto.map((x) => x.product_name).join(", ")}
+                          <div style={{ fontSize: 11, color: "#15803d", marginBottom: 6 }}>
+                            Совпадения в базе iiko (нажмите для выбора):
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {aiResult.matches.map((m) => (
+                              <button
+                                key={m.id}
+                                onClick={() => openProductEntry(m)}
+                                style={{
+                                  background: "#ffffff",
+                                  border: "1.5px solid #22c55e",
+                                  borderRadius: 8,
+                                  padding: "6px 10px",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: "#15803d",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                <span>➕</span> {m.name} ({m.mainUnit || "шт"})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "#15803d" }}>
+                          Ключевое слово для поиска: <strong>{aiResult.search_keyword}</strong>
                         </div>
                       )}
                     </div>
                   )}
 
+                  {/* Вкладки / Папки категорий */}
                   <div
+                    className="horizontal-scroll-container"
                     style={{
                       display: "flex",
-                      gap: 8,
-                      marginTop: 16,
-                      justifyContent: "flex-end",
+                      gap: 6,
+                      marginBottom: 14,
+                      paddingBottom: 4,
+                      overflowX: "auto",
                     }}
                   >
-                    <Btn outline onClick={() => setStep(2)}>
-                      ← Назад
+                    {categoriesList.map((cat) => {
+                      const isSelected = selectedCategory === cat;
+                      const icon = getCategoryIcon(cat);
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          style={{
+                            padding: "7px 12px",
+                            borderRadius: 10,
+                            border: isSelected ? "none" : "1px solid var(--border-color)",
+                            background: isSelected
+                              ? "linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)"
+                              : "var(--bg-card)",
+                            color: isSelected ? "#ffffff" : "var(--text-main)",
+                            fontWeight: isSelected ? 800 : 600,
+                            fontSize: 12,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            boxShadow: isSelected ? "0 3px 8px rgba(79, 70, 229, 0.25)" : "none",
+                            transition: "all 0.15s ease",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <span>{icon}</span>
+                          <span>{cat}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Список товаров в выбранной папке / поиске */}
+                  <div
+                    style={{
+                      border: "1px solid var(--border-color)",
+                      borderRadius: 12,
+                      maxHeight: 250,
+                      overflowY: "auto",
+                      background: "var(--bg-card)",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {filteredProducts.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                        Товары не найдены
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 1, background: "var(--border-color)" }}>
+                        {filteredProducts.slice(0, 60).map((p) => {
+                          const alreadyInList = items.some((it) => it.product_id === p.id);
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => openProductEntry(p)}
+                              style={{
+                                background: alreadyInList ? "var(--bg-hover)" : "var(--bg-card)",
+                                padding: "10px 12px",
+                                cursor: "pointer",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 8,
+                                transition: "background 0.1s ease",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = alreadyInList ? "var(--bg-hover)" : "var(--bg-card)")}
+                            >
+                              <div style={{ overflow: "hidden" }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                  {p.name}
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                  {p.groupName} · Ед: <strong>{p.mainUnit || "шт"}</strong>
+                                  {p.containers && p.containers.length > 0 && ` · Фасовок: ${p.containers.length}`}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                style={{
+                                  background: alreadyInList ? "#0284c7" : "#4f46e5",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 8,
+                                  padding: "5px 9px",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {alreadyInList ? "Изменить" : "➕ Выбрать"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Добавленные товары в накладную */}
+                  {items.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text-main)" }}>
+                          📦 Товары в приходе ({items.length}):
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0369a1" }}>
+                          Итого: {grandTotal.toLocaleString("ru-RU")} сум
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          background: "var(--bg-card)",
+                        }}
+                      >
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
+                              <th style={{ ...th, textAlign: "left" }}>Товар</th>
+                              <th style={{ ...th, textAlign: "center", width: 140 }}>Кол-во / Фасовка</th>
+                              <th style={{ ...th, textAlign: "right", width: 130 }}>Сумма</th>
+                              <th style={{ ...th, width: 40 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((it, idx) => {
+                              const selectedCont = (it.containers || []).find((c) => c.id === it.containerId);
+                              const mult = selectedCont ? (Number(selectedCont.count) || 1) : 1;
+                              const rawQty = parseFloat(it.quantity) || 0;
+                              const finalBaseQty = selectedCont ? (rawQty * mult) : rawQty;
+                              const itemPhotos = photosOf(it.product_id);
+
+                              return (
+                                <tr key={it.product_id} style={{ borderTop: idx > 0 ? "1px solid var(--border-color)" : "none" }}>
+                                  <td style={td}>
+                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{it.product_name}</div>
+                                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                                      Базовая ед: {it.unit}
+                                    </div>
+                                    {/* Прикрепление фото товара */}
+                                    <div style={{ marginTop: 4 }}>
+                                      <PhotoPicker
+                                        compact
+                                        photos={itemPhotos}
+                                        onPick={(files) => addPhotos(it.product_id, files)}
+                                        onRemove={(pid) => removePhoto(it.product_id, pid)}
+                                      />
+                                    </div>
+                                  </td>
+                                  <td style={{ ...td, textAlign: "center" }}>
+                                    <div style={{ fontWeight: 800, fontSize: 13 }}>
+                                      {it.quantity} {selectedCont ? selectedCont.name : it.unit}
+                                    </div>
+                                    {selectedCont && (
+                                      <div style={{ fontSize: 10, color: "#0369a1", fontWeight: 700, marginTop: 2 }}>
+                                        (= {finalBaseQty} {it.unit})
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ ...td, textAlign: "right", fontWeight: 800, fontSize: 13, color: "#0f172a" }}>
+                                    {parseFloat(it.totalPrice || 0).toLocaleString("ru-RU")} сум
+                                  </td>
+                                  <td style={{ ...td, textAlign: "center" }}>
+                                    <button
+                                      onClick={() => removeItem(it.product_id)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        color: "#ef4444",
+                                        fontSize: 16,
+                                      }}
+                                      title="Удалить товар"
+                                    >
+                                      {I.trash}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Комментарий к накладной */}
+                  <label style={{ ...lbl, marginTop: 12 }}>Комментарий к приходу</label>
+                  <input
+                    value={form.comment}
+                    onChange={(e) => setForm({ ...form, comment: e.target.value })}
+                    placeholder="Примечание (необязательно)"
+                    style={inp}
+                  />
+
+                  {/* Кнопки Назад и Провести */}
+                  <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "space-between" }}>
+                    <Btn outline onClick={() => setStep(1)}>
+                      ← Назад к фото накладной
                     </Btn>
                     <Btn
                       onClick={handleSubmit}
                       disabled={submitting || items.length === 0 || uploadingCount > 0}
+                      style={{ minWidth: 200 }}
                     >
                       {submitting ? I.loader : I.send}{" "}
                       {submitting
-                        ? "Отправка..."
+                        ? "Проведение в iiko..."
                         : uploadingCount > 0
                         ? `Загрузка фото (${uploadingCount})...`
-                        : "Провести"}
+                        : "Провести приход"}
                     </Btn>
                   </div>
                 </>
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ════════ МОДАЛЬНОЕ ОКНО: ВВОД КОЛИЧЕСТВА И СУММЫ ТОВАРА ════════ */}
+      {activeItemModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => setActiveItemModal(null)}
+        >
+          <div
+            style={{
+              background: "var(--bg-card, #ffffff)",
+              borderRadius: 18,
+              padding: 24,
+              maxWidth: 420,
+              width: "100%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+              border: "1px solid var(--border-color)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase" }}>
+                  {activeItemModal.groupName}
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-main)", marginTop: 2 }}>
+                  {activeItemModal.product_name}
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveItemModal(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Выбор фасовки (если есть) */}
+            {activeItemModal.containers && activeItemModal.containers.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ ...lbl, marginBottom: 6 }}>Фасовка / Единица измерения:</label>
+                <select
+                  value={activeItemModal.containerId || ""}
+                  onChange={(e) => setActiveItemModal({ ...activeItemModal, containerId: e.target.value })}
+                  style={{
+                    ...inp,
+                    height: 42,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    borderRadius: 10,
+                    background: "var(--bg-hover)",
+                  }}
+                >
+                  <option value="">Базовая единица ({activeItemModal.unit})</option>
+                  {activeItemModal.containers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.count} {activeItemModal.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Ввод количества */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...lbl, marginBottom: 6 }}>Количество:</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const val = Math.max(0, (parseFloat(activeItemModal.quantity) || 0) - 1);
+                    setActiveItemModal({ ...activeItemModal, quantity: val > 0 ? String(val) : "" });
+                  }}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 10,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-hover)",
+                    fontSize: 18,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  step="any"
+                  autoFocus
+                  value={activeItemModal.quantity}
+                  onChange={(e) => setActiveItemModal({ ...activeItemModal, quantity: e.target.value })}
+                  placeholder="0"
+                  style={{
+                    ...inp,
+                    height: 42,
+                    fontSize: 18,
+                    fontWeight: 800,
+                    textAlign: "center",
+                    borderRadius: 10,
+                    flex: 1,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const val = (parseFloat(activeItemModal.quantity) || 0) + 1;
+                    setActiveItemModal({ ...activeItemModal, quantity: String(val) });
+                  }}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 10,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-hover)",
+                    fontSize: 18,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Ввод суммы */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ ...lbl, marginBottom: 6 }}>Общая стоимость (сум):</label>
+              <input
+                type="number"
+                value={activeItemModal.totalPrice}
+                onChange={(e) => setActiveItemModal({ ...activeItemModal, totalPrice: e.target.value })}
+                placeholder="Сумма по чеку"
+                style={{
+                  ...inp,
+                  height: 42,
+                  fontSize: 16,
+                  fontWeight: 700,
+                  borderRadius: 10,
+                }}
+              />
+            </div>
+
+            {/* Кнопки модалки */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn outline onClick={() => setActiveItemModal(null)} style={{ flex: 1 }}>
+                Отмена
+              </Btn>
+              <Btn onClick={saveProductModal} style={{ flex: 1.5 }}>
+                {activeItemModal.isEditing ? "Сохранить" : "Добавить в приход"}
+              </Btn>
+            </div>
+          </div>
         </div>
       )}
     </div>
