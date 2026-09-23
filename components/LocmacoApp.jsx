@@ -4289,16 +4289,24 @@ function IncomingView({
 
       setAiResult({
         detected_item: res.detected_item,
+        short_name: res.short_name,
         search_keyword: res.search_keyword,
         matches: matchedProds,
-        explanation: res.explanation,
+        brand: res.brand,
       });
 
-      if (matchedProds.length > 0) {
+      if (res.search_keyword) {
+        setSearchQuery(res.search_keyword);
+      }
+
+      if (matchedProds.length === 1) {
+        // Если найдено 1 точное совпадение — сразу открываем окно ввода
+        openProductEntry(matchedProds[0]);
+        showToast(`✨ Точное совпадение: ${matchedProds[0].name}`);
+      } else if (matchedProds.length > 1) {
         showToast(`✨ Найдено: ${res.detected_item || matchedProds[0].name}`);
       } else if (res.search_keyword) {
-        setSearchQuery(res.search_keyword);
-        showToast(`🔍 Поиск по фото: ${res.search_keyword}`);
+        showToast(`🔍 Найдено по фото: ${res.search_keyword}`);
       }
     } else {
       showToast(res?.error || "Не удалось распознать товар", "error");
@@ -4866,7 +4874,7 @@ function IncomingView({
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="🔍 Поиск товара по названию или коду..."
+                        placeholder="Поиск товара по названию или коду..."
                         style={{
                           ...inp,
                           paddingLeft: 38,
@@ -4904,7 +4912,7 @@ function IncomingView({
                             color: "var(--text-muted)",
                           }}
                         >
-                          ✖
+                          ✕
                         </button>
                       )}
                     </div>
@@ -4917,7 +4925,7 @@ function IncomingView({
                       title="Сфотографировать товар для AI-распознавания"
                       style={{
                         height: 44,
-                        padding: "0 14px",
+                        padding: "0 16px",
                         borderRadius: 12,
                         border: "none",
                         background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
@@ -4934,7 +4942,7 @@ function IncomingView({
                       }}
                     >
                       <span style={{ fontSize: 18 }}>📷</span>
-                      <span className="hide-on-mobile">{aiRecognizing ? "Распознаю..." : "AI Фото"}</span>
+                      <span className="hide-on-mobile">{aiRecognizing ? "Анализ..." : "AI Фото"}</span>
                     </button>
                   </div>
 
@@ -4942,20 +4950,21 @@ function IncomingView({
                   {aiRecognizing && (
                     <div
                       style={{
-                        background: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(79, 70, 229, 0.25) 100%)",
+                        border: "1px solid rgba(99, 102, 241, 0.4)",
                         borderRadius: 12,
                         padding: "12px 16px",
                         marginBottom: 14,
                         display: "flex",
                         alignItems: "center",
                         gap: 12,
-                        color: "#3730a3",
+                        color: "var(--text-main)",
                         animation: "pulse 1.5s infinite ease-in-out",
                       }}
                     >
                       <span style={{ fontSize: 22 }}>🤖</span>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>
-                        Нейросеть анализирует изображение товара...
+                        Нейросеть распознает товар по фотографии...
                       </div>
                     </div>
                   )}
@@ -4963,66 +4972,80 @@ function IncomingView({
                   {aiResult && !aiRecognizing && (
                     <div
                       style={{
-                        background: "#f0fdf4",
-                        border: "1.5px solid #bbf7d0",
-                        borderRadius: 12,
+                        background: "var(--bg-hover)",
+                        border: "1.5px solid #6366f1",
+                        borderRadius: 14,
                         padding: 14,
                         marginBottom: 14,
                         position: "relative",
+                        boxShadow: "0 4px 14px rgba(99, 102, 241, 0.12)",
                       }}
                     >
                       <button
                         onClick={() => setAiResult(null)}
                         style={{
                           position: "absolute",
-                          top: 8,
-                          right: 8,
+                          top: 10,
+                          right: 10,
                           background: "none",
                           border: "none",
                           cursor: "pointer",
-                          color: "#15803d",
+                          color: "var(--text-muted)",
                           fontWeight: 700,
+                          fontSize: 14,
                         }}
                       >
                         ✕
                       </button>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: "#166534", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span>✨ AI Распознал:</span>
-                        <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 6 }}>{aiResult.detected_item || "Товар с фото"}</span>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <span style={{ fontSize: 20 }}>✨</span>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase" }}>
+                            AI Распознал по фото:
+                          </div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-main)", marginTop: 1 }}>
+                            {aiResult.detected_item || aiResult.short_name || "Товар"}
+                            {aiResult.brand && <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginLeft: 6 }}>({aiResult.brand})</span>}
+                          </div>
+                        </div>
                       </div>
 
                       {aiResult.matches && aiResult.matches.length > 0 ? (
                         <div>
-                          <div style={{ fontSize: 11, color: "#15803d", marginBottom: 6 }}>
-                            Совпадения в базе iiko (нажмите для выбора):
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600 }}>
+                            Товары в iiko (нажмите, чтобы добавить в приход):
                           </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {aiResult.matches.map((m) => (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            {aiResult.matches.map((m, mIdx) => (
                               <button
                                 key={m.id}
                                 onClick={() => openProductEntry(m)}
                                 style={{
-                                  background: "#ffffff",
-                                  border: "1.5px solid #22c55e",
-                                  borderRadius: 8,
-                                  padding: "6px 10px",
-                                  fontSize: 12,
+                                  background: mIdx === 0 ? "linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)" : "var(--bg-card)",
+                                  border: mIdx === 0 ? "none" : "1px solid var(--border-color)",
+                                  color: mIdx === 0 ? "#ffffff" : "var(--text-main)",
+                                  borderRadius: 10,
+                                  padding: "8px 14px",
+                                  fontSize: 13,
                                   fontWeight: 700,
-                                  color: "#15803d",
                                   cursor: "pointer",
                                   display: "flex",
                                   alignItems: "center",
                                   gap: 6,
+                                  boxShadow: mIdx === 0 ? "0 4px 10px rgba(79, 70, 229, 0.3)" : "none",
                                 }}
                               >
-                                <span>➕</span> {m.name} ({m.mainUnit || "шт"})
+                                <span>{mIdx === 0 ? "🔥" : "➕"}</span>
+                                <span>{m.name}</span>
+                                <span style={{ opacity: 0.8, fontSize: 11 }}>({m.mainUnit || "шт"})</span>
                               </button>
                             ))}
                           </div>
                         </div>
                       ) : (
-                        <div style={{ fontSize: 11, color: "#15803d" }}>
-                          Ключевое слово для поиска: <strong>{aiResult.search_keyword}</strong>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          Поиск по каталогу: <strong>{aiResult.search_keyword}</strong>
                         </div>
                       )}
                     </div>
