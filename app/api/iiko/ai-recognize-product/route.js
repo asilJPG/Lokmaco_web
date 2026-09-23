@@ -43,92 +43,106 @@ export async function POST(req) {
       });
     }
 
-    // Prepare a compact list of product names and IDs for matching
-    const sampleCandidates = (candidateList || []).slice(0, 400).map(p => ({
+    // Compact list of products for matching
+    const sampleCandidates = (candidateList || []).slice(0, 300).map(p => ({
       id: p.id,
       name: p.name,
       group: p.groupName || ""
     }));
 
     const systemPrompt = `Ты — AI-помощник кладовщика в кафе-кондитерской Lokmaco (Узбекистан, Ташкент).
-Твоя задача — внимательно посмотреть на присланную фотографию товара/ингредиента/упаковки и определить, что это за продукт.
-Затем сопоставить его с базой номенклатуры iiko и вернуть ТОП-3 наиболее подходящих товара из предоставленного списка.
+Твоя задача — определить, какой товар/ингредиент/упаковка изображен на фотографии, и найти 1-3 самых подходящих совпадений в номенклатуре склада iiko.
 
-Если точного совпадения нет, подбери 3 самых близких по смыслу и назначению товара из списка.
-Также верни ключевое поисковое слово на русском языке (search_keyword).
-
-Отвечай СТРОГО в формате JSON без markdown-разметки:
+Отвечай СТРОГО валидным JSON объектом (без кавычек markdown, без \`\`\`json):
 {
-  "detected_item": "Краткое распознанное описание предмета на фото на русском",
-  "search_keyword": "Слово для текстового поиска по каталогу (например: Клубника, Сыр, Сливки, Молоко, Коробка, Сахар)",
-  "matched_product_ids": ["id1", "id2", "id3"],
-  "explanation": "Почему выбраны эти товары"
+  "detected_item": "Название распознанного товара на русском (например: Клубника свежая, Сливки 33%, Сыр Моцарелла, Пакет крафтовый)",
+  "search_keyword": "Основное поисковое слово на русском (например: Клубника)",
+  "matched_product_ids": ["id1", "id2"],
+  "explanation": "Краткое пояснение"
 }`;
 
-    const userPrompt = `Список доступных товаров на складе (id, name, group):\n${JSON.stringify(sampleCandidates.slice(0, 250))}\n\nПожалуйста, определи товар на фото и выбери подходящие ID.`;
+    const userPrompt = `Список доступных товаров на складе (id, name, group):\n${JSON.stringify(sampleCandidates.slice(0, 200))}\n\nПожалуйста, определи продукт на фото и выбери подходящие ID.`;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openRouterKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://lokmaco.uz",
-        "X-Title": "Lokmaco Warehouse",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: userPrompt },
+    const modelsToTry = [
+      "google/gemini-2.5-flash",
+      "openai/gpt-4o-mini"
+    ];
+
+    let lastError = "";
+    for (const model of modelsToTry) {
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://lokmaco.uz",
+            "X-Title": "Lokmaco Warehouse Vision",
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: "system", content: systemPrompt },
               {
-                type: "image_url",
-                image_url: {
-                  url: base64Image,
-                },
+                role: "user",
+                content: [
+                  { type: "text", text: userPrompt },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: base64Image,
+                    },
+                  },
+                ],
               },
             ],
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 500,
-        response_format: { type: "json_object" }
-      }),
-    });
+            temperature: 0.2,
+            max_tokens: 400,
+          }),
+        });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("[AI Vision Error]", response.status, errText);
-      return Response.json({
-        success: false,
-        error: "Ошибка AI распознавания",
-        detected_item: "",
-        search_keyword: "",
-        matched_product_ids: [],
-      });
-    }
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`[AI Vision Error] Model ${model} failed with ${response.status}:`, errText);
+          lastError = `${model}: ${response.status}`;
+          continue;
+        }
 
-    const resData = await response.json();
-    const content = resData.choices?.[0]?.message?.content || "{}";
-    
-    let parsed = {};
-    try {
-      parsed = JSON.parse(content);
-    } catch (e) {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
+        const resData = await response.json();
+        let content = resData.choices?.[0]?.message?.content || "{}";
+        
+        // Strip markdown code fences if present
+        content = content.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+
+        let parsed = {};
+        try {
+          parsed = JSON.parse(content);
+        } catch (e) {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          }
+        }
+
+        return Response.json({
+          success: true,
+          detected_item: parsed.detected_item || "",
+          search_keyword: parsed.search_keyword || "",
+          matched_product_ids: parsed.matched_product_ids || [],
+          explanation: parsed.explanation || "",
+        });
+      } catch (e) {
+        console.error(`[AI Vision Exception] ${model}:`, e);
+        lastError = e.message;
       }
     }
 
     return Response.json({
-      success: true,
-      detected_item: parsed.detected_item || "",
-      search_keyword: parsed.search_keyword || "",
-      matched_product_ids: parsed.matched_product_ids || [],
-      explanation: parsed.explanation || "",
+      success: false,
+      error: `Не удалось распознать товар (${lastError})`,
+      detected_item: "",
+      search_keyword: "",
+      matched_product_ids: [],
     });
   } catch (err) {
     console.error("[/api/iiko/ai-recognize-product]", err);
