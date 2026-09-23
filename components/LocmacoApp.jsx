@@ -4250,21 +4250,113 @@ function IncomingView({
   const itemsWithoutPhoto = items.filter((it) => photosOf(it.product_id).length === 0);
   const hasInvoicePhoto = photosOf(INVOICE_KEY).length > 0;
 
-  // Динамические категории из номенклатуры
-  const categoriesList = useMemo(() => {
-    const set = new Set();
-    products.forEach((p) => {
-      if (p.groupName) set.add(p.groupName);
+  // Функция определения естественной складской категории товара
+  const getProductNaturalCategory = (product) => {
+    const n = (product?.name || "").toLowerCase();
+
+    // 1. Инвентарь, посуда и техника
+    if (/(гастро[её]мкость|сотейник|кастрюл|сковород|дуршлаг|половник|венчик|лопатка|доска |доска пластик|доска деревян|сито|щипцы|миксер|блендер|весы|мясоруб|тостер|печь|роутер|стол |стул |диван|кресло|вешалка|лампа|кашпо|термометр|темпер|чаша|блюдо|бокал|пиела|ликоб|градусник|конус|sieve|whip|frypan|pot|baking ring|mousse ring|colander)/i.test(n) && !/шоколад|торт|сырники/i.test(n)) {
+      return "Инвентарь и посуда";
+    }
+
+    // 2. Хозтовары и бытовая химия
+    if (/(моющее|гель для посуды|порошок|чистящ|мыло|fairy|wallner|белизна|тряпк|губк|швабр|ведро|дезинфек|антисептик|освежител|ватные палоч|туалетн|мусор бак|мусорны|перчатка хоз)/i.test(n)) {
+      return "Хозтовары и химия";
+    }
+
+    // 3. Расходники и упаковка
+    if (/(перчатк|салфетк|стакан|крышк|коробк|бокс|пакет|трубочк|соломк|фольг|пергамент|пленк|ланчбокс|ложка|вилка|зубочистк|бумаг|манжет|elma|bubble|kraft|крафт|вакум|одноразов)/i.test(n) && !/стеклянн|фарфор/i.test(n)) {
+      return "Расходники и упаковка";
+    }
+
+    // 4. Овощи и зелень
+    if (/(картош|картофел|помидор|томат|огур|лук|чеснок|морков|зелен|укроп|петрушк|кинз|капуст|гул карам|перец|баклажан|кабач|тыква|салат|айсберг|руккол|шпинат|мята|базилик|редис|свекл|гриб|шампиньон|халапень|маслин|оливк|горох|кукуруз|броккол)/i.test(n) && !/чипсы|соус|стиральн/i.test(n)) {
+      return "Овощи и зелень";
+    }
+
+    // 5. Фрукты и ягоды
+    if (/(яблок|банан|апельсин|лимон|лайм|киви|клубник|малин|голубик|смородин|ягод|вишн|черешн|персик|абрикос|слива|ананас|манго|маракуй|авокадо|грейпфрут|мандарин|груш|арбуз|дыня|пюре манго|пюре клубник|пюре имбир|пюре малин)/i.test(n) && !/мыло|средство/i.test(n)) {
+      return "Фрукты и ягоды";
+    }
+
+    // 6. Молочная продукция и сыры
+    if (/(молок|сыр|сливк|шанти|творог|сгущен|сметан|йогурт|кефир|маскарпоне|моцарелл|motsarella|cremette|kremetti|страчателл|strachatella|пармезан|чеддер|сулугуни|фета|дорблю|брынза|сваля|сливочное масло|маргарин|фрима)/i.test(n)) {
+      return "Молочка и сыры";
+    }
+
+    // 7. Мясо, птица и рыба
+    if (/(мясо|говяд|баран|конин|ягненок|куриц|курин|кур |цыпл|филе|грудк|бедро|крыл|фарш|стейк|котлет|сосиск|колбас|ветчин|бекон|рыб|лосос|семг|тунец|креветк|морепродукт|кости|лахм|щечки|вырезка|ребра|дандана|пустирма)/i.test(n) && !/мясоруб|молоток для/i.test(n)) {
+      return "Мясо и рыба";
+    }
+
+    // 8. Масла, соусы и специи
+    if (/(масло|соус|майонез|кетчуп|горчиц|уксус|соль|специ|паприк|орегано|кориц|кунжут|кардамон|лаванда|ромашка|гвоздика|шафран|анис|сумах|жидкий дым|топинг|джем|сироп|монин|monin|соев|барбекю|цезарь|терияки)/i.test(n)) {
+      return "Масла и соусы";
+    }
+
+    // 9. Бакалея, выпечка и десерты
+    if (/(мук|сахар|канд|крахмал|кабартма|разрыхлител|дрожж|шоколад|какао|ванилин|тапиок|орех|фисташк|фундук|миндал|арахис|нутелл|вафл|булочк|хлеб|тартин|тост|тортиль|крупа|рис|макарон|паста|фитучини|лингвини|желатин|глазур|посыпк|асал|мед)/i.test(n)) {
+      return "Бакалея и выпечка";
+    }
+
+    // 10. Напитки, чай и кофе
+    if (/(чай|кофе|сок|напиток|кола|cola|fanta|фанта|sprite|спрайт|pepsi|пепси|вода|bonaqua|red bull|энергетик|морс|лимонад)/i.test(n)) {
+      return "Напитки, чай и кофе";
+    }
+
+    return "Прочее";
+  };
+
+  const CATEGORY_ICONS = {
+    "Все": "⭐️",
+    "Овощи и зелень": "🥦",
+    "Фрукты и ягоды": "🍓",
+    "Молочка и сыры": "🧀",
+    "Мясо и рыба": "🥩",
+    "Масла и соусы": "🫒",
+    "Бакалея и выпечка": "🌾",
+    "Напитки, чай и кофе": "🥤",
+    "Расходники и упаковка": "📦",
+    "Хозтовары и химия": "🧼",
+    "Инвентарь и посуда": "🍽",
+    "Прочее": "📦",
+  };
+
+  // Динамические категории с подсчётом товаров
+  const { categoriesList, categoryCounts } = useMemo(() => {
+    const counts = { "Все": (products || []).length };
+    (products || []).forEach((p) => {
+      const cat = getProductNaturalCategory(p);
+      p._naturalCategory = cat;
+      counts[cat] = (counts[cat] || 0) + 1;
     });
-    const sorted = Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
-    return ["Все", ...sorted];
+
+    const orderedKnown = [
+      "Овощи и зелень",
+      "Фрукты и ягоды",
+      "Молочка и сыры",
+      "Мясо и рыба",
+      "Масла и соусы",
+      "Бакалея и выпечка",
+      "Напитки, чай и кофе",
+      "Расходники и упаковка",
+      "Хозтовары и химия",
+      "Инвентарь и посуда",
+      "Прочее",
+    ];
+
+    const available = orderedKnown.filter((cat) => (counts[cat] || 0) > 0);
+    return {
+      categoriesList: ["Все", ...available],
+      categoryCounts: counts,
+    };
   }, [products]);
 
-  // Фильтрация товаров по категории и поиску
+  // Фильтрация товаров по естественной категории и поиску
   const filteredProducts = useMemo(() => {
     let list = products || [];
     if (selectedCategory && selectedCategory !== "Все") {
-      list = list.filter((p) => p.groupName === selectedCategory);
+      list = list.filter((p) => (p._naturalCategory || getProductNaturalCategory(p)) === selectedCategory);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -4884,7 +4976,7 @@ function IncomingView({
                 <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
               ) : (
                 <>
-                  {/* Поисковая строка с AI камерой */}
+                  {/* Поисковая строка на всю ширину + кнопка AI Камера */}
                   <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
                     <div style={{ position: "relative", flex: 1 }}>
                       <input
@@ -4894,37 +4986,33 @@ function IncomingView({
                         placeholder="Поиск товара по названию или коду..."
                         style={{
                           ...inp,
-                          paddingLeft: 38,
-                          paddingRight: searchQuery ? 36 : 12,
-                          height: 44,
+                          paddingLeft: 14,
+                          paddingRight: searchQuery ? 38 : 14,
+                          height: 46,
                           fontSize: 14,
                           borderRadius: 12,
                           border: "1.5px solid var(--border-color)",
+                          width: "100%",
+                          boxSizing: "border-box",
                         }}
                       />
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: 12,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          fontSize: 16,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        🔍
-                      </span>
                       {searchQuery && (
                         <button
                           onClick={() => setSearchQuery("")}
                           style={{
                             position: "absolute",
-                            right: 10,
+                            right: 8,
                             top: "50%",
                             transform: "translateY(-50%)",
-                            background: "none",
+                            background: "rgba(100, 116, 139, 0.15)",
                             border: "none",
-                            fontSize: 14,
+                            borderRadius: "50%",
+                            width: 26,
+                            height: 26,
+                            fontSize: 12,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                             cursor: "pointer",
                             color: "var(--text-muted)",
                           }}
@@ -4941,8 +5029,8 @@ function IncomingView({
                       onClick={() => aiCameraInputRef.current?.click()}
                       title="Сфотографировать товар для AI-распознавания"
                       style={{
-                        height: 44,
-                        padding: "0 16px",
+                        height: 46,
+                        padding: "0 14px",
                         borderRadius: 12,
                         border: "none",
                         background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
@@ -5068,20 +5156,22 @@ function IncomingView({
                     </div>
                   )}
 
-                  {/* Вкладки / Папки категорий */}
+                  {/* Вкладки / Папки естественных категорий со счетчиками */}
                   <div
                     className="horizontal-scroll-container"
                     style={{
                       display: "flex",
                       gap: 6,
-                      marginBottom: 14,
+                      marginBottom: 12,
                       paddingBottom: 4,
                       overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
                     }}
                   >
                     {categoriesList.map((cat) => {
                       const isSelected = selectedCategory === cat;
-                      const icon = getCategoryIcon(cat);
+                      const icon = CATEGORY_ICONS[cat] || "📁";
+                      const count = categoryCounts[cat] || 0;
                       return (
                         <button
                           key={cat}
@@ -5108,71 +5198,112 @@ function IncomingView({
                         >
                           <span>{icon}</span>
                           <span>{cat}</span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              opacity: isSelected ? 0.95 : 0.65,
+                              background: isSelected ? "rgba(255,255,255,0.25)" : "var(--bg-hover)",
+                              padding: "1px 6px",
+                              borderRadius: 6,
+                              marginLeft: 2,
+                            }}
+                          >
+                            {count}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
 
-                  {/* Список товаров в выбранной папке / поиске */}
+                  {/* Список товаров в выбранной папке / поиске — Удобный мобильный список */}
                   <div
                     style={{
                       border: "1px solid var(--border-color)",
-                      borderRadius: 12,
-                      maxHeight: 250,
+                      borderRadius: 14,
+                      maxHeight: 320,
                       overflowY: "auto",
                       background: "var(--bg-card)",
                       marginBottom: 16,
+                      WebkitOverflowScrolling: "touch",
                     }}
                   >
                     {filteredProducts.length === 0 ? (
-                      <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
-                        Товары не найдены
+                      <div style={{ padding: 28, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                        Товары в этой категории не найдены
                       </div>
                     ) : (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 1, background: "var(--border-color)" }}>
-                        {filteredProducts.slice(0, 60).map((p) => {
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        {filteredProducts.slice(0, 80).map((p, pIdx) => {
                           const alreadyInList = items.some((it) => it.product_id === p.id);
+                          const addedItem = items.find((it) => it.product_id === p.id);
+                          const cat = p._naturalCategory || getProductNaturalCategory(p);
+                          const icon = CATEGORY_ICONS[cat] || "📦";
+
                           return (
                             <div
                               key={p.id}
                               onClick={() => openProductEntry(p)}
                               style={{
-                                background: alreadyInList ? "var(--bg-hover)" : "var(--bg-card)",
-                                padding: "10px 12px",
+                                background: alreadyInList ? "rgba(2, 132, 199, 0.08)" : "var(--bg-card)",
+                                padding: "10px 14px",
                                 cursor: "pointer",
                                 display: "flex",
                                 justifyContent: "space-between",
                                 alignItems: "center",
-                                gap: 8,
-                                transition: "background 0.1s ease",
+                                gap: 10,
+                                borderBottom: pIdx < Math.min(filteredProducts.length, 80) - 1 ? "1px solid var(--border-color)" : "none",
+                                transition: "background 0.12s ease",
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = alreadyInList ? "var(--bg-hover)" : "var(--bg-card)")}
                             >
-                              <div style={{ overflow: "hidden" }}>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                                  {p.name}
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)", display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 14 }}>{icon}</span>
+                                  <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                    {p.name}
+                                  </span>
                                 </div>
-                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                                  {p.groupName} · Ед: <strong>{p.mainUnit || "шт"}</strong>
-                                  {p.containers && p.containers.length > 0 && ` · Фасовок: ${p.containers.length}`}
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                  <span style={{ fontWeight: 600 }}>{cat}</span>
+                                  <span>·</span>
+                                  <span>Ед: <strong>{p.mainUnit || "шт"}</strong></span>
+                                  {p.containers && p.containers.length > 0 && (
+                                    <>
+                                      <span>·</span>
+                                      <span style={{ color: "#6366f1", fontWeight: 600 }}>📦 {p.containers.length} фас.</span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
+
                               <button
                                 type="button"
                                 style={{
-                                  background: alreadyInList ? "#0284c7" : "#4f46e5",
-                                  color: "#fff",
-                                  border: "none",
+                                  background: alreadyInList ? "#0284c7" : "var(--bg-hover)",
+                                  color: alreadyInList ? "#fff" : "var(--text-main)",
+                                  border: alreadyInList ? "none" : "1px solid var(--border-color)",
                                   borderRadius: 8,
-                                  padding: "5px 9px",
-                                  fontSize: 11,
+                                  padding: "7px 12px",
+                                  fontSize: 12,
                                   fontWeight: 700,
                                   cursor: "pointer",
                                   flexShrink: 0,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
                                 }}
                               >
-                                {alreadyInList ? "Изменить" : "➕ Выбрать"}
+                                {alreadyInList ? (
+                                  <>
+                                    <span>✓</span>
+                                    <span>{addedItem?.quantity} {addedItem?.unit}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>➕</span>
+                                    <span>Выбрать</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           );
