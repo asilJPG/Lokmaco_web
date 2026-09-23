@@ -4175,6 +4175,7 @@ function IncomingView({
   // AI Camera recognition
   const [aiRecognizing, setAiRecognizing] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+  const [lastAiPhotoFile, setLastAiPhotoFile] = useState(null);
   const aiCameraInputRef = useRef(null);
 
   // Фотографии: ключ — product_id для товаров, "__invoice__" для накладной.
@@ -4232,6 +4233,7 @@ function IncomingView({
   const resetPhotos = () => {
     Object.values(photos).flat().forEach((p) => p.url && URL.revokeObjectURL(p.url));
     setPhotos({});
+    setLastAiPhotoFile(null);
     setDraftId(makeDraftId());
   };
 
@@ -4276,6 +4278,7 @@ function IncomingView({
     if (!file) return;
     setAiRecognizing(true);
     setAiResult(null);
+    setLastAiPhotoFile(file);
     showToast("🤖 Нейросеть распознает товар по фото...", "info");
 
     const res = await API.recognizeProductByPhoto(file, products);
@@ -4300,7 +4303,9 @@ function IncomingView({
       }
 
       if (matchedProds.length === 1) {
-        // Если найдено 1 точное совпадение — сразу открываем окно ввода
+        // Автоматически прикрепляем сделанное фото к этому товару
+        addPhotos(matchedProds[0].id, [file]);
+        setLastAiPhotoFile(null);
         openProductEntry(matchedProds[0]);
         showToast(`✨ Точное совпадение: ${matchedProds[0].name}`);
       } else if (matchedProds.length > 1) {
@@ -4314,8 +4319,14 @@ function IncomingView({
   };
 
   // Открытие модалки ввода параметров товара
-  const openProductEntry = (p) => {
+  const openProductEntry = (p, photoToAttach) => {
     const existing = items.find((it) => it.product_id === p.id);
+    const photoFile = photoToAttach || lastAiPhotoFile;
+    if (photoFile && photosOf(p.id).length === 0) {
+      addPhotos(p.id, [photoFile]);
+      setLastAiPhotoFile(null);
+    }
+
     setActiveItemModal({
       product_id: p.id,
       product_name: p.name,
@@ -5432,7 +5443,7 @@ function IncomingView({
             </div>
 
             {/* Ввод суммы */}
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 14 }}>
               <label style={{ ...lbl, marginBottom: 6 }}>Общая стоимость (сум):</label>
               <input
                 type="number"
@@ -5447,6 +5458,24 @@ function IncomingView({
                   borderRadius: 10,
                 }}
               />
+            </div>
+
+            {/* Фотография товара */}
+            <div style={{ marginBottom: 18, padding: 10, background: "var(--bg-hover)", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>
+                📷 Фотография товара:
+              </div>
+              <PhotoPicker
+                compact
+                photos={photosOf(activeItemModal.product_id)}
+                onPick={(files) => addPhotos(activeItemModal.product_id, files)}
+                onRemove={(pid) => removePhoto(activeItemModal.product_id, pid)}
+              />
+              {photosOf(activeItemModal.product_id).length > 0 && (
+                <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, marginTop: 4 }}>
+                  ✓ Фотография прикреплена
+                </div>
+              )}
             </div>
 
             {/* Кнопки модалки */}
