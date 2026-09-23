@@ -131,7 +131,13 @@ const API = {
       const fd = new FormData();
       fd.append("file", file);
       if (candidates && candidates.length) {
-        fd.append("candidates", JSON.stringify(candidates.slice(0, 300)));
+        const compact = candidates.map((c) => ({
+          id: c.id,
+          name: c.name,
+          group: c.groupName,
+          mainUnit: c.mainUnit,
+        }));
+        fd.append("candidates", JSON.stringify(compact));
       }
       const r = await fetch("/api/iiko/ai-recognize-product", { method: "POST", body: fd });
       const data = await r.json().catch(() => null);
