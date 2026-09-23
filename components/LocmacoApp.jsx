@@ -4322,10 +4322,26 @@ function IncomingView({
     "Прочее": "📦",
   };
 
-  // Динамические категории с подсчётом товаров
+  const isPfProduct = (p) => {
+    if (!p) return true;
+    if (p.type === "PREPARED") return true;
+    const n = (p.name || "").toLowerCase().trim();
+    return (
+      n.startsWith("пф ") ||
+      n.startsWith("пф.") ||
+      n.startsWith("пф-") ||
+      n.startsWith("п/ф") ||
+      n.startsWith("[пф]") ||
+      n.startsWith("(пф)") ||
+      n.includes("полуфабрикат")
+    );
+  };
+
+  // Динамические категории с подсчётом товаров (без ПФ)
   const { categoriesList, categoryCounts } = useMemo(() => {
-    const counts = { "Все": (products || []).length };
-    (products || []).forEach((p) => {
+    const validGoods = (products || []).filter((p) => !isPfProduct(p));
+    const counts = { "Все": validGoods.length };
+    validGoods.forEach((p) => {
       const cat = getProductNaturalCategory(p);
       p._naturalCategory = cat;
       counts[cat] = (counts[cat] || 0) + 1;
@@ -4352,9 +4368,9 @@ function IncomingView({
     };
   }, [products]);
 
-  // Фильтрация товаров по естественной категории и поиску
+  // Фильтрация товаров по естественной категории и поиску (без ПФ)
   const filteredProducts = useMemo(() => {
-    let list = products || [];
+    let list = (products || []).filter((p) => !isPfProduct(p));
     if (selectedCategory && selectedCategory !== "Все") {
       list = list.filter((p) => (p._naturalCategory || getProductNaturalCategory(p)) === selectedCategory);
     }

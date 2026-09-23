@@ -124,7 +124,23 @@ export async function POST(req) {
           const groupMap = {};
           (groups || []).forEach((g) => { if (g && g.id) groupMap[g.id] = g.name; });
           return (data || [])
-            .filter((p) => (p.type === "GOODS" || p.type === "PREPARED") && !p.deleted)
+            .filter((p) => {
+              if (p.deleted) return false;
+              if (p.type !== "GOODS") return false;
+              const nameLower = (p.name || "").toLowerCase().trim();
+              if (
+                nameLower.startsWith("пф ") ||
+                nameLower.startsWith("пф.") ||
+                nameLower.startsWith("пф-") ||
+                nameLower.startsWith("п/ф") ||
+                nameLower.startsWith("[пф]") ||
+                nameLower.startsWith("(пф)") ||
+                nameLower.includes("полуфабрикат")
+              ) {
+                return false;
+              }
+              return true;
+            })
             .map((p) => ({
               id: p.id,
               name: p.name,
