@@ -4395,13 +4395,14 @@ function IncomingView({
     setLastAiPhotoFile(file);
     showToast("🤖 Нейросеть распознает товар по фото...", "info");
 
-    const res = await API.recognizeProductByPhoto(file, products);
+    const goodsOnly = (products || []).filter((p) => !isPfProduct(p));
+    const res = await API.recognizeProductByPhoto(file, goodsOnly);
     setAiRecognizing(false);
     e.target.value = "";
 
     if (res?.success) {
       const matchedProds = (res.matched_product_ids || [])
-        .map((id) => products.find((p) => p.id === id))
+        .map((id) => goodsOnly.find((p) => p.id === id))
         .filter(Boolean);
 
       setAiResult({

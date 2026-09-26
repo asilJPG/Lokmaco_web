@@ -36,21 +36,9 @@ export async function GET() {
       return data
         .filter((p) => {
           if (p.deleted === true || p.deleted === "true") return false;
-          if (p.type !== "GOODS") return false; // Исключаем PREPARED (ПФ), DISH и др.
+          if (p.type !== "GOODS" && p.type !== "PREPARED") return false;
           const nameLower = (p.name || "").toLowerCase().trim();
           if (nameLower.includes("(удалить)") || nameLower.includes("[удалить]")) return false;
-          // Полностью исключаем полуфабрикаты (ПФ)
-          if (
-            nameLower.startsWith("пф ") ||
-            nameLower.startsWith("пф.") ||
-            nameLower.startsWith("пф-") ||
-            nameLower.startsWith("п/ф") ||
-            nameLower.startsWith("[пф]") ||
-            nameLower.startsWith("(пф)") ||
-            nameLower.includes("полуфабрикат")
-          ) {
-            return false;
-          }
           return true;
         })
         .map((p) => ({
