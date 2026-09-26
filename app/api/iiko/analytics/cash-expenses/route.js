@@ -29,9 +29,9 @@ export async function GET(request) {
       return Response.json({ error: "Missing from or to parameters" }, { status: 400 });
     }
 
-    // Fetch all cash reports and admin expenses to compute the running balance
-    // PostgREST: action_type=in.(cash,admin_expense)&order=created_at.desc&limit=2000
-    const url = `${SUPABASE_URL}/rest/v1/bot_actions?action_type=in.(cash,admin_expense)&order=created_at.desc&limit=2000`;
+    // Fetch all cash reports, admin expenses and safe audits
+    // PostgREST: action_type=in.(cash,admin_expense,safe_audit)&order=created_at.desc&limit=2000
+    const url = `${SUPABASE_URL}/rest/v1/bot_actions?action_type=in.(cash,admin_expense,safe_audit)&order=created_at.desc&limit=2000`;
     const res = await http1Fetch(url, {
       method: "GET",
       headers: getHeaders(),
@@ -49,6 +49,7 @@ export async function GET(request) {
 
     const cashReportsMap = {};
     const periodAdminExpenses = [];
+    const periodSafeAudits = [];
 
     // Parse all records to compute all-time balance and filter for the selected period
     for (const rec of records) {
@@ -108,6 +109,21 @@ export async function GET(request) {
             userName: rec.user_name || "Администратор",
           });
         }
+      } else if (rec.action_type === "safe_audit") {
+        const details = rec.details || {};
+        const amount = parseFloat(details.amount) || 0;
+
+        // safe_audit does NOT affect allTimeNetCash, allTimeAdminExpenses or allTimeBalance
+        if (dateKey >= dateFrom && dateKey <= dateTo) {
+          periodSafeAudits.push({
+            id: rec.id,
+            date: dateKey,
+            amount: amount,
+            comment: details.comment || "",
+            userName: rec.user_name || "Администратор",
+            createdAt: createdAt,
+          });
+        }
       }
     }
 
@@ -126,6 +142,7 @@ export async function GET(request) {
     // Sort lists descending by date
     periodCashReports.sort((a, b) => b.date.localeCompare(a.date));
     periodAdminExpenses.sort((a, b) => b.date.localeCompare(a.date));
+    periodSafeAudits.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || ""));
 
     // Calculate totals for the selected period
     const periodNetCashTotal = periodCashReports.reduce((sum, r) => sum + r.netCash, 0);
@@ -140,6 +157,7 @@ export async function GET(request) {
           periodAdminExpensesTotal,
           cashReports: periodCashReports,
           adminExpenses: periodAdminExpenses,
+          safeAudits: periodSafeAudits,
         },
       },
       {
@@ -177,7 +195,50 @@ export async function POST(request) {
       return Response.json({ error: "Доступ разрешен только для администраторов" }, { status: 403 });
     }
 
-    const { name, amount, date } = await request.json();
+    const bodyJson = await request.json();
+    const { name, amount, date, action_type, comment } = bodyJson;
+
+    if (action_type === "safe_audit") {
+      if (!amount || !date) {
+        return Response.json({ error: "Укажите сумму и дату" }, { status: 400 });
+      }
+
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return Response.json({ error: "Сумма должна быть числом больше 0" }, { status: 400 });
+      }
+
+      const body = {
+        tg_id: requesterTgId,
+        user_name: requesterName,
+        action_type: "safe_audit",
+        document_number: "SAFE_AUDIT",
+        details: {
+          amount: amountNum,
+          selected_date: date,
+          comment: (comment || "").trim(),
+        },
+        created_at: `${date}T12:00:00+05:00`,
+      };
+
+      const url = `${SUPABASE_URL}/rest/v1/bot_actions`;
+      const res = await http1Fetch(url, {
+        method: "POST",
+        headers: {
+          ...getHeaders(),
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Failed to insert safe audit: ${res.status} ${errText}`);
+      }
+
+      const data = await res.json();
+      return Response.json({ success: true, audit: data[0] });
+    }
 
     if (!name || !amount || !date) {
       return Response.json({ error: "Укажите название, сумму и дату" }, { status: 400 });
@@ -320,7 +381,7 @@ export async function DELETE(request) {
       return Response.json({ error: "Missing id parameter" }, { status: 400 });
     }
 
-    const url = `${SUPABASE_URL}/rest/v1/bot_actions?id=eq.${id}&action_type=eq.admin_expense`;
+    const url = `${SUPABASE_URL}/rest/v1/bot_actions?id=eq.${id}&action_type=in.(admin_expense,safe_audit)`;
     const res = await http1Fetch(url, {
       method: "DELETE",
       headers: getHeaders(),

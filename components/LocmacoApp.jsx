@@ -12188,6 +12188,13 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
     return { from: format(d1), to: format(tzNow) };
   });
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [showAddSafeAuditModal, setShowAddSafeAuditModal] = useState(false);
+  const [safeAuditsPage, setSafeAuditsPage] = useState(1);
+  const [safeAuditForm, setSafeAuditForm] = useState(() => {
+    const now = new Date();
+    const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    return { amount: "", date: tzNow.toISOString().split("T")[0], comment: "" };
+  });
   const [wagesPeriod, setWagesPeriod] = useState("this_month");
   const [wagesData, setWagesData] = useState(null);
   const [wagesDates, setWagesDates] = useState(() => {
@@ -12523,11 +12530,76 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
         setCashExpensesData(res.data);
         setCashReportsPage(1);
         setAdminExpensesPage(1);
+        setSafeAuditsPage(1);
       } else {
         showToast(res?.error || "Ошибка загрузки наличных и расходов", "error");
       }
     } catch (_e) {
       showToast("Ошибка сети при загрузке наличных и расходов", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddSafeAudit = async (e) => {
+    e.preventDefault();
+    if (!safeAuditForm.amount || !safeAuditForm.date) {
+      showToast("Укажите сумму и дату пересчёта", "error");
+      return;
+    }
+    const amt = parseFloat(safeAuditForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      showToast("Сумма должна быть больше 0", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const r = await fetch("/api/iiko/analytics/cash-expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_type: "safe_audit",
+          amount: amt,
+          date: safeAuditForm.date,
+          comment: safeAuditForm.comment,
+        }),
+      });
+      const res = await r.json();
+      if (res && res.success) {
+        showToast("Пересчёт сейфа зафиксирован!");
+        const now = new Date();
+        const tzNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+        setSafeAuditForm({ amount: "", date: tzNow.toISOString().split("T")[0], comment: "" });
+        setShowAddSafeAuditModal(false);
+        loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+      } else {
+        showToast(res?.error || "Ошибка сохранения пересчёта", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при сохранении пересчёта", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSafeAudit = async (id) => {
+    if (!window.confirm("Удалить эту запись пересчёта?")) return;
+
+    try {
+      setLoading(true);
+      const r = await fetch(`/api/iiko/analytics/cash-expenses?id=${id}`, {
+        method: "DELETE",
+      });
+      const res = await r.json();
+      if (res && res.success) {
+        showToast("Запись пересчёта удалена!");
+        loadCashExpenses(expensePeriod, expenseDates.from, expenseDates.to);
+      } else {
+        showToast(res?.error || "Ошибка удаления", "error");
+      }
+    } catch (_e) {
+      showToast("Ошибка сети при удалении", "error");
     } finally {
       setLoading(false);
     }
@@ -15344,26 +15416,46 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
               </div>
             )}
 
-            <button
-              onClick={() => setShowAddExpenseModal(true)}
-              style={{
-                marginLeft: "auto",
-                padding: "8px 14px",
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                color: "#fff",
-                border: "none",
-                fontWeight: 700,
-                fontSize: 12,
-                cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              {I.plus} Добавить расход
-            </button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setShowAddSafeAuditModal(true)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(79, 70, 229, 0.25)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                📝 Зафиксировать пересчёт
+              </button>
+              <button
+                onClick={() => setShowAddExpenseModal(true)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {I.plus} Добавить расход
+              </button>
+            </div>
           </div>
 
           {editingExpense && (
@@ -15667,6 +15759,159 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Safe Audits (Сверка пересчёта сейфа) */}
+              <div
+                style={{
+                  marginTop: 24,
+                  background: "var(--bg-card)",
+                  borderRadius: 16,
+                  border: "1px solid var(--border-color)",
+                  padding: 20,
+                  boxShadow: "0 4px 15px rgba(0,0,0,0.02)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text-main)", display: "flex", alignItems: "center", gap: 6 }}>
+                      📋 Журнал фактических пересчётов сейфа
+                    </h3>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      Зафиксированные суммы при ручном пересчёте наличных (для справки и сверки)
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowAddSafeAuditModal(true)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      background: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)",
+                      color: "#fff",
+                      border: "none",
+                      fontWeight: 600,
+                      fontSize: 11,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    ➕ Записать пересчёт
+                  </button>
+                </div>
+
+                {cashExpensesData.safeAudits && cashExpensesData.safeAudits.length > 0 ? (
+                  <div style={{ overflowX: "auto" }}>
+                    {(() => {
+                      const ITEMS_PER_PAGE = 10;
+                      const safeAuditsTotalPages = Math.ceil(cashExpensesData.safeAudits.length / ITEMS_PER_PAGE);
+                      const indexOfLastAudit = safeAuditsPage * ITEMS_PER_PAGE;
+                      const indexOfFirstAudit = indexOfLastAudit - ITEMS_PER_PAGE;
+                      const currentAudits = cashExpensesData.safeAudits.slice(indexOfFirstAudit, indexOfLastAudit);
+
+                      return (
+                        <>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", textAlign: "left" }}>
+                                <th style={{ padding: "8px 6px" }}>Дата пересчёта</th>
+                                <th style={{ padding: "8px 6px" }}>Посчитанная сумма (Факт)</th>
+                                <th style={{ padding: "8px 6px" }}>Кто пересчитал</th>
+                                <th style={{ padding: "8px 6px" }}>Примечание</th>
+                                <th style={{ padding: "8px 6px", width: 40 }}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {currentAudits.map((audit) => (
+                                <tr key={audit.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                                  <td style={{ padding: "10px 6px", fontWeight: 600, color: "var(--text-main)" }}>
+                                    📅 {audit.date}
+                                  </td>
+                                  <td style={{ padding: "10px 6px", fontWeight: 800, color: "#4f46e5", fontSize: 13 }}>
+                                    {fmtPrice(audit.amount)}
+                                  </td>
+                                  <td style={{ padding: "10px 6px", color: "var(--text-main)" }}>
+                                    👤 {audit.userName}
+                                  </td>
+                                  <td style={{ padding: "10px 6px", color: "var(--text-muted)", fontStyle: audit.comment ? "normal" : "italic" }}>
+                                    {audit.comment || "—"}
+                                  </td>
+                                  <td style={{ padding: "10px 6px", textAlign: "right" }}>
+                                    <button
+                                      onClick={() => handleDeleteSafeAudit(audit.id)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        color: "#ef4444",
+                                        cursor: "pointer",
+                                        padding: 4,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                      }}
+                                      title="Удалить запись"
+                                    >
+                                      {I.trash}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* Pagination */}
+                          {safeAuditsTotalPages > 1 && (
+                            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 16 }}>
+                              <button
+                                type="button"
+                                disabled={safeAuditsPage === 1}
+                                onClick={() => setSafeAuditsPage((p) => p - 1)}
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  border: "1px solid var(--border-color)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--text-main)",
+                                  cursor: safeAuditsPage === 1 ? "not-allowed" : "pointer",
+                                  opacity: safeAuditsPage === 1 ? 0.5 : 1,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ◀ Назад
+                              </button>
+                              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                                Стр. {safeAuditsPage} из {safeAuditsTotalPages}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={safeAuditsPage === safeAuditsTotalPages}
+                                onClick={() => setSafeAuditsPage((p) => p + 1)}
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  border: "1px solid var(--border-color)",
+                                  background: "var(--bg-card)",
+                                  color: "var(--text-main)",
+                                  cursor: safeAuditsPage === safeAuditsTotalPages ? "not-allowed" : "pointer",
+                                  opacity: safeAuditsPage === safeAuditsTotalPages ? 0.5 : 1,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Вперед ▶
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div style={{ fontStyle: "italic", color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
+                    Нет зафиксированных пересчётов за этот период.
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -16467,6 +16712,143 @@ function AnalyticsView({ showToast, history, historyLoading, loadHistory, logged
                   }}
                 >
                   Добавить
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Safe Audit Modal */}
+      {showAddSafeAuditModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-card)",
+              borderRadius: 16,
+              border: "1px solid var(--border-color)",
+              padding: 24,
+              width: "100%",
+              maxWidth: 400,
+              boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+            }}
+          >
+            <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>
+              📝 Зафиксировать пересчёт сейфа
+            </h3>
+            <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+              Запись фиксирует посчитанную сумму на выбранную дату для сверки (не влияет на баланс и калькуляции).
+            </p>
+            <form onSubmit={handleAddSafeAudit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Дата пересчёта
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={safeAuditForm.date}
+                  onChange={(e) => setSafeAuditForm({ ...safeAuditForm, date: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Посчитанная сумма (UZS)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="Например, 15000000"
+                  value={safeAuditForm.amount}
+                  onChange={(e) => setSafeAuditForm({ ...safeAuditForm, amount: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>
+                  Примечание (необязательно)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Например, Купюры 100k/200k, сошлось"
+                  value={safeAuditForm.comment}
+                  onChange={(e) => setSafeAuditForm({ ...safeAuditForm, comment: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    fontSize: 13,
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 8, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddSafeAuditModal(false)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Зафиксировать
                 </button>
               </div>
             </form>
