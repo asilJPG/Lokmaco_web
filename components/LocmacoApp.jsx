@@ -31,6 +31,29 @@ const STORE_ICONS = {
   "0e7c3f59-e55d-427f-895f-f24e2f106fbc": "🛖",
 };
 
+const ALLOWED_NON_ADMIN_STORE_IDS = new Set([
+  "1239d270-1bbe-f64f-b7ea-5f00518ef508", // Основной склад
+  "6be6e519-c4d8-4461-9333-7810062486ed", // Кухня главная
+  "0e7c3f59-e55d-427f-895f-f24e2f106fbc", // Кухня подвал
+  "2e9688bb-5130-4188-94a5-7a850e1d9f55", // Заготовочный цех
+  "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f", // Бар
+]);
+
+const ALLOWED_NON_ADMIN_STORE_NAMES = ["основной", "кухня глав", "кухня подвал", "заготов", "бар"];
+
+const filterAllowedStores = (storesList, userRole) => {
+  if (!Array.isArray(storesList)) return [];
+  const [baseRole] = (userRole || "").split(":");
+  if (baseRole === "admin") return storesList;
+
+  return storesList.filter((s) => {
+    if (!s) return false;
+    if (ALLOWED_NON_ADMIN_STORE_IDS.has(s.id)) return true;
+    const nameLower = (s.name || "").toLowerCase();
+    return ALLOWED_NON_ADMIN_STORE_NAMES.some((prefix) => nameLower.includes(prefix));
+  });
+};
+
 const API = {
   async get(ep) {
     try {
@@ -968,6 +991,9 @@ export default function LocmacoApp() {
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState(FALLBACK_SUPPLIERS);
   const [stores, setStores] = useState(FALLBACK_STORES);
+  const visibleStores = useMemo(() => {
+    return filterAllowedStores(stores, loggedInUser?.role || loggedInUser?.baseRole);
+  }, [stores, loggedInUser]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -2751,7 +2777,7 @@ export default function LocmacoApp() {
           <IncomingView
             products={products}
             suppliers={suppliers}
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
@@ -2763,7 +2789,7 @@ export default function LocmacoApp() {
         )}
         {tab === "services" && (
           <ServicesView
-            stores={stores}
+            stores={visibleStores}
             suppliers={suppliers}
             showToast={showToast}
             loggedInUser={loggedInUser}
@@ -2775,7 +2801,7 @@ export default function LocmacoApp() {
         {tab === "transfer" && (
           <TransferView
             products={products}
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
@@ -2793,7 +2819,7 @@ export default function LocmacoApp() {
         {tab === "production" && (
           <ProductionView
             products={products}
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
@@ -2806,7 +2832,7 @@ export default function LocmacoApp() {
         {tab === "writeoff" && (
           <WriteoffView
             products={products}
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loading={productsLoading}
             onRetry={loadData}
@@ -2860,14 +2886,14 @@ export default function LocmacoApp() {
         )}
         {tab === "employees" && (
           <EmployeesView
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loggedInUser={loggedInUser}
           />
         )}
         {tab === "balances" && (
           <BalancesView
-            stores={stores}
+            stores={visibleStores}
             showToast={showToast}
             loggedInUser={loggedInUser}
           />
@@ -5671,6 +5697,9 @@ function TransferView({
   });
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [storeBalances, setStoreBalances] = useState({});
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [negativeStockWarningModal, setNegativeStockWarningModal] = useState(null);
 
   // States for pending transfers workflow
   const [pendingTransfers, setPendingTransfers] = useState({ incoming: [], returned: [], outgoing: [] });
@@ -5703,6 +5732,36 @@ function TransferView({
   useEffect(() => {
     loadPendingTransfers();
   }, [loggedInUser]);
+
+  useEffect(() => {
+    if (!form.fromId) {
+      setStoreBalances({});
+      return;
+    }
+    let isCancelled = false;
+    const loadBalances = async () => {
+      setBalancesLoading(true);
+      try {
+        const res = await API.getBalances();
+        if (res && res.success && !isCancelled) {
+          const storeData = (res.data || []).find(b => b.storage?.id === form.fromId);
+          const map = {};
+          (storeData?.balanceItems || []).forEach(it => {
+            if (it.product?.id) {
+              map[it.product.id] = parseFloat(it.amount) || 0;
+            }
+          });
+          setStoreBalances(map);
+        }
+      } catch (e) {
+        console.error("Failed to load store balances for transfer:", e);
+      } finally {
+        if (!isCancelled) setBalancesLoading(false);
+      }
+    };
+    loadBalances();
+    return () => { isCancelled = true; };
+  }, [form.fromId]);
 
   const handlePendingAction = async (id, action, targetItem) => {
     setActionSubmittingId(id);
@@ -5768,23 +5827,7 @@ function TransferView({
     );
   };
 
-  const handleSubmit = async () => {
-    if (!form.fromId || !form.toId || items.length === 0) {
-      showToast("Заполните все поля", "error");
-      return;
-    }
-    const prepared = items
-      .map((it) => ({
-        product_id: it.product_id,
-        product_name: it.product_name,
-        quantity: parseFloat(it.quantity) || 0,
-        unit: it.unit,
-      }))
-      .filter((it) => it.quantity > 0);
-    if (prepared.length === 0) {
-      showToast("Укажите количество", "error");
-      return;
-    }
+  const executeTransfer = async (prepared) => {
     setSubmitting(true);
     const result = await API.createTransfer({
       store_from: form.fromId,
@@ -5808,7 +5851,50 @@ function TransferView({
       setStep(0);
       setItems([]);
       setForm({ fromId: "", fromName: "", toId: "", toName: "", comment: "" });
-    } else showToast("Ошибка перемещения", "error");
+    } else showToast(result?.error || "Ошибка перемещения", "error");
+  };
+
+  const handleSubmit = async () => {
+    if (!form.fromId || !form.toId || items.length === 0) {
+      showToast("Заполните все поля", "error");
+      return;
+    }
+    const prepared = items
+      .map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        quantity: parseFloat(it.quantity) || 0,
+        unit: it.unit,
+      }))
+      .filter((it) => it.quantity > 0);
+    if (prepared.length === 0) {
+      showToast("Укажите количество", "error");
+      return;
+    }
+
+    const excess = [];
+    prepared.forEach(it => {
+      const stock = storeBalances[it.product_id] !== undefined ? storeBalances[it.product_id] : 0;
+      if (it.quantity > stock) {
+        excess.push({
+          product_name: it.product_name,
+          quantity: it.quantity,
+          stock: stock,
+          deficit: +(it.quantity - stock).toFixed(3),
+          unit: it.unit || "шт",
+        });
+      }
+    });
+
+    if (excess.length > 0) {
+      setNegativeStockWarningModal({
+        preparedItems: prepared,
+        excessItems: excess,
+      });
+      return;
+    }
+
+    await executeTransfer(prepared);
   };
 
   const availableTo = stores.filter((s) => {
@@ -6609,7 +6695,7 @@ function TransferView({
                 <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
               ) : (
                 <>
-                  <ProductSearch products={products} onSelect={addItem} />
+                  <ProductSearch products={products} onSelect={addItem} stockMap={storeBalances} />
                   {items.length > 0 && (
                     <div
                       style={{
@@ -6630,7 +6716,7 @@ function TransferView({
                           <tr style={{ background: "#f8fafb" }}>
                             <th style={th}>Товар</th>
                             <th
-                              style={{ ...th, textAlign: "center", width: 100 }}
+                              style={{ ...th, textAlign: "center", width: 110 }}
                             >
                               Кол-во
                             </th>
@@ -6638,78 +6724,112 @@ function TransferView({
                           </tr>
                         </thead>
                         <tbody>
-                          {items.map((it, idx) => (
-                            <tr
-                              key={idx}
-                              style={{ borderTop: "1px solid #f0f2f5" }}
-                            >
-                              <td style={td}>
-                                <div style={{ fontWeight: 500 }}>
-                                  {it.product_name}
-                                </div>
-                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                                  {it.unit}
-                                </div>
-                              </td>
-                              <td style={{ ...td, textAlign: "center" }}>
-                                <div
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <input
-                                    type="number"
-                                    value={it.quantity}
-                                    onChange={(e) =>
-                                      updateItem(
-                                        idx,
-                                        "quantity",
-                                        it.unit === "шт"
-                                          ? e.target.value
-                                              .split(".")[0]
-                                              .split(",")[0]
-                                          : e.target.value
-                                      )
-                                    }
-                                    placeholder="0"
-                                    style={numInput}
-                                  />
-                                  <span
+                          {items.map((it, idx) => {
+                            const stock = storeBalances[it.product_id] !== undefined ? storeBalances[it.product_id] : 0;
+                            const isExcess = it.quantity && parseFloat(it.quantity) > stock;
+                            return (
+                              <tr
+                                key={idx}
+                                style={{ borderTop: "1px solid #f0f2f5" }}
+                              >
+                                <td style={td}>
+                                  <div style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                                    {it.product_name}
+                                  </div>
+                                  <div
                                     style={{
-                                      fontSize: 12,
-                                      color: "var(--text-muted)",
-                                      minWidth: 24,
-                                      textAlign: "left",
-                                      fontWeight: 600,
+                                      fontSize: 11,
+                                      color: isExcess ? "#ef4444" : "var(--text-muted)",
+                                      marginTop: 2,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      flexWrap: "wrap",
                                     }}
                                   >
-                                    {it.unit || "шт"}
-                                  </span>
-                                </div>
-                              </td>
-                              <td style={td}>
-                                <button
-                                  onClick={() =>
-                                    setItems((p) =>
-                                      p.filter((_, i) => i !== idx)
-                                    )
-                                  }
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    color: "#ef4444",
-                                    display: "flex",
-                                  }}
-                                >
-                                  {I.trash}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                                    <span>
+                                      Остаток на «{form.fromName || "складе"}»: <b>{stock}</b> {it.unit || "шт"}
+                                    </span>
+                                    {isExcess && (
+                                      <span
+                                        style={{
+                                          color: "#ef4444",
+                                          background: "rgba(239, 68, 68, 0.12)",
+                                          padding: "1px 6px",
+                                          borderRadius: 4,
+                                          fontWeight: 700,
+                                          fontSize: 10,
+                                        }}
+                                      >
+                                        Превышает остаток
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ ...td, textAlign: "center" }}>
+                                  <div
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    <input
+                                      type="number"
+                                      value={it.quantity}
+                                      onChange={(e) =>
+                                        updateItem(
+                                          idx,
+                                          "quantity",
+                                          it.unit === "шт"
+                                            ? e.target.value
+                                                .split(".")[0]
+                                                .split(",")[0]
+                                            : e.target.value
+                                        )
+                                      }
+                                      placeholder="0"
+                                      style={{
+                                        ...numInput,
+                                        borderColor: isExcess ? "#ef4444" : undefined,
+                                        background: isExcess ? "rgba(239, 68, 68, 0.05)" : undefined,
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        fontSize: 12,
+                                        color: "var(--text-muted)",
+                                        minWidth: 24,
+                                        textAlign: "left",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {it.unit || "шт"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={td}>
+                                  <button
+                                    onClick={() =>
+                                      setItems((p) =>
+                                        p.filter((_, i) => i !== idx)
+                                      )
+                                    }
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: "#ef4444",
+                                      display: "flex",
+                                    }}
+                                  >
+                                    {I.trash}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -6746,6 +6866,132 @@ function TransferView({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Модалка предупреждения об отрицательном остатке (не блокирующая) */}
+      {negativeStockWarningModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--bg-card)",
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 500,
+              width: "100%",
+              boxShadow: "0 20px 30px rgba(0,0,0,0.25)",
+              border: "1px solid var(--border-color)",
+              animation: "fadeIn 0.2s ease-out",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: "50%",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "#f59e0b",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                  flexShrink: 0,
+                }}
+              >
+                ⚠️
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--text-main)" }}>
+                  Образуется отрицательный остаток!
+                </h3>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  Склад списания: <b>{form.fromName}</b>
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, color: "var(--text-main)", lineHeight: 1.5, marginBottom: 14 }}>
+              Количество перемещаемого товара превышает текущий остаток на складе. Проверьте приходы и перемещения на ваш склад.
+            </p>
+
+            <div
+              style={{
+                maxHeight: 180,
+                overflowY: "auto",
+                border: "1px solid var(--border-color)",
+                borderRadius: 10,
+                padding: "8px 12px",
+                marginBottom: 20,
+                background: "var(--bg-main)",
+                fontSize: 12,
+              }}
+            >
+              {negativeStockWarningModal.excessItems.map((ex, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "7px 0",
+                    borderBottom:
+                      idx === negativeStockWarningModal.excessItems.length - 1
+                        ? "none"
+                        : "1px solid var(--border-color)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{ex.product_name}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ color: "#ef4444", fontWeight: 700 }}>
+                      {ex.quantity} {ex.unit}
+                    </span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 11, marginLeft: 6 }}>
+                      (на складе: {ex.stock})
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Btn
+                outline
+                onClick={() => setNegativeStockWarningModal(null)}
+              >
+                Отмена (проверить)
+              </Btn>
+              <Btn
+                onClick={async () => {
+                  const prep = negativeStockWarningModal.preparedItems;
+                  setNegativeStockWarningModal(null);
+                  await executeTransfer(prep);
+                }}
+                style={{
+                  background: "#f59e0b",
+                  borderColor: "#f59e0b",
+                  color: "#fff",
+                }}
+              >
+                Всё равно провести
+              </Btn>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -9491,7 +9737,10 @@ function BalancesView({ stores, showToast, loggedInUser }) {
     fetchBalances(true);
   };
 
-  const availableStores = balances.map(b => b.storage).filter(Boolean);
+  const availableStores = filterAllowedStores(
+    balances.map(b => b.storage).filter(Boolean),
+    loggedInUser?.role || loggedInUser?.baseRole
+  );
   const storesList = availableStores.length > 0 ? availableStores : stores;
 
   const activeStoreName = storesList.find(s => s.id === selectedStoreId)?.name || "Неизвестный склад";
@@ -10647,7 +10896,7 @@ function CashShiftEditModal({ shift, headers, onClose, onSaved, showToast }) {
 //  PRODUCT SEARCH
 // ═══════════════════════════════════════════════════════════════
 
-function ProductSearch({ products, onSelect }) {
+function ProductSearch({ products, onSelect, stockMap }) {
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
   const ref = useRef(null);
@@ -10798,51 +11047,68 @@ function ProductSearch({ products, onSelect }) {
               Товары не найдены
             </div>
           )}
-          {filtered.map((p, index) => (
-            <button
-              key={p.id}
-              onClick={() => {
-                onSelect(p);
-                setQ("");
-                setFocused(false);
-              }}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                border: "none",
-                borderTop: index === 0 ? "none" : "1px solid var(--border-color)",
-                background: "transparent",
-                color: "var(--text-main)",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontSize: 13,
-                textAlign: "left",
-                transition: "background 0.15s ease",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "var(--bg-hover)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              <span style={{ fontWeight: 500 }}>{highlightMatch(p.name, q)}</span>
-              <span
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  background: "var(--bg-pill)",
-                  padding: "2px 6px",
-                  borderRadius: 6,
-                  fontWeight: 600,
+          {filtered.map((p, index) => {
+            const hasStockInfo = stockMap !== undefined && stockMap !== null;
+            const stockVal = hasStockInfo ? (stockMap[p.id] !== undefined ? stockMap[p.id] : 0) : null;
+
+            return (
+              <button
+                key={p.id}
+                onClick={() => {
+                  onSelect(p);
+                  setQ("");
+                  setFocused(false);
                 }}
+                style={{
+                  width: "100%",
+                  padding: "10px 16px",
+                  border: "none",
+                  borderTop: index === 0 ? "none" : "1px solid var(--border-color)",
+                  background: "transparent",
+                  color: "var(--text-main)",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: 13,
+                  textAlign: "left",
+                  transition: "background 0.15s ease",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "var(--bg-hover)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
-                {p.mainUnit || "шт"}
-              </span>
-            </button>
-          ))}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontWeight: 500 }}>{highlightMatch(p.name, q)}</span>
+                  {hasStockInfo && (
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span>Остаток:</span>
+                      <b style={{ color: stockVal > 0 ? "var(--text-main)" : "#ef4444" }}>
+                        {stockVal} {p.mainUnit || "шт"}
+                      </b>
+                    </span>
+                  )}
+                </div>
+                <span
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    background: "var(--bg-pill)",
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    marginLeft: 8,
+                  }}
+                >
+                  {p.mainUnit || "шт"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
