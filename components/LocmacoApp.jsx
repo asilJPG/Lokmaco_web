@@ -4215,6 +4215,7 @@ function IncomingView({
   const INVOICE_KEY = "__invoice__";
   const [draftId, setDraftId] = useState(makeDraftId);
   const [photos, setPhotos] = useState({});
+  const [storageError, setStorageError] = useState("");
   const photosOf = (key) => photos[key] || [];
 
   const getPhotosForItem = (rowId, productId) => {
