@@ -37,9 +37,10 @@ const ALLOWED_NON_ADMIN_STORE_IDS = new Set([
   "0e7c3f59-e55d-427f-895f-f24e2f106fbc", // Кухня подвал
   "2e9688bb-5130-4188-94a5-7a850e1d9f55", // Заготовочный цех
   "c1a132f0-5a33-4f0b-a47b-5b6d8f381c9f", // Бар
+  "41fc6872-f84c-4fbd-ab67-a25eb9f8d353", // Зал
 ]);
 
-const ALLOWED_NON_ADMIN_STORE_NAMES = ["основной", "кухня глав", "кухня подвал", "заготов", "бар"];
+const ALLOWED_NON_ADMIN_STORE_NAMES = ["основной", "кухня глав", "кухня подвал", "заготов", "бар", "зал"];
 
 const filterAllowedStores = (storesList, userRole) => {
   if (!Array.isArray(storesList)) return [];
