@@ -4273,7 +4273,9 @@ function IncomingView({
     .flat()
     .filter((p) => p.uploading).length;
 
-  const itemsWithoutPhoto = items.filter((it) => photosOf(it.product_id).length === 0);
+  const itemsWithoutPhoto = items.filter(
+    (it) => photosOf(it.rowId || it.product_id).length === 0
+  );
   const hasInvoicePhoto = photosOf(INVOICE_KEY).length > 0;
 
   // Функция определения естественной складской категории товара
@@ -4444,10 +4446,8 @@ function IncomingView({
       }
 
       if (matchedProds.length === 1) {
-        // Автоматически прикрепляем сделанное фото к этому товару
-        addPhotos(matchedProds[0].id, [file]);
         setLastAiPhotoFile(null);
-        openProductEntry(matchedProds[0]);
+        openProductEntry(matchedProds[0], file);
         showToast(`✨ Точное совпадение: ${matchedProds[0].name}`);
       } else if (matchedProds.length > 1) {
         showToast(`✨ Найдено: ${res.detected_item || matchedProds[0].name}`);
@@ -4459,61 +4459,80 @@ function IncomingView({
     }
   };
 
-  // Открытие модалки ввода параметров товара
+  // Открытие модалки ввода параметров товара (новая позиция)
   const openProductEntry = (p, photoToAttach) => {
-    const existing = items.find((it) => it.product_id === p.id);
+    const rowId = `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const photoFile = photoToAttach || lastAiPhotoFile;
-    if (photoFile && photosOf(p.id).length === 0) {
-      addPhotos(p.id, [photoFile]);
+    if (photoFile) {
+      addPhotos(rowId, [photoFile]);
       setLastAiPhotoFile(null);
     }
 
     setActiveItemModal({
+      rowId,
       product_id: p.id,
       product_name: p.name,
       groupName: p.groupName || "Прочее",
       unit: p.mainUnit || "шт",
       containers: p.containers || [],
-      containerId: existing?.containerId || "",
-      quantity: existing?.quantity || "",
-      totalPrice: existing?.totalPrice || "",
-      isEditing: !!existing,
+      containerId: "",
+      quantity: "",
+      totalPrice: "",
+      isEditing: false,
+    });
+  };
+
+  // Редактирование конкретной позиции в накладной
+  const editProductEntry = (item) => {
+    setActiveItemModal({
+      rowId: item.rowId,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      groupName: item.groupName || "Прочее",
+      unit: item.unit || "шт",
+      containers: item.containers || [],
+      containerId: item.containerId || "",
+      quantity: item.quantity || "",
+      totalPrice: item.totalPrice || "",
+      isEditing: true,
     });
   };
 
   const saveProductModal = () => {
     if (!activeItemModal) return;
-    const { product_id, product_name, unit, containers, containerId, quantity, totalPrice, isEditing } = activeItemModal;
+    const { rowId, product_id, product_name, unit, containers, containerId, quantity, totalPrice, isEditing } = activeItemModal;
     
     if (!quantity || parseFloat(quantity) <= 0) {
       showToast("Укажите количество", "error");
       return;
     }
 
+    const itemRowId = rowId || `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const newItem = {
+      rowId: itemRowId,
+      product_id,
+      product_name,
+      unit,
+      containers,
+      containerId,
+      quantity: String(quantity),
+      totalPrice: String(totalPrice || ""),
+    };
+
     setItems((prev) => {
-      const exists = prev.some((it) => it.product_id === product_id);
-      const newItem = {
-        product_id,
-        product_name,
-        unit,
-        containers,
-        containerId,
-        quantity: String(quantity),
-        totalPrice: String(totalPrice || ""),
-      };
-      if (exists) {
-        return prev.map((it) => (it.product_id === product_id ? newItem : it));
+      if (isEditing) {
+        return prev.map((it) => (it.rowId === itemRowId ? newItem : it));
       }
       return [...prev, newItem];
     });
 
     setActiveItemModal(null);
-    showToast(`Товар добавлен: ${product_name}`);
+    showToast(isEditing ? `Позиция обновлена: ${product_name}` : `Товар добавлен: ${product_name}`);
   };
 
-  const removeItem = (pid) => {
-    setItems((prev) => prev.filter((it) => it.product_id !== pid));
-    removePhoto(pid);
+  const removeItem = (rowId) => {
+    setItems((prev) => prev.filter((it) => it.rowId !== rowId));
+    removePhoto(rowId);
   };
 
   const handleSubmit = async () => {
@@ -4555,7 +4574,7 @@ function IncomingView({
 
     // Коллаж позиций для фотоотчёта в группу (без обрезки)
     const collageEntries = prepared.flatMap((it) => {
-      const p = photosOf(it.product_id).find((x) => x.url && x.path);
+      const p = (photosOf(it.rowId) || []).find((x) => x.url && x.path) || (photosOf(it.product_id) || []).find((x) => x.url && x.path);
       return p
         ? [{ url: p.url, label: `${it.product_name} — ${it.quantity} ${it.unit || "шт"}` }]
         : [];
@@ -4583,8 +4602,9 @@ function IncomingView({
         kind: "collage",
         content_type: "image/jpeg",
       })),
-      ...prepared.flatMap((it) =>
-        photosOf(it.product_id)
+      ...prepared.flatMap((it) => {
+        const list = photosOf(it.rowId).length > 0 ? photosOf(it.rowId) : photosOf(it.product_id);
+        return (list || [])
           .filter((p) => p.path)
           .map((p) => ({
             path: p.path,
@@ -4593,8 +4613,8 @@ function IncomingView({
             product_name: it.product_name,
             content_type: p.type,
             size: p.size,
-          }))
-      ),
+          }));
+      }),
     ];
 
     const result = await API.createInvoice({
@@ -5278,8 +5298,9 @@ function IncomingView({
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         {filteredProducts.slice(0, 80).map((p, pIdx) => {
-                          const alreadyInList = items.some((it) => it.product_id === p.id);
-                          const addedItem = items.find((it) => it.product_id === p.id);
+                          const itemsOfProd = items.filter((it) => it.product_id === p.id);
+                          const countInList = itemsOfProd.length;
+                          const alreadyInList = countInList > 0;
                           const cat = p._naturalCategory || getProductNaturalCategory(p);
                           const icon = CATEGORY_ICONS[cat] || "📦";
 
@@ -5305,6 +5326,20 @@ function IncomingView({
                                   <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
                                     {p.name}
                                   </span>
+                                  {alreadyInList && (
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 800,
+                                        color: "#0284c7",
+                                        background: "rgba(2, 132, 199, 0.15)",
+                                        padding: "1px 6px",
+                                        borderRadius: 6,
+                                      }}
+                                    >
+                                      {countInList} в накл.
+                                    </span>
+                                  )}
                                 </div>
                                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                                   <span style={{ fontWeight: 600 }}>{cat}</span>
@@ -5338,8 +5373,8 @@ function IncomingView({
                               >
                                 {alreadyInList ? (
                                   <>
-                                    <span>✓</span>
-                                    <span>{addedItem?.quantity} {addedItem?.unit}</span>
+                                    <span>➕</span>
+                                    <span>Ещё</span>
                                   </>
                                 ) : (
                                   <>
@@ -5381,7 +5416,7 @@ function IncomingView({
                               <th style={{ ...th, textAlign: "left" }}>Товар</th>
                               <th style={{ ...th, textAlign: "center", width: 140 }}>Кол-во / Фасовка</th>
                               <th style={{ ...th, textAlign: "right", width: 130 }}>Сумма</th>
-                              <th style={{ ...th, width: 40 }}></th>
+                              <th style={{ ...th, width: 60 }}></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5390,12 +5425,32 @@ function IncomingView({
                               const mult = selectedCont ? (Number(selectedCont.count) || 1) : 1;
                               const rawQty = parseFloat(it.quantity) || 0;
                               const finalBaseQty = selectedCont ? (rawQty * mult) : rawQty;
-                              const itemPhotos = photosOf(it.product_id);
+                              const photoKey = it.rowId || it.product_id;
+                              const itemPhotos = photosOf(photoKey);
 
                               return (
-                                <tr key={it.product_id} style={{ borderTop: idx > 0 ? "1px solid var(--border-color)" : "none" }}>
+                                <tr key={it.rowId || idx} style={{ borderTop: idx > 0 ? "1px solid var(--border-color)" : "none" }}>
                                   <td style={td}>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{it.product_name}</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <span style={{ fontWeight: 700, fontSize: 13 }}>{it.product_name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => editProductEntry(it)}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          cursor: "pointer",
+                                          fontSize: 13,
+                                          padding: "2px 4px",
+                                          color: "#0284c7",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                        }}
+                                        title="Редактировать позицию"
+                                      >
+                                        ✏️
+                                      </button>
+                                    </div>
                                     <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                       Базовая ед: {it.unit}
                                     </div>
@@ -5404,8 +5459,8 @@ function IncomingView({
                                       <PhotoPicker
                                         compact
                                         photos={itemPhotos}
-                                        onPick={(files) => addPhotos(it.product_id, files)}
-                                        onRemove={(pid) => removePhoto(it.product_id, pid)}
+                                        onPick={(files) => addPhotos(photoKey, files)}
+                                        onRemove={(pid) => removePhoto(photoKey, pid)}
                                       />
                                     </div>
                                   </td>
@@ -5424,7 +5479,7 @@ function IncomingView({
                                   </td>
                                   <td style={{ ...td, textAlign: "center" }}>
                                     <button
-                                      onClick={() => removeItem(it.product_id)}
+                                      onClick={() => removeItem(it.rowId)}
                                       style={{
                                         background: "none",
                                         border: "none",
@@ -5432,7 +5487,7 @@ function IncomingView({
                                         color: "#ef4444",
                                         fontSize: 16,
                                       }}
-                                      title="Удалить товар"
+                                      title="Удалить позицию"
                                     >
                                       {I.trash}
                                     </button>
@@ -5647,11 +5702,11 @@ function IncomingView({
               </div>
               <PhotoPicker
                 compact
-                photos={photosOf(activeItemModal.product_id)}
-                onPick={(files) => addPhotos(activeItemModal.product_id, files)}
-                onRemove={(pid) => removePhoto(activeItemModal.product_id, pid)}
+                photos={photosOf(activeItemModal.rowId || activeItemModal.product_id)}
+                onPick={(files) => addPhotos(activeItemModal.rowId || activeItemModal.product_id, files)}
+                onRemove={(pid) => removePhoto(activeItemModal.rowId || activeItemModal.product_id, pid)}
               />
-              {photosOf(activeItemModal.product_id).length > 0 && (
+              {photosOf(activeItemModal.rowId || activeItemModal.product_id).length > 0 && (
                 <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, marginTop: 4 }}>
                   ✓ Фотография прикреплена
                 </div>
