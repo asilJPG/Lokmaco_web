@@ -4215,9 +4215,13 @@ function IncomingView({
   const INVOICE_KEY = "__invoice__";
   const [draftId, setDraftId] = useState(makeDraftId);
   const [photos, setPhotos] = useState({});
-  const [storageError, setStorageError] = useState("");
-
   const photosOf = (key) => photos[key] || [];
+
+  const getPhotosForItem = (rowId, productId) => {
+    if (rowId && photos[rowId]?.length > 0) return photos[rowId];
+    if (productId && photos[productId]?.length > 0) return photos[productId];
+    return [];
+  };
 
   const addPhotos = async (key, files) => {
     const kind = key === INVOICE_KEY ? "invoice" : "item";
@@ -4275,7 +4279,7 @@ function IncomingView({
     .filter((p) => p.uploading).length;
 
   const itemsWithoutPhoto = items.filter(
-    (it) => photosOf(it.rowId || it.product_id).length === 0
+    (it) => getPhotosForItem(it.rowId, it.product_id).length === 0
   );
   const hasInvoicePhoto = photosOf(INVOICE_KEY).length > 0;
 
@@ -4460,8 +4464,14 @@ function IncomingView({
     }
   };
 
-  // Открытие модалки ввода параметров товара (новая позиция)
+  // Открытие модалки ввода параметров товара
   const openProductEntry = (p, photoToAttach) => {
+    const existing = items.filter((it) => it.product_id === p.id);
+    if (existing.length === 1 && !photoToAttach) {
+      editProductEntry(existing[0]);
+      return;
+    }
+
     const rowId = `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const photoFile = photoToAttach || lastAiPhotoFile;
     if (photoFile) {
@@ -4469,6 +4479,23 @@ function IncomingView({
       setLastAiPhotoFile(null);
     }
 
+    setActiveItemModal({
+      rowId,
+      product_id: p.id,
+      product_name: p.name,
+      groupName: p.groupName || "Прочее",
+      unit: p.mainUnit || "шт",
+      containers: p.containers || [],
+      containerId: "",
+      quantity: "",
+      totalPrice: "",
+      isEditing: false,
+    });
+  };
+
+  // Добавление новой строки для того же товара
+  const addNewProductEntry = (p) => {
+    const rowId = `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setActiveItemModal({
       rowId,
       product_id: p.id,
@@ -4551,6 +4578,7 @@ function IncomingView({
         const total = parseFloat(it.totalPrice) || 0;
         const price = finalBaseQty > 0 ? total / finalBaseQty : 0;
         return {
+          rowId: it.rowId,
           product_id: it.product_id,
           product_name: it.product_name,
           quantity: finalBaseQty,
@@ -4575,7 +4603,7 @@ function IncomingView({
 
     // Коллаж позиций для фотоотчёта в группу (без обрезки)
     const collageEntries = prepared.flatMap((it) => {
-      const p = (photosOf(it.rowId) || []).find((x) => x.url && x.path) || (photosOf(it.product_id) || []).find((x) => x.url && x.path);
+      const p = getPhotosForItem(it.rowId, it.product_id).find((x) => x.url && x.path);
       return p
         ? [{ url: p.url, label: `${it.product_name} — ${it.quantity} ${it.unit || "шт"}` }]
         : [];
@@ -4604,7 +4632,7 @@ function IncomingView({
         content_type: "image/jpeg",
       })),
       ...prepared.flatMap((it) => {
-        const list = photosOf(it.rowId).length > 0 ? photosOf(it.rowId) : photosOf(it.product_id);
+        const list = getPhotosForItem(it.rowId, it.product_id);
         return (list || [])
           .filter((p) => p.path)
           .map((p) => ({
@@ -5357,6 +5385,14 @@ function IncomingView({
 
                               <button
                                 type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (alreadyInList) {
+                                    addNewProductEntry(p);
+                                  } else {
+                                    openProductEntry(p);
+                                  }
+                                }}
                                 style={{
                                   background: alreadyInList ? "#0284c7" : "var(--bg-hover)",
                                   color: alreadyInList ? "#fff" : "var(--text-main)",
@@ -5427,7 +5463,7 @@ function IncomingView({
                               const rawQty = parseFloat(it.quantity) || 0;
                               const finalBaseQty = selectedCont ? (rawQty * mult) : rawQty;
                               const photoKey = it.rowId || it.product_id;
-                              const itemPhotos = photosOf(photoKey);
+                              const itemPhotos = getPhotosForItem(it.rowId, it.product_id);
 
                               return (
                                 <tr key={it.rowId || idx} style={{ borderTop: idx > 0 ? "1px solid var(--border-color)" : "none" }}>
@@ -5703,11 +5739,11 @@ function IncomingView({
               </div>
               <PhotoPicker
                 compact
-                photos={photosOf(activeItemModal.rowId || activeItemModal.product_id)}
+                photos={getPhotosForItem(activeItemModal.rowId, activeItemModal.product_id)}
                 onPick={(files) => addPhotos(activeItemModal.rowId || activeItemModal.product_id, files)}
                 onRemove={(pid) => removePhoto(activeItemModal.rowId || activeItemModal.product_id, pid)}
               />
-              {photosOf(activeItemModal.rowId || activeItemModal.product_id).length > 0 && (
+              {getPhotosForItem(activeItemModal.rowId, activeItemModal.product_id).length > 0 && (
                 <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, marginTop: 4 }}>
                   ✓ Фотография прикреплена
                 </div>
