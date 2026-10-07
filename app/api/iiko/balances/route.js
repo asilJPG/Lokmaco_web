@@ -30,7 +30,10 @@ function tag(xml, name) {
 export async function GET(_request) {
   try {
     const data = await withIikoSession(async (token) => {
-      const timestamp = new Date().toISOString().split('.')[0];
+      const now = new Date();
+      const tashkent = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      const timestamp = `${tashkent.getUTCFullYear()}-${pad(tashkent.getUTCMonth() + 1)}-${pad(tashkent.getUTCDate())}T23:59:59`;
 
       // Fetch stores, products, and balances in parallel for maximum speed
       const [storesXml, rawProducts, balancesData] = await Promise.all([
@@ -115,9 +118,15 @@ export async function GET(_request) {
       return Object.values(grouped);
     });
 
-    return Response.json({ success: true, data });
+    return Response.json(
+      { success: true, data },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (e) {
     console.error("[/api/iiko/balances] GET error:", e.message);
-    return Response.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
+    return Response.json(
+      { error: "Внутренняя ошибка сервера" },
+      { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   }
 }

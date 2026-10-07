@@ -5837,11 +5837,16 @@ function TransferView({
       try {
         const res = await API.getBalances();
         if (res && res.success && !isCancelled) {
-          const storeData = (res.data || []).find(b => b.storage?.id === form.fromId);
+          const fromIdLower = String(form.fromId || "").toLowerCase();
+          const storeData = (res.data || []).find(
+            (b) => String(b.storage?.id || "").toLowerCase() === fromIdLower
+          );
           const map = {};
-          (storeData?.balanceItems || []).forEach(it => {
+          (storeData?.balanceItems || []).forEach((it) => {
             if (it.product?.id) {
-              map[it.product.id] = parseFloat(it.amount) || 0;
+              const amt = parseFloat(it.amount) || 0;
+              map[it.product.id] = amt;
+              map[String(it.product.id).toLowerCase()] = amt;
             }
           });
           setStoreBalances(map);
@@ -5967,7 +5972,9 @@ function TransferView({
 
     const excess = [];
     prepared.forEach(it => {
-      const stock = storeBalances[it.product_id] !== undefined ? storeBalances[it.product_id] : 0;
+      const stock = storeBalances[it.product_id] !== undefined
+        ? storeBalances[it.product_id]
+        : (storeBalances[String(it.product_id || "").toLowerCase()] !== undefined ? storeBalances[String(it.product_id || "").toLowerCase()] : 0);
       if (it.quantity > stock) {
         excess.push({
           product_name: it.product_name,
@@ -6788,7 +6795,7 @@ function TransferView({
                 <ErrorBlock text="Товары не загрузились" onRetry={onRetry} />
               ) : (
                 <>
-                  <ProductSearch products={products} onSelect={addItem} stockMap={storeBalances} />
+                  <ProductSearch products={products} onSelect={addItem} stockMap={storeBalances} balancesLoading={balancesLoading} />
                   {items.length > 0 && (
                     <div
                       style={{
@@ -6818,8 +6825,10 @@ function TransferView({
                         </thead>
                         <tbody>
                           {items.map((it, idx) => {
-                            const stock = storeBalances[it.product_id] !== undefined ? storeBalances[it.product_id] : 0;
-                            const isExcess = it.quantity && parseFloat(it.quantity) > stock;
+                            const stock = storeBalances[it.product_id] !== undefined
+                              ? storeBalances[it.product_id]
+                              : (storeBalances[String(it.product_id || "").toLowerCase()] !== undefined ? storeBalances[String(it.product_id || "").toLowerCase()] : 0);
+                            const isExcess = !balancesLoading && it.quantity && parseFloat(it.quantity) > stock;
                             return (
                               <tr
                                 key={idx}
@@ -6841,7 +6850,12 @@ function TransferView({
                                     }}
                                   >
                                     <span>
-                                      Остаток на «{form.fromName || "складе"}»: <b>{stock}</b> {it.unit || "шт"}
+                                      Остаток на «{form.fromName || "складе"}»:{" "}
+                                      {balancesLoading ? (
+                                        <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>загрузка...</span>
+                                      ) : (
+                                        <><b>{stock}</b> {it.unit || "шт"}</>
+                                      )}
                                     </span>
                                     {isExcess && (
                                       <span
@@ -10989,7 +11003,7 @@ function CashShiftEditModal({ shift, headers, onClose, onSaved, showToast }) {
 //  PRODUCT SEARCH
 // ═══════════════════════════════════════════════════════════════
 
-function ProductSearch({ products, onSelect, stockMap }) {
+function ProductSearch({ products, onSelect, stockMap, balancesLoading = false }) {
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
   const ref = useRef(null);
@@ -11142,7 +11156,11 @@ function ProductSearch({ products, onSelect, stockMap }) {
           )}
           {filtered.map((p, index) => {
             const hasStockInfo = stockMap !== undefined && stockMap !== null;
-            const stockVal = hasStockInfo ? (stockMap[p.id] !== undefined ? stockMap[p.id] : 0) : null;
+            const stockVal = hasStockInfo
+              ? (stockMap[p.id] !== undefined
+                  ? stockMap[p.id]
+                  : (stockMap[String(p.id || "").toLowerCase()] !== undefined ? stockMap[String(p.id || "").toLowerCase()] : 0))
+              : null;
 
             return (
               <button
@@ -11179,9 +11197,13 @@ function ProductSearch({ products, onSelect, stockMap }) {
                   {hasStockInfo && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
                       <span>Остаток:</span>
-                      <b style={{ color: stockVal > 0 ? "var(--text-main)" : "#ef4444" }}>
-                        {stockVal} {p.mainUnit || "шт"}
-                      </b>
+                      {balancesLoading ? (
+                        <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>загрузка...</span>
+                      ) : (
+                        <b style={{ color: stockVal > 0 ? "var(--text-main)" : "#ef4444" }}>
+                          {stockVal} {p.mainUnit || "шт"}
+                        </b>
+                      )}
                     </span>
                   )}
                 </div>
