@@ -35,9 +35,10 @@ async function handle(request) {
       if (!isAdmin) {
         return Response.json({ error: "Полная зачистка — только вручную админом" }, { status: 403 });
       }
-      const bucket = await purgeBucket();
-      const marks = await sweepDeliveredPhotos({ days: 0, force: true });
-      return Response.json({ mode, bucket, marks });
+      // Укладываемся в лимит функции с запасом: если не успели — вернём
+      // done: false, и вызов повторяют, пока не станет true.
+      const result = await purgeBucket({ budgetMs: 200_000 });
+      return Response.json({ mode, ...result });
     }
 
     const days = Math.max(0, parseInt(searchParams.get("days") || "0", 10) || 0);
