@@ -11355,15 +11355,25 @@ function InvoiceDetailModal({ act, onClose }) {
   const items = details.items || [];
   const photos = details.photos || [];
 
-  const invoicePhotos = photos.filter((p) => p.kind === "invoice");
+  const invoicePhotos = photos.filter((p) => p.kind === "invoice" && (p.path || p.tg_file_id));
   const photosByProduct = {};
   photos
-    .filter((p) => p.kind === "item")
+    .filter((p) => p.kind === "item" && (p.path || p.tg_file_id))
     .forEach((p) => {
       (photosByProduct[p.product_id] ||= []).push(p);
     });
 
-  const src = (p) => `/api/iiko/invoice/photos?path=${encodeURIComponent(p.path)}`;
+  // Снимок лежит в хранилище только до отправки в Telegram. Дальше от него
+  // остаётся расписка — по ней роут забирает картинку обратно у Telegram.
+  const src = (p) =>
+    p.path
+      ? `/api/iiko/invoice/photos?path=${encodeURIComponent(p.path)}`
+      : `/api/iiko/invoice/photos?file=${encodeURIComponent(p.tg_file_id || "")}`;
+
+  const viewable = (p) => Boolean(p.path || p.tg_file_id);
+  // Старые приходы вычищены до того, как расписки начали сохраняться:
+  // показывать нечего, но сказать об этом надо.
+  const lostPhotos = photos.length > 0 && photos.every((p) => !viewable(p));
 
   const total = items.reduce(
     (s, it) => s + (Number(it.total) || Number(it.price) * Number(it.quantity) || 0),
@@ -11467,6 +11477,24 @@ function InvoiceDetailModal({ act, onClose }) {
             ×
           </button>
         </div>
+
+        {lostPhotos && (
+          <div
+            style={{
+              background: "var(--bg-hover)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: 12,
+              color: "var(--text-muted)",
+              marginBottom: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            🗄 Снимки этого прихода хранятся в Telegram-группе — на сайте они
+            больше не лежат.
+          </div>
+        )}
 
         {!details.photos_complete && (
           <div

@@ -1,4 +1,5 @@
 import { uploadInvoiceFile, downloadInvoiceFile, storageConfigured } from "@/lib/storage";
+import { fetchTelegramFile } from "@/lib/telegram.js";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,15 @@ export async function POST(request) {
   }
 }
 
-/** Отдаёт саму картинку. Бакет приватный, поэтому только через этот роут. */
+// Расписка Telegram: длинная строка из букв, цифр, дефисов и подчёркиваний.
+const SAFE_FILE_ID = /^[A-Za-z0-9_-]{16,256}$/;
+
+/**
+ * Отдаёт саму картинку. Бакет приватный, поэтому только через этот роут.
+ *
+ * Снимок живёт в хранилище лишь до отправки в Telegram, дальше остаётся одна
+ * расписка — тогда забираем файл обратно у Telegram по `file`.
+ */
 export async function GET(request) {
   try {
     const userId = request.headers.get("x-user-id");
@@ -91,12 +100,25 @@ export async function GET(request) {
       return Response.json({ error: "Просмотр фотографий доступен администратору" }, { status: 403 });
     }
 
-    const path = new URL(request.url).searchParams.get("path") || "";
-    if (!SAFE_PATH.test(path)) {
-      return Response.json({ error: "Некорректный путь" }, { status: 400 });
+    const params = new URL(request.url).searchParams;
+    const path = params.get("path") || "";
+    const fileId = params.get("file") || "";
+
+    let file = null;
+    if (path) {
+      if (!SAFE_PATH.test(path)) {
+        return Response.json({ error: "Некорректный путь" }, { status: 400 });
+      }
+      file = await downloadInvoiceFile(path);
+    } else if (fileId) {
+      if (!SAFE_FILE_ID.test(fileId)) {
+        return Response.json({ error: "Некорректная ссылка" }, { status: 400 });
+      }
+      file = await fetchTelegramFile(fileId);
+    } else {
+      return Response.json({ error: "Не указан файл" }, { status: 400 });
     }
 
-    const file = await downloadInvoiceFile(path);
     if (!file) return Response.json({ error: "Файл не найден" }, { status: 404 });
 
     return new Response(file.body, {

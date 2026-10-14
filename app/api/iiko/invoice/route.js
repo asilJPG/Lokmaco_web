@@ -1,7 +1,7 @@
 import { withIikoSession, iikoPostXml } from "@/lib/iiko";
 import { logAction } from "@/lib/supabase.js";
-import { sendInvoiceReport } from "@/lib/telegram.js";
-import { storageConfigured } from "@/lib/storage.js";
+import { sendInvoiceReport, sendInvoiceArchive } from "@/lib/telegram.js";
+import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
 
 export async function POST(request) {
   let body = {};
@@ -97,9 +97,9 @@ export async function POST(request) {
         comment: comment || "",
         ...photoDetails,
       };
-      await logAction(user.tg_id, user.name, "invoice", dn, details);
+      const logged = await logAction(user.tg_id, user.name, "invoice", dn, details);
 
-      await sendInvoiceReport({
+      const payload = {
         // dateStr уже в ташкентском времени: «10.08.2026 14:32:05»
         dateTime: dateStr,
         documentNumber: `${dn} от ${dateStr}`,
@@ -108,7 +108,23 @@ export async function POST(request) {
         userName: user.name || "—",
         items: details.items,
         details,
-      });
+      };
+
+      // Накладная и коллаж — в рабочую группу, оригиналы позиций — в архивный
+      // канал. Хранилище после этого можно чистить: снимки лежат в Telegram.
+      const report = await sendInvoiceReport(payload);
+      const archive = await sendInvoiceArchive(payload);
+      const delivered = [...report.delivered, ...archive.delivered];
+
+      if (logged?.id && delivered.length > 0) {
+        try {
+          await purgeDeliveredPhotos(logged.id, details, delivered);
+        } catch (purgeErr) {
+          // Приход уже проведён — осечка уборки не должна его ронять,
+          // ночная чистка подберёт эти файлы позже.
+          console.error("[/api/iiko/invoice] уборка фотографий:", purgeErr.message);
+        }
+      }
 
       return Response.json({ success: true, documentNumber: dn });
     } else {

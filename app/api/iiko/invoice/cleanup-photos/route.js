@@ -1,8 +1,16 @@
-import { cleanupOldInvoicePhotos } from "@/lib/storage";
+import { sweepDeliveredPhotos, purgeBucket } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+/**
+ * Уборка хранилища фотографий.
+ *
+ * Снимки живут в бакете только до отправки в Telegram — обычно их удаляет сам
+ * роут прихода. Сюда попадают хвосты: `mode=sweep` сносит то, у чего есть
+ * расписка Telegram, `mode=all` выносит бакет подчистую (разовая операция по
+ * старым приходам, снимки которых давно лежат в группе).
+ */
 async function handle(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -19,8 +27,21 @@ async function handle(request) {
       return Response.json({ error: "Доступ только для администратора" }, { status: 403 });
     }
 
-    const days = Math.max(7, parseInt(searchParams.get("days") || "30", 10) || 30);
-    const result = await cleanupOldInvoicePhotos(days);
+    const mode = String(searchParams.get("mode") || "sweep");
+
+    // Полная зачистка необратима, поэтому её не дадим запустить расписанию:
+    // только администратор руками.
+    if (mode === "all") {
+      if (!isAdmin) {
+        return Response.json({ error: "Полная зачистка — только вручную админом" }, { status: 403 });
+      }
+      const bucket = await purgeBucket();
+      const marks = await sweepDeliveredPhotos({ days: 0, force: true });
+      return Response.json({ mode, bucket, marks });
+    }
+
+    const days = Math.max(0, parseInt(searchParams.get("days") || "0", 10) || 0);
+    const result = await sweepDeliveredPhotos({ days });
 
     return Response.json(result);
   } catch (e) {

@@ -1,5 +1,6 @@
 import { http1Fetch } from "@/lib/iiko";
-import { sendInvoiceReport } from "@/lib/telegram.js";
+import { sendInvoiceReport, sendInvoiceArchive } from "@/lib/telegram.js";
+import { purgeDeliveredPhotos } from "@/lib/storage.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
@@ -51,7 +52,7 @@ export async function POST(request) {
       `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ` +
       `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 
-    const ok = await sendInvoiceReport({
+    const payload = {
       dateTime,
       documentNumber: `${rec.document_number || "—"} от ${dateTime}`,
       supplierName: details.supplier_name || "—",
@@ -59,20 +60,32 @@ export async function POST(request) {
       userName: rec.user_name || "—",
       items: details.items || [],
       details,
-    });
+    };
 
-    if (!ok) {
+    const report = await sendInvoiceReport(payload);
+    const archive = await sendInvoiceArchive(payload);
+
+    if (!report.ok && report.delivered.length === 0) {
       return Response.json(
         { error: "Telegram не принял отчёт — смотрите логи сервера" },
         { status: 502 }
       );
     }
 
+    // Переотправка — второй шанс вычистить хранилище: то, что Telegram
+    // принял сейчас, держать у себя больше незачем.
+    const delivered = [...report.delivered, ...archive.delivered].filter((d) => d.path);
+    let purged = 0;
+    if (delivered.length > 0) {
+      const result = await purgeDeliveredPhotos(rec.id, details, delivered);
+      purged = result.deleted || 0;
+    }
+
     const photos = (details.photos || []).filter(
       (p) => p.kind === "invoice" || p.kind === "collage"
     ).length;
 
-    return Response.json({ success: true, photos });
+    return Response.json({ success: true, photos, purged });
   } catch (e) {
     console.error("[/api/iiko/invoice/resend]", e.message);
     return Response.json({ error: "Не удалось отправить отчёт" }, { status: 500 });

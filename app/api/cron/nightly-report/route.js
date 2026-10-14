@@ -1,6 +1,6 @@
 import { buildNightlyReport } from "@/lib/nightly-report";
 import { sendTelegramText } from "@/lib/telegram";
-import { cleanupOldInvoicePhotos } from "@/lib/storage";
+import { sweepDeliveredPhotos } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 // Четыре OLAP-запроса плюс возможные повторы: короткого лимита не хватит.
@@ -57,12 +57,14 @@ async function handle(request) {
       sent = okCash && okTop;
     }
 
-    // Автоматическая очистка старых фото из хранилища (старше 30 дней)
+    // Хвосты уборки: снимки, которые Telegram принял, а из хранилища они по
+    // какой-то причине не ушли сразу. Берём вчерашние и старше — свежие ещё
+    // могут досылаться повторно.
     let cleanupResult = null;
     try {
-      cleanupResult = await cleanupOldInvoicePhotos(30);
+      cleanupResult = await sweepDeliveredPhotos({ days: 1 });
     } catch (cleanErr) {
-      console.error("[nightly] cleanupOldInvoicePhotos error:", cleanErr.message);
+      console.error("[nightly] sweepDeliveredPhotos error:", cleanErr.message);
     }
 
     return Response.json({
