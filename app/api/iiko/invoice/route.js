@@ -3,6 +3,12 @@ import { logAction } from "@/lib/supabase.js";
 import { sendInvoiceReport, sendInvoiceArchive } from "@/lib/telegram.js";
 import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
 
+export const dynamic = "force-dynamic";
+// Приход с двумя десятками снимков: Telegram скачивает каждый сам, и на
+// умолчании в десяток секунд функцию убивало на середине отправки —
+// фотографии оставались в хранилище, а расписок не появлялось.
+export const maxDuration = 120;
+
 export async function POST(request) {
   let body = {};
   try {

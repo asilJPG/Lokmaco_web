@@ -6,6 +6,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 
 export const dynamic = "force-dynamic";
+// Досылаем те же два десятка снимков — лимит нужен тот же, что у прихода.
+export const maxDuration = 120;
 
 /**
  * Повторная отправка фотоотчёта о приходе в Telegram.
