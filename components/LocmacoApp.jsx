@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { baseInvNumber } from "@/lib/inv-number";
 import { normalizeTagCode, looksLikeTag } from "@/lib/asset-tags";
-import { parseFiscalQr, normalizeReceipt, isValidFm, isValidSign, cleanFm, cleanSign, formatFiscalDate, fiscalUrl } from "@/lib/fiscal-receipt";
+import { parseFiscalQr, formatFiscalDate, fiscalUrl } from "@/lib/fiscal-receipt";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -149,18 +149,6 @@ const API = {
     } catch (e) {
       console.error("API upload photo:", e);
       return { success: false, error: e.message };
-    }
-  },
-  async recognizeReceiptByPhoto(file) {
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/iiko/ai-recognize-receipt", { method: "POST", body: fd });
-      const data = await r.json().catch(() => null);
-      return r.ok ? data : null;
-    } catch (e) {
-      console.error("API recognize receipt:", e);
-      return null;
     }
   },
   async recognizeProductByPhoto(file, candidates) {
@@ -3933,8 +3921,8 @@ async function readReceiptQr(file) {
     }
     bitmap.close?.();
     return found;
-  } catch (e) {
-    console.error("readReceiptQr:", e);
+  } catch {
+    // Тихо: чтение чека — побочное дело, снабженец о нём не знает
     return null;
   }
 }
@@ -4275,44 +4263,14 @@ function IncomingView({
   const [storageError, setStorageError] = useState("");
   const photosOf = (key) => photos[key] || [];
 
-  // Реквизиты чека закупки (номер ФМ и фискальный признак) — для кешбэка.
-  // Ref рядом со state: цикл загрузки фото читает «уже нашли?» без устаревшей копии.
-  const [receipt, setReceiptState] = useState(null);
-  const [receiptBusy, setReceiptBusy] = useState(false);
+  // Реквизиты чека из QR — для кешбэка. Нигде не показываются: ни state, ни
+  // индикатора, ни поля — снабженец о чтении чека знать не должен.
   const receiptRef = useRef(null);
-  const setReceipt = (next) => {
-    const value = typeof next === "function" ? next(receiptRef.current) : next;
-    receiptRef.current = value;
-    setReceiptState(value);
-  };
 
-  /** QR читается машиной без ошибок, поэтому он главнее и текста, и ручного ввода. */
-  const detectReceipt = async (raw, compressed) => {
-    if (receiptRef.current?.source === "qr") return;
-    setReceiptBusy(true);
-    try {
-      const fromQr = await readReceiptQr(raw);
-      if (fromQr) {
-        setReceipt(fromQr);
-        return;
-      }
-      // QR не нашёлся — читаем текст, но только если реквизитов ещё нет
-      if (receiptRef.current) return;
-      const res = await API.recognizeReceiptByPhoto(compressed);
-      if (res?.receipt && !receiptRef.current) setReceipt(res.receipt);
-    } finally {
-      setReceiptBusy(false);
-    }
-  };
-
-  /** Правка руками: человек сам ввёл значение — это уже подтверждение. */
-  const editReceipt = (field, value) => {
-    setReceipt((prev) => ({
-      ...(prev || {}),
-      [field]: field === "fm" ? cleanFm(value) : cleanSign(value),
-      source: "manual",
-      confirmed: true,
-    }));
+  const detectReceipt = async (raw) => {
+    if (receiptRef.current) return;
+    const fromQr = await readReceiptQr(raw);
+    if (fromQr && !receiptRef.current) receiptRef.current = fromQr;
   };
 
   const getPhotosForItem = (rowId, productId) => {
@@ -4354,9 +4312,9 @@ function IncomingView({
         showToast(res?.error || "Не удалось загрузить фото", "error");
       }
 
-      // Накладную читаем и на предмет чека: фото ушло в хранилище или нет,
-      // реквизиты всё равно полезны.
-      if (key === INVOICE_KEY) await detectReceipt(raw, file);
+      // Втихую ищем на накладной QR чека. Если не нашёлся — сервер попробует
+      // прочитать текст по загруженному фото.
+      if (key === INVOICE_KEY) await detectReceipt(raw);
     }
   };
 
@@ -4373,7 +4331,7 @@ function IncomingView({
     Object.values(photos).flat().forEach((p) => p.url && URL.revokeObjectURL(p.url));
     setPhotos({});
     setLastAiPhotoFile(null);
-    setReceipt(null);
+    receiptRef.current = null;
     setDraftId(makeDraftId());
   };
 
@@ -4757,7 +4715,7 @@ function IncomingView({
       items: prepared,
       comment: form.comment,
       attachments,
-      receipt,
+      receipt: receiptRef.current,
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
@@ -5118,95 +5076,6 @@ function IncomingView({
                     onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
                   />
                 </div>
-              </div>
-
-              {/* Реквизиты чека закупки — для кешбэка. Не обязательны: на бумажной накладной чека может не быть. */}
-              <div
-                style={{
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 12,
-                  padding: 14,
-                  marginBottom: 16,
-                  background: "var(--bg-card)",
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🧾 Фискальный чек</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
-                  {receiptBusy
-                    ? "Читаю чек на фото…"
-                    : !receipt
-                    ? "Если на фото есть чек с QR — реквизиты подставятся сами. Нет чека — оставьте пустыми."
-                    : receipt.source === "qr"
-                    ? "✅ Прочитано из QR-кода на чеке"
-                    : receipt.confirmed
-                    ? "✅ Проверено вручную"
-                    : "⚠️ Распознано по тексту — сверьте с чеком, нейросеть может ошибиться в цифре"}
-                </div>
-
-                <div className="stack-mobile" style={{ display: "flex", gap: 10 }}>
-                  <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
-                    Номер ФМ
-                    <input
-                      value={receipt?.fm || ""}
-                      onChange={(e) => editReceipt("fm", e.target.value)}
-                      placeholder="UZ170703100597"
-                      autoCapitalize="characters"
-                      autoComplete="off"
-                      style={{
-                        width: "100%",
-                        marginTop: 4,
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontFamily: "monospace",
-                        border: `1px solid ${receipt?.fm && !isValidFm(receipt.fm) ? "#ef4444" : "var(--border-color)"}`,
-                        background: "var(--bg-main)",
-                        color: "var(--text-main)",
-                      }}
-                    />
-                  </label>
-                  <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
-                    Фискальный признак
-                    <input
-                      value={receipt?.sign || ""}
-                      onChange={(e) => editReceipt("sign", e.target.value)}
-                      placeholder="514343190161"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      style={{
-                        width: "100%",
-                        marginTop: 4,
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontFamily: "monospace",
-                        border: `1px solid ${receipt?.sign && !isValidSign(receipt.sign) ? "#ef4444" : "var(--border-color)"}`,
-                        background: "var(--bg-main)",
-                        color: "var(--text-main)",
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {receipt && !receipt.confirmed && (
-                  <button
-                    type="button"
-                    onClick={() => setReceipt((prev) => ({ ...prev, confirmed: true }))}
-                    className="touch-btn"
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border-color)",
-                      background: "var(--bg-hover)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✓ Сверил с чеком, всё верно
-                  </button>
-                )}
               </div>
 
               {storageError ? (

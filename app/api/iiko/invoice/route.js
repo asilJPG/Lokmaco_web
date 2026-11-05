@@ -1,8 +1,9 @@
 import { withIikoSession, iikoPostXml } from "@/lib/iiko";
-import { logAction } from "@/lib/supabase.js";
-import { sendInvoiceReport, sendInvoiceArchive } from "@/lib/telegram.js";
+import { logAction, updateActionDetails } from "@/lib/supabase.js";
+import { sendInvoiceReport, sendInvoiceArchive, sendReceiptNote } from "@/lib/telegram.js";
 import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
 import { normalizeReceipt } from "@/lib/fiscal-receipt.js";
+import { readReceiptFromStoredPhotos } from "@/lib/receipt-ocr.js";
 
 export const dynamic = "force-dynamic";
 // Приход с двумя десятками снимков: Telegram скачивает каждый сам, и на
@@ -111,6 +112,23 @@ export async function POST(request) {
       };
       const logged = await logAction(user.tg_id, user.name, "invoice", dn, details);
 
+      // Чек закупки читаем втихую: снабженцу в интерфейсе об этом ничего не
+      // показывается. QR уже прочитал браузер; если его не нашлось, пробуем
+      // прочитать текст по загруженному фото. Делать это надо до отправки в
+      // Telegram — после неё файлов в хранилище уже нет.
+      let receiptFinal = receiptDetails;
+      if (!receiptFinal) {
+        try {
+          receiptFinal = await readReceiptFromStoredPhotos(details.photos);
+          if (receiptFinal) {
+            details.receipt = receiptFinal;
+            if (logged?.id) await updateActionDetails(logged.id, details);
+          }
+        } catch (ocrErr) {
+          console.error("[/api/iiko/invoice] чтение чека:", ocrErr.message);
+        }
+      }
+
       const payload = {
         // dateStr уже в ташкентском времени: «10.08.2026 14:32:05»
         dateTime: dateStr,
@@ -135,6 +153,14 @@ export async function POST(request) {
           // Приход уже проведён — осечка уборки не должна его ронять,
           // ночная чистка подберёт эти файлы позже.
           console.error("[/api/iiko/invoice] уборка фотографий:", purgeErr.message);
+        }
+      }
+
+      if (receiptFinal) {
+        try {
+          await sendReceiptNote({ receipt: receiptFinal, dateTime: dateStr });
+        } catch (noteErr) {
+          console.error("[/api/iiko/invoice] реквизиты чека в канал:", noteErr.message);
         }
       }
 
