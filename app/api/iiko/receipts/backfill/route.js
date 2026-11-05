@@ -39,6 +39,9 @@ function tashkent(iso) {
  * Запрос: `?since=2026-10-25` (по Ташкенту, по умолчанию 25.10.2026).
  *   `dry=1`   — только прочитать и показать, в канал не слать и ничего не писать
  *   `retry=1` — перечитать и те приходы, где в прошлый раз реквизитов не нашли
+ *   `resend=1` — отправить в канал ещё раз всё уже найденное (например, после
+ *                смены формата сообщения). Реквизиты берутся из журнала, ничего
+ *                не перечитывается. Старые сообщения в канале при этом остаются.
  *
  * Запускать можно сколько угодно раз: уже отправленное пропускается, прочитанное
  * без результата помечено и не перечитывается. Если не хватило времени, ответ
@@ -60,6 +63,7 @@ export async function GET(request) {
     const since = /^\d{4}-\d{2}-\d{2}$/.test(params.get("since") || "") ? params.get("since") : "2026-10-25";
     const dry = params.get("dry") === "1";
     const retry = params.get("retry") === "1";
+    const resend = params.get("resend") === "1";
 
     // Без канала «отправлено» насчиталось бы по нулям на каждый приход
     if (!dry && !receiptChannelConfigured()) {
@@ -86,6 +90,7 @@ export async function GET(request) {
     const stat = {
       since,
       dry,
+      resend,
       total: rows.length,
       failedInvoices: 0,
       alreadySent: 0,
@@ -103,6 +108,12 @@ export async function GET(request) {
     for (const row of rows) {
       const d = row.details && typeof row.details === "object" ? row.details : {};
       if (d.status === "failed") { stat.failedInvoices++; continue; }
+      // Повторная отправка: нужны только приходы с уже прочитанными реквизитами
+      if (resend) {
+        if (!d.receipt) { stat.skippedNoReceipt++; continue; }
+        todo.push({ row, d, receipt: d.receipt, read: true });
+        continue;
+      }
       if (d.receipt_sent) { stat.alreadySent++; continue; }
       if (!d.receipt && d.receipt_checked_at && !retry) { stat.skippedNoReceipt++; continue; }
       todo.push({ row, d, receipt: d.receipt || null, read: Boolean(d.receipt) });
@@ -170,6 +181,7 @@ export async function GET(request) {
           receipt,
           receipt_checked_at: new Date().toISOString(),
           receipt_sent: true,
+          ...(resend ? { receipt_resent_at: new Date().toISOString() } : {}),
         });
       } else {
         stat.sendFailed++;

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { baseInvNumber } from "@/lib/inv-number";
 import { normalizeTagCode, looksLikeTag } from "@/lib/asset-tags";
-import { parseFiscalQr, formatFiscalDate, fiscalUrl } from "@/lib/fiscal-receipt";
+import { parseFiscalQr, formatFiscalDate, fiscalUrl, splitFm } from "@/lib/fiscal-receipt";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -20169,6 +20169,45 @@ function CashbackView({ showToast }) {
     </button>
   );
 
+  // ФМ: буквы и номер — две кнопки, в приложение вносят номер без букв
+  const fmRow = (fm) => {
+    const { prefix, number } = splitFm(fm);
+    const btn = (text, label, grow) => (
+      <button
+        type="button"
+        onClick={() => text && copy(text, label)}
+        disabled={!text}
+        className="touch-btn"
+        title="Нажмите, чтобы скопировать"
+        style={{
+          flex: grow ? 1 : "none",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "10px 14px",
+          borderRadius: 8,
+          border: "1px solid var(--border-color)",
+          background: "var(--bg-hover)",
+          cursor: text ? "copy" : "default",
+          color: "var(--text-main)",
+          fontFamily: "monospace",
+          fontSize: 16,
+          fontWeight: 700,
+          letterSpacing: 0.5,
+        }}
+      >
+        {text || "не прочитан"}
+      </button>
+    );
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 28 }}>ФМ</span>
+        {prefix && btn(prefix, "буквы ФМ", false)}
+        {btn(number, "номер ФМ", true)}
+      </div>
+    );
+  };
+
   const card = (it) => {
     const urgent = it.status === "active" && it.daysLeft <= 2;
     const warn = it.source === "ocr" && !it.confirmed;
@@ -20201,7 +20240,7 @@ function CashbackView({ showToast }) {
           {it.status === "expired" && chip("срок вышел", "#475569", "#e2e8f0")}
         </div>
 
-        {value("ФМ", it.fm)}
+        {fmRow(it.fm)}
         {value("Фискальный признак", it.sign)}
 
         {warn && (

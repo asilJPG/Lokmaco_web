@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 function withoutReceipt(action) {
   const d = action?.details;
   if (!d || typeof d !== "object") return action;
-  const HIDDEN = ["receipt", "receipt_sent", "receipt_checked_at", "receipt_registered_at", "receipt_registered_by"];
+  const HIDDEN = ["receipt", "receipt_sent", "receipt_checked_at", "receipt_registered_at", "receipt_registered_by", "receipt_resent_at"];
   if (!HIDDEN.some((k) => k in d)) return action;
   const details = { ...d };
   for (const k of HIDDEN) delete details[k];
