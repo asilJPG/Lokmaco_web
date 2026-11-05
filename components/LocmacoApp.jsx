@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { baseInvNumber } from "@/lib/inv-number";
 import { normalizeTagCode, looksLikeTag } from "@/lib/asset-tags";
+import { parseFiscalQr, normalizeReceipt, isValidFm, isValidSign, cleanFm, cleanSign, formatFiscalDate, fiscalUrl } from "@/lib/fiscal-receipt";
 
 const FALLBACK_SUPPLIERS = [
   { id: "16c6e655-945c-4002-a117-934749aea133", name: "Корпоративная карта" },
@@ -148,6 +149,18 @@ const API = {
     } catch (e) {
       console.error("API upload photo:", e);
       return { success: false, error: e.message };
+    }
+  },
+  async recognizeReceiptByPhoto(file) {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/iiko/ai-recognize-receipt", { method: "POST", body: fd });
+      const data = await r.json().catch(() => null);
+      return r.ok ? data : null;
+    } catch (e) {
+      console.error("API recognize receipt:", e);
+      return null;
     }
   },
   async recognizeProductByPhoto(file, candidates) {
@@ -3882,6 +3895,50 @@ async function compressImage(file, maxSide = 1600, quality = 0.82) {
   }
 }
 
+/**
+ * Ищет на фото QR налоговой и достаёт из него реквизиты чека.
+ *
+ * QR на чековой ленте занимает малую часть кадра, поэтому пробуем несколько
+ * размеров: на уменьшенном маленький код сливается, на полном — ищется долго.
+ * Читаем исходный файл, а не сжатый: после сжатия до 1600px код мог потерять
+ * чёткость. Возвращает null, если QR нет или он не налоговый.
+ */
+async function readReceiptQr(file) {
+  if (!file?.type?.startsWith("image/") || file.type === "image/heic") return null;
+  try {
+    const { default: jsQR } = await import("jsqr");
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const longest = Math.max(bitmap.width, bitmap.height);
+
+    const sides = [1600, 1000, 2400].filter((side, i, all) => {
+      // на кадр меньше целевой размер не увеличиваем, и дубли не гоняем
+      const eff = Math.min(side, longest);
+      return all.findIndex((x) => Math.min(x, longest) === eff) === i;
+    });
+
+    let found = null;
+    for (const side of sides) {
+      const scale = Math.min(1, side / longest);
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(data.data, canvas.width, canvas.height, { inversionAttempts: "dontInvert" });
+      if (code?.data) {
+        found = parseFiscalQr(code.data);
+        if (found) break;
+      }
+    }
+    bitmap.close?.();
+    return found;
+  } catch (e) {
+    console.error("readReceiptQr:", e);
+    return null;
+  }
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -4218,6 +4275,46 @@ function IncomingView({
   const [storageError, setStorageError] = useState("");
   const photosOf = (key) => photos[key] || [];
 
+  // Реквизиты чека закупки (номер ФМ и фискальный признак) — для кешбэка.
+  // Ref рядом со state: цикл загрузки фото читает «уже нашли?» без устаревшей копии.
+  const [receipt, setReceiptState] = useState(null);
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const receiptRef = useRef(null);
+  const setReceipt = (next) => {
+    const value = typeof next === "function" ? next(receiptRef.current) : next;
+    receiptRef.current = value;
+    setReceiptState(value);
+  };
+
+  /** QR читается машиной без ошибок, поэтому он главнее и текста, и ручного ввода. */
+  const detectReceipt = async (raw, compressed) => {
+    if (receiptRef.current?.source === "qr") return;
+    setReceiptBusy(true);
+    try {
+      const fromQr = await readReceiptQr(raw);
+      if (fromQr) {
+        setReceipt(fromQr);
+        return;
+      }
+      // QR не нашёлся — читаем текст, но только если реквизитов ещё нет
+      if (receiptRef.current) return;
+      const res = await API.recognizeReceiptByPhoto(compressed);
+      if (res?.receipt && !receiptRef.current) setReceipt(res.receipt);
+    } finally {
+      setReceiptBusy(false);
+    }
+  };
+
+  /** Правка руками: человек сам ввёл значение — это уже подтверждение. */
+  const editReceipt = (field, value) => {
+    setReceipt((prev) => ({
+      ...(prev || {}),
+      [field]: field === "fm" ? cleanFm(value) : cleanSign(value),
+      source: "manual",
+      confirmed: true,
+    }));
+  };
+
   const getPhotosForItem = (rowId, productId) => {
     if (rowId && photos[rowId]?.length > 0) return photos[rowId];
     if (productId && photos[productId]?.length > 0) return photos[productId];
@@ -4256,6 +4353,10 @@ function IncomingView({
         if (/Хранилище/i.test(res?.error || "")) setStorageError(res.error);
         showToast(res?.error || "Не удалось загрузить фото", "error");
       }
+
+      // Накладную читаем и на предмет чека: фото ушло в хранилище или нет,
+      // реквизиты всё равно полезны.
+      if (key === INVOICE_KEY) await detectReceipt(raw, file);
     }
   };
 
@@ -4272,6 +4373,7 @@ function IncomingView({
     Object.values(photos).flat().forEach((p) => p.url && URL.revokeObjectURL(p.url));
     setPhotos({});
     setLastAiPhotoFile(null);
+    setReceipt(null);
     setDraftId(makeDraftId());
   };
 
@@ -4655,6 +4757,7 @@ function IncomingView({
       items: prepared,
       comment: form.comment,
       attachments,
+      receipt,
       user: {
         tg_id: loggedInUser.tg_id,
         name: loggedInUser.name,
@@ -5015,6 +5118,95 @@ function IncomingView({
                     onRemove={(pid) => removePhoto(INVOICE_KEY, pid)}
                   />
                 </div>
+              </div>
+
+              {/* Реквизиты чека закупки — для кешбэка. Не обязательны: на бумажной накладной чека может не быть. */}
+              <div
+                style={{
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 16,
+                  background: "var(--bg-card)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🧾 Фискальный чек</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                  {receiptBusy
+                    ? "Читаю чек на фото…"
+                    : !receipt
+                    ? "Если на фото есть чек с QR — реквизиты подставятся сами. Нет чека — оставьте пустыми."
+                    : receipt.source === "qr"
+                    ? "✅ Прочитано из QR-кода на чеке"
+                    : receipt.confirmed
+                    ? "✅ Проверено вручную"
+                    : "⚠️ Распознано по тексту — сверьте с чеком, нейросеть может ошибиться в цифре"}
+                </div>
+
+                <div className="stack-mobile" style={{ display: "flex", gap: 10 }}>
+                  <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
+                    Номер ФМ
+                    <input
+                      value={receipt?.fm || ""}
+                      onChange={(e) => editReceipt("fm", e.target.value)}
+                      placeholder="UZ170703100597"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontFamily: "monospace",
+                        border: `1px solid ${receipt?.fm && !isValidFm(receipt.fm) ? "#ef4444" : "var(--border-color)"}`,
+                        background: "var(--bg-main)",
+                        color: "var(--text-main)",
+                      }}
+                    />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
+                    Фискальный признак
+                    <input
+                      value={receipt?.sign || ""}
+                      onChange={(e) => editReceipt("sign", e.target.value)}
+                      placeholder="514343190161"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontFamily: "monospace",
+                        border: `1px solid ${receipt?.sign && !isValidSign(receipt.sign) ? "#ef4444" : "var(--border-color)"}`,
+                        background: "var(--bg-main)",
+                        color: "var(--text-main)",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {receipt && !receipt.confirmed && (
+                  <button
+                    type="button"
+                    onClick={() => setReceipt((prev) => ({ ...prev, confirmed: true }))}
+                    className="touch-btn"
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border-color)",
+                      background: "var(--bg-hover)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✓ Сверил с чеком, всё верно
+                  </button>
+                )}
               </div>
 
               {storageError ? (
@@ -11588,6 +11780,68 @@ function InvoiceDetailModal({ act, onClose }) {
         ) : (
           <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
             📵 Фотография накладной не прикреплена
+          </div>
+        )}
+
+        {details.receipt && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🧾 Фискальный чек закупки</div>
+            <div
+              style={{
+                border: "1px solid var(--border-color)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 13,
+                lineHeight: 1.9,
+              }}
+            >
+              {[
+                ["Номер ФМ", details.receipt.fm],
+                ["Фискальный признак", details.receipt.sign],
+                ["Номер чека", details.receipt.receipt_no],
+                ["Дата чека", formatFiscalDate(details.receipt.datetime)],
+              ]
+                .filter(([, v]) => v)
+                .map(([label, v]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(String(v))}
+                      title="Нажмите, чтобы скопировать"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        fontFamily: "monospace",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text-main)",
+                        cursor: "copy",
+                      }}
+                    >
+                      {v}
+                    </button>
+                  </div>
+                ))}
+              <div style={{ fontSize: 11, marginTop: 4, color: details.receipt.confirmed ? "#15803d" : "#b45309", fontWeight: 600 }}>
+                {details.receipt.source === "qr"
+                  ? "✅ прочитано из QR"
+                  : details.receipt.confirmed
+                  ? "✅ проверено вручную"
+                  : "⚠️ распознано по тексту, не сверено"}
+              </div>
+              {fiscalUrl(details.receipt) && (
+                <a
+                  href={fiscalUrl(details.receipt)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: "var(--accent, #2563eb)" }}
+                >
+                  Открыть чек на ofd.soliq.uz ↗
+                </a>
+              )}
+            </div>
           </div>
         )}
 

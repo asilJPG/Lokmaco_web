@@ -2,6 +2,7 @@ import { withIikoSession, iikoPostXml } from "@/lib/iiko";
 import { logAction } from "@/lib/supabase.js";
 import { sendInvoiceReport, sendInvoiceArchive } from "@/lib/telegram.js";
 import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
+import { normalizeReceipt } from "@/lib/fiscal-receipt.js";
 
 export const dynamic = "force-dynamic";
 // Приход с двумя десятками снимков: Telegram скачивает каждый сам, и на
@@ -29,7 +30,7 @@ export async function POST(request) {
     };
 
     body = await request.json();
-    const { supplier_id, supplier_name, store_id, store_name, items, comment, attachments } = body;
+    const { supplier_id, supplier_name, store_id, store_name, items, comment, attachments, receipt } = body;
 
     const [baseRole, userStoreId] = (user.role || "").split(":");
     // Тот же список, что и у вкладки «Приход» в hasAccess: приходы делает
@@ -85,6 +86,10 @@ export async function POST(request) {
     });
 
     const photoDetails = buildPhotoDetails(attachments, items);
+    // Реквизиты чека закупки: клиенту не верим, проверяем форму заново.
+    // Для кешбэка они нужны по любому приходу — и по проведённому, и по сорвавшемуся.
+    const receiptDetails = normalizeReceipt(receipt);
+    const receiptField = receiptDetails ? { receipt: receiptDetails } : {};
 
     if (success) {
       const details = {
@@ -102,6 +107,7 @@ export async function POST(request) {
         })),
         comment: comment || "",
         ...photoDetails,
+        ...receiptField,
       };
       const logged = await logAction(user.tg_id, user.name, "invoice", dn, details);
 
@@ -150,6 +156,7 @@ export async function POST(request) {
         })),
         comment: comment || "",
         ...photoDetails,
+        ...receiptField,
       };
       await logAction(user.tg_id, user.name, "invoice", "СБОЙ", details);
       return Response.json({ success: false, error: "iiko rejected the document" }, { status: 500 });
