@@ -47,7 +47,7 @@ export async function POST(request) {
     // с устаревшей копией из браузера нельзя — затрутся чужие поля.
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/bot_actions?id=eq.${encodeURIComponent(id)}&action_type=eq.invoice&select=id,details`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" }
     );
     if (!res.ok) throw new Error(`Журнал недоступен (${res.status})`);
     const row = (await res.json())?.[0];

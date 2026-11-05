@@ -25,6 +25,7 @@ async function sendTelegramAlert(message, targets = {}) {
           apikey: supabaseKey,
           Authorization: `Bearer ${supabaseKey}`,
         },
+        cache: "no-store",
       });
 
       if (res.ok) {

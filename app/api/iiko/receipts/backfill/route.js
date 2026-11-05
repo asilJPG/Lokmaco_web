@@ -78,8 +78,11 @@ export async function GET(request) {
       `${SUPABASE_URL}/rest/v1/bot_actions?action_type=eq.invoice` +
       `&created_at=gte.${encodeURIComponent(sinceIso)}` +
       `&select=id,created_at,details&order=created_at.asc&limit=1000`;
+    // no-store: обычный fetch Next кеширует между запросами и выкатами —
+    // повторный запуск видел бы журнал, каким он был при самом первом
     const res = await fetch(url, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      cache: "no-store",
     });
     if (!res.ok) {
       return Response.json({ error: `Не удалось прочитать журнал (${res.status})` }, { status: 502 });
