@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
  * поле в интерфейсе мало, оно всё равно уехало бы в ответе.
  */
 function withoutReceipt(action) {
-  if (!action?.details || typeof action.details !== "object" || !("receipt" in action.details)) {
-    return action;
-  }
-  const { receipt, ...details } = action.details;
+  const d = action?.details;
+  if (!d || typeof d !== "object") return action;
+  if (!("receipt" in d) && !("receipt_sent" in d) && !("receipt_checked_at" in d)) return action;
+  // eslint-disable-next-line no-unused-vars
+  const { receipt, receipt_sent, receipt_checked_at, ...details } = d;
   return { ...action, details };
 }
 

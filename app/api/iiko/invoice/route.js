@@ -3,7 +3,7 @@ import { logAction, updateActionDetails } from "@/lib/supabase.js";
 import { sendInvoiceReport, sendInvoiceArchive, sendReceiptNote } from "@/lib/telegram.js";
 import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
 import { normalizeReceipt } from "@/lib/fiscal-receipt.js";
-import { readReceiptFromStoredPhotos } from "@/lib/receipt-ocr.js";
+import { readReceiptFromPhotos } from "@/lib/receipt-ocr.js";
 
 export const dynamic = "force-dynamic";
 // Приход с двумя десятками снимков: Telegram скачивает каждый сам, и на
@@ -119,13 +119,23 @@ export async function POST(request) {
       let receiptFinal = receiptDetails;
       if (!receiptFinal) {
         try {
-          receiptFinal = await readReceiptFromStoredPhotos(details.photos);
-          if (receiptFinal) {
-            details.receipt = receiptFinal;
-            if (logged?.id) await updateActionDetails(logged.id, details);
-          }
+          receiptFinal = await readReceiptFromPhotos(details.photos);
+          if (receiptFinal) details.receipt = receiptFinal;
         } catch (ocrErr) {
           console.error("[/api/iiko/invoice] чтение чека:", ocrErr.message);
+        }
+      }
+
+      // Реквизиты — в канал бухгалтерии, а отметку «отправлено» пишем в тот же
+      // `details`, что потом пойдёт на уборку фото: две раздельные записи
+      // затёрли бы друг друга устаревшей копией и вернули удалённые пути.
+      if (receiptFinal) {
+        try {
+          const sent = await sendReceiptNote({ receipt: receiptFinal, dateTime: dateStr });
+          if (sent) details.receipt_sent = true;
+          if (logged?.id) await updateActionDetails(logged.id, details);
+        } catch (noteErr) {
+          console.error("[/api/iiko/invoice] реквизиты чека в канал:", noteErr.message);
         }
       }
 
@@ -153,14 +163,6 @@ export async function POST(request) {
           // Приход уже проведён — осечка уборки не должна его ронять,
           // ночная чистка подберёт эти файлы позже.
           console.error("[/api/iiko/invoice] уборка фотографий:", purgeErr.message);
-        }
-      }
-
-      if (receiptFinal) {
-        try {
-          await sendReceiptNote({ receipt: receiptFinal, dateTime: dateStr });
-        } catch (noteErr) {
-          console.error("[/api/iiko/invoice] реквизиты чека в канал:", noteErr.message);
         }
       }
 
