@@ -1,5 +1,5 @@
 import { updateActionDetails } from "@/lib/supabase.js";
-import { readReceiptFromPhotos } from "@/lib/receipt-ocr.js";
+import { readReceiptFromPhotos, invoicePhotosOf } from "@/lib/receipt-ocr.js";
 import { sendReceiptNote, receiptChannelConfigured } from "@/lib/telegram.js";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +8,14 @@ export const maxDuration = 300;
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 
-// Новые приходы не начинаем позже этого: один чек может читаться до ~100 с
-// (две модели, два снимка), и функцию нельзя оставлять без запаса до лимита.
-const START_BUDGET_MS = 170_000;
+// Чтение идёт в несколько потоков: чек читается до нескольких секунд, и по
+// одному на всё не хватало времени — прогон по 86 приходам упирался в лимит.
+const READ_CONCURRENCY = 4;
+// Новые чеки не начинаем читать позже этого: чтение одного может занять до
+// ~100 с (две модели, два снимка), а после него ещё идёт отправка в канал.
+const READ_BUDGET_MS = 120_000;
+// Отправку после этого не начинаем — запас до лимита функции.
+const SEND_DEADLINE_MS = 270_000;
 // Telegram режет частоту отправки в один чат — между сообщениями пауза.
 const SEND_GAP_MS = 1200;
 
@@ -38,6 +43,9 @@ function tashkent(iso) {
  * Запускать можно сколько угодно раз: уже отправленное пропускается, прочитанное
  * без результата помечено и не перечитывается. Если не хватило времени, ответ
  * придёт с `done: false` — достаточно открыть ссылку ещё раз.
+ *
+ * Прочитанное по тексту (а не по QR) уходит в канал вместе с фото накладной:
+ * нейросеть может ошибиться в цифре, и сверить надо глазами.
  */
 export async function GET(request) {
   try {
@@ -89,35 +97,47 @@ export async function GET(request) {
       notFound: 0,
       left: 0,
     };
-    const found = [];
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    // 1. Что вообще надо обработать
+    const todo = [];
+    for (const row of rows) {
       const d = row.details && typeof row.details === "object" ? row.details : {};
-
       if (d.status === "failed") { stat.failedInvoices++; continue; }
       if (d.receipt_sent) { stat.alreadySent++; continue; }
       if (!d.receipt && d.receipt_checked_at && !retry) { stat.skippedNoReceipt++; continue; }
+      todo.push({ row, d, receipt: d.receipt || null, read: Boolean(d.receipt) });
+    }
 
-      if (Date.now() - started > START_BUDGET_MS) {
-        // Всё, что не успели, считаем остатком — его возьмёт следующий запуск
-        stat.left = rows.slice(i).filter((r) => {
-          const x = r.details || {};
-          return x.status !== "failed" && !x.receipt_sent && (x.receipt || !x.receipt_checked_at || retry);
-        }).length;
-        break;
+    // 2. Чтение в несколько потоков. Не успели по времени — остальное в `left`.
+    let next = 0;
+    async function worker() {
+      while (true) {
+        const i = next++;
+        if (i >= todo.length) return;
+        if (Date.now() - started > READ_BUDGET_MS) return;
+        const item = todo[i];
+        if (!item.read) {
+          item.receipt = await readReceiptFromPhotos(item.d.photos);
+          item.read = true;
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: READ_CONCURRENCY }, worker));
+
+    // 3. Дальше по порядку — чтобы сообщения в канале шли по хронологии
+    const found = [];
+    for (const item of todo) {
+      if (!item.read) { stat.left++; continue; }
+
+      const { row, d, receipt } = item;
+      if (!receipt) {
+        stat.notFound++;
+        if (!dry) await updateActionDetails(row.id, { ...d, receipt_checked_at: new Date().toISOString() });
+        continue;
       }
 
-      let receipt = d.receipt || null;
-      if (!receipt) {
-        receipt = await readReceiptFromPhotos(d.photos);
-        if (!receipt) {
-          stat.notFound++;
-          if (!dry) {
-            await updateActionDetails(row.id, { ...d, receipt_checked_at: new Date().toISOString() });
-          }
-          continue;
-        }
+      // Из уже сохранённых реквизитов источник не считаем «новым» нахождением
+      if (!d.receipt) {
         if (receipt.source === "qr") stat.foundQr++;
         else stat.foundText++;
       }
@@ -126,18 +146,34 @@ export async function GET(request) {
       found.push({ at: when, source: receipt.source, fm: receipt.fm, sign: receipt.sign });
       if (dry) continue;
 
-      const sent = await sendReceiptNote({ receipt, dateTime: when });
-      if (sent) stat.sent++;
-      else stat.sendFailed++;
+      if (Date.now() - started > SEND_DEADLINE_MS) { stat.left++; continue; }
 
-      // Реквизиты пишем всегда, отметку «отправлено» — только при успехе:
-      // неотправленное следующий запуск подхватит без повторного чтения.
-      await updateActionDetails(row.id, {
-        ...d,
+      // Сначала сохраняем прочитанное — если отправка оборвётся, следующий
+      // запуск возьмёт реквизиты из журнала и не станет читать заново.
+      if (!d.receipt) {
+        await updateActionDetails(row.id, {
+          ...d,
+          receipt,
+          receipt_checked_at: new Date().toISOString(),
+        });
+      }
+
+      const sent = await sendReceiptNote({
         receipt,
-        receipt_checked_at: new Date().toISOString(),
-        ...(sent ? { receipt_sent: true } : {}),
+        dateTime: when,
+        photos: invoicePhotosOf(d.photos),
       });
+      if (sent) {
+        stat.sent++;
+        await updateActionDetails(row.id, {
+          ...d,
+          receipt,
+          receipt_checked_at: new Date().toISOString(),
+          receipt_sent: true,
+        });
+      } else {
+        stat.sendFailed++;
+      }
 
       await sleep(SEND_GAP_MS);
     }

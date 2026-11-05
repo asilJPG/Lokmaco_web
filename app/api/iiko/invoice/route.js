@@ -3,7 +3,7 @@ import { logAction, updateActionDetails } from "@/lib/supabase.js";
 import { sendInvoiceReport, sendInvoiceArchive, sendReceiptNote } from "@/lib/telegram.js";
 import { storageConfigured, purgeDeliveredPhotos } from "@/lib/storage.js";
 import { normalizeReceipt } from "@/lib/fiscal-receipt.js";
-import { readReceiptFromPhotos } from "@/lib/receipt-ocr.js";
+import { readReceiptFromPhotos, invoicePhotosOf } from "@/lib/receipt-ocr.js";
 
 export const dynamic = "force-dynamic";
 // Приход с двумя десятками снимков: Telegram скачивает каждый сам, и на
@@ -131,7 +131,7 @@ export async function POST(request) {
       // затёрли бы друг друга устаревшей копией и вернули удалённые пути.
       if (receiptFinal) {
         try {
-          const sent = await sendReceiptNote({ receipt: receiptFinal, dateTime: dateStr });
+          const sent = await sendReceiptNote({ receipt: receiptFinal, dateTime: dateStr, photos: invoicePhotosOf(details.photos) });
           if (sent) details.receipt_sent = true;
           if (logged?.id) await updateActionDetails(logged.id, details);
         } catch (noteErr) {
