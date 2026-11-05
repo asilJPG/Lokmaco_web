@@ -1,5 +1,6 @@
 import { buildNightlyReport } from "@/lib/nightly-report";
-import { sendTelegramText } from "@/lib/telegram";
+import { sendTelegramText, sendCashbackReminder } from "@/lib/telegram";
+import { loadCashbackItems, summarize, WINDOW_DAYS } from "@/lib/cashback";
 import { sweepDeliveredPhotos } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -67,8 +68,22 @@ async function handle(request) {
       console.error("[nightly] sweepDeliveredPhotos error:", cleanErr.message);
     }
 
+    // Напоминание о чеках для кешбэка, у которых вот-вот выйдет срок. Отдельный
+    // крон не заведёшь — на бесплатном тарифе Vercel их два, и оба заняты.
+    let cashback = null;
+    try {
+      const summary = summarize(await loadCashbackItems());
+      cashback = summary;
+      if (summary.urgent > 0) {
+        await sendCashbackReminder({ urgent: summary.urgent, active: summary.active, windowDays: WINDOW_DAYS });
+      }
+    } catch (cbErr) {
+      console.error("[nightly] напоминание о кешбэке:", cbErr.message);
+    }
+
     return Response.json({
       success: sent,
+      cashback,
       date: report.date,
       cleanup: cleanupResult,
       attempts: report.attempts,

@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 function withoutReceipt(action) {
   const d = action?.details;
   if (!d || typeof d !== "object") return action;
-  if (!("receipt" in d) && !("receipt_sent" in d) && !("receipt_checked_at" in d)) return action;
-  // eslint-disable-next-line no-unused-vars
-  const { receipt, receipt_sent, receipt_checked_at, ...details } = d;
+  const HIDDEN = ["receipt", "receipt_sent", "receipt_checked_at", "receipt_registered_at", "receipt_registered_by"];
+  if (!HIDDEN.some((k) => k in d)) return action;
+  const details = { ...d };
+  for (const k of HIDDEN) delete details[k];
   return { ...action, details };
 }
 

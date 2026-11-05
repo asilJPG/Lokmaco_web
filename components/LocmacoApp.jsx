@@ -1309,6 +1309,7 @@ export default function LocmacoApp() {
     { id: "fixed_assets", label: "Опись основных средств (ОС)", icon: I.asset },
     { id: "reports", label: "Отчеты", icon: I.analytics },
     { id: "agent", label: "Агент", icon: I.analytics },
+    { id: "cashback", label: "Кешбэк", icon: I.cash },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1328,7 +1329,7 @@ export default function LocmacoApp() {
     if (tabId === "fixed_assets") {
       return role === "admin" || role === "manager";
     }
-    if (tabId === "agent") {
+    if (tabId === "agent" || tabId === "cashback") {
       return role === "admin";
     }
     // Списание продуктов закрыто для всех, включая админа: проверка стоит до
@@ -2633,6 +2634,51 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "cashback") && (
+                <button
+                  onClick={() => setTab("cashback")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    🧾
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+                      Кешбэк
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Чеки закупок для кешбэка Soliq: сроки, реквизиты, что уже внесено
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "reports") && (
                 <button
                   onClick={() => setTab("reports")}
@@ -2886,6 +2932,7 @@ export default function LocmacoApp() {
             loggedInUser={loggedInUser}
           />
         )}
+        {tab === "cashback" && <CashbackView showToast={showToast} />}
         {tab === "employees" && (
           <EmployeesView
             stores={visibleStores}
@@ -19996,6 +20043,277 @@ function FixedAssetsView({ showToast, loggedInUser }) {
             await loadAssets();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Очередь чеков закупок для кешбэка Soliq (только админ).
+ *
+ * Регистрация в приложении — руками и физлицом, поэтому раздел ничего не
+ * регистрирует: он показывает, что ещё можно внести, сколько осталось дней и
+ * даёт реквизиты для копирования одним нажатием.
+ */
+function CashbackView({ showToast }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [showOld, setShowOld] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch("/api/iiko/cashback");
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.success) throw new Error(j?.error || `Ошибка ${r.status}`);
+      setData(j);
+    } catch (e) {
+      setError(e.message || "Не удалось загрузить");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const mark = async (id, registered) => {
+    setBusyId(id);
+    try {
+      const r = await fetch("/api/iiko/cashback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, registered }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.success) throw new Error(j?.error || `Ошибка ${r.status}`);
+      showToast(registered ? "✅ Отмечено как внесённое" : "Отметка снята");
+      await load();
+    } catch (e) {
+      showToast(e.message || "Не удалось сохранить", "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(String(text));
+      showToast(`Скопировано: ${label}`);
+    } catch {
+      showToast("Не удалось скопировать — выделите и скопируйте вручную", "error");
+    }
+  };
+
+  const fmtDate = (iso) =>
+    iso
+      ? new Date(iso).toLocaleString("ru-RU", {
+          timeZone: "Asia/Tashkent",
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+
+  const items = data?.items || [];
+  const active = items.filter((i) => i.status === "active");
+  const registered = items.filter((i) => i.status === "registered");
+  const expired = items.filter((i) => i.status === "expired");
+
+  const chip = (text, color, bg) => (
+    <span
+      style={{
+        fontSize: 12,
+        fontWeight: 700,
+        color,
+        background: bg,
+        borderRadius: 999,
+        padding: "4px 10px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  const value = (label, v) => (
+    <button
+      type="button"
+      onClick={() => v && copy(v, label)}
+      disabled={!v}
+      className="touch-btn"
+      title="Нажмите, чтобы скопировать"
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: "1px solid var(--border-color)",
+        background: "var(--bg-hover)",
+        cursor: v ? "copy" : "default",
+        color: "var(--text-main)",
+      }}
+    >
+      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 700, letterSpacing: 0.5 }}>
+        {v || "не прочитан"}
+      </span>
+    </button>
+  );
+
+  const card = (it) => {
+    const urgent = it.status === "active" && it.daysLeft <= 2;
+    const warn = it.source === "ocr" && !it.confirmed;
+    return (
+      <div
+        key={it.id}
+        style={{
+          border: `1px solid ${urgent ? "#fca5a5" : "var(--border-color)"}`,
+          borderRadius: 12,
+          padding: 14,
+          background: "var(--bg-card)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          opacity: it.status === "active" ? 1 : 0.75,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {it.fiscalDate || fmtDate(it.issuedAt)}
+            {it.supplier ? <span style={{ fontWeight: 500, color: "var(--text-muted)" }}> · {it.supplier}</span> : null}
+          </div>
+          {it.status === "active" &&
+            (it.daysLeft <= 2
+              ? chip(it.daysLeft === 1 ? "🔥 сегодня последний день" : `🔥 ${it.daysLeft} дн.`, "#b91c1c", "#fee2e2")
+              : it.daysLeft <= 5
+              ? chip(`осталось ${it.daysLeft} дн.`, "#92400e", "#fef3c7")
+              : chip(`осталось ${it.daysLeft} дн.`, "#166534", "#dcfce7"))}
+          {it.status === "registered" && chip(`✓ внесено ${fmtDate(it.registeredAt)}${it.registeredBy ? ` · ${it.registeredBy}` : ""}`, "#166534", "#dcfce7")}
+          {it.status === "expired" && chip("срок вышел", "#475569", "#e2e8f0")}
+        </div>
+
+        {value("ФМ", it.fm)}
+        {value("Фискальный признак", it.sign)}
+
+        {warn && (
+          <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", lineHeight: 1.5 }}>
+            ⚠️ Прочитано по тексту, а не по QR — цифра могла поплыть. Сверьте с фото накладной в канале
+            {it.link ? " или откройте чек по ссылке: если он найден, цифры верны." : "."}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {it.status !== "registered" ? (
+            <Btn onClick={() => mark(it.id, true)} disabled={busyId === it.id} style={{ flex: "1 1 160px" }}>
+              {busyId === it.id ? "Сохраняю…" : "✓ Внесено в приложении"}
+            </Btn>
+          ) : (
+            <Btn outline onClick={() => mark(it.id, false)} disabled={busyId === it.id}>
+              Снять отметку
+            </Btn>
+          )}
+          {it.link && (
+            <a
+              href={it.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--accent, #2563eb)" }}
+            >
+              Открыть чек ↗
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>🧾 Кешбэк Soliq</h2>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Чеки закупок, прочитанные с фото накладных
+          </div>
+        </div>
+        <Btn outline onClick={load} disabled={loading}>
+          {loading ? "…" : "Обновить"}
+        </Btn>
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          lineHeight: 1.6,
+          color: "var(--text-muted)",
+          background: "var(--bg-hover)",
+          border: "1px solid var(--border-color)",
+          borderRadius: 10,
+          padding: "10px 12px",
+          marginBottom: 14,
+        }}
+      >
+        Вносить в приложении Soliq.uz: отсканировать QR чека или ввести ФМ и фискальный признак. Чек нельзя
+        зарегистрировать, если с его даты прошло {data?.windowDays || 10} календарных дней — поэтому сверху те, что горят.
+        Регистрация идёт от имени человека, прошедшего Face ID, — сайт сам её сделать не может.
+      </div>
+
+      {loading && !data ? (
+        <LoadingBlock text="Загружаю чеки..." />
+      ) : error ? (
+        <ErrorBlock text={error} onRetry={load} />
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            {chip(`К внесению: ${data.summary.active}`, "#1e3a8a", "#dbeafe")}
+            {data.summary.urgent > 0 && chip(`🔥 Горят: ${data.summary.urgent}`, "#b91c1c", "#fee2e2")}
+            {chip(`Внесено: ${data.summary.registered}`, "#166534", "#dcfce7")}
+            {chip(`Истекли: ${data.summary.expired}`, "#475569", "#e2e8f0")}
+          </div>
+
+          {active.length === 0 ? (
+            <Empty icon="🎉" text="Всё внесено — чеков, ожидающих внесения, нет" />
+          ) : (
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))" }}>
+              {active.map(card)}
+            </div>
+          )}
+
+          {(registered.length > 0 || expired.length > 0) && (
+            <div style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                onClick={() => setShowOld((v) => !v)}
+                className="touch-btn"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "6px 0",
+                }}
+              >
+                {showOld ? "▾" : "▸"} Внесённые ({registered.length}) и истёкшие ({expired.length})
+              </button>
+              {showOld && (
+                <div style={{ display: "grid", gap: 10, marginTop: 8, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))" }}>
+                  {[...registered, ...expired].map(card)}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
