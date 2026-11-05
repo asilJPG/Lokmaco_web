@@ -1310,6 +1310,7 @@ export default function LocmacoApp() {
     { id: "reports", label: "Отчеты", icon: I.analytics },
     { id: "agent", label: "Агент", icon: I.analytics },
     { id: "cashback", label: "Кешбэк", icon: I.cash },
+    { id: "bazaar", label: "Сверка закупа", icon: I.cash },
     { id: "employees", label: "Сотрудники", icon: I.users },
   ];
 
@@ -1323,15 +1324,22 @@ export default function LocmacoApp() {
     cashier: "Кассир",
     manager: "Менеджер",
     hall: "Зал",
+    accountant: "Бухгалтер",
   };
 
   const hasAccess = (role, tabId) => {
     if (tabId === "fixed_assets") {
       return role === "admin" || role === "manager";
     }
-    if (tabId === "agent" || tabId === "cashback") {
+    if (tabId === "agent") {
       return role === "admin";
     }
+    // Кешбэк и сверка закупа ведёт бухгалтер: админ — сверх всего. Роль
+    // бухгалтера не видит ничего другого (проверка стоит до общего switch).
+    if (tabId === "cashback" || tabId === "bazaar") {
+      return role === "admin" || role === "accountant";
+    }
+    if (role === "accountant") return false;
     // Списание продуктов закрыто для всех, включая админа: проверка стоит до
     // общего доступа админа, иначе он бы её обошёл.
     if (tabId === "writeoff") {
@@ -2679,6 +2687,51 @@ export default function LocmacoApp() {
                 </button>
               )}
 
+              {hasAccess(loggedInUser.baseRole, "bazaar") && (
+                <button
+                  onClick={() => setTab("bazaar")}
+                  style={{
+                    textAlign: "left",
+                    padding: 24,
+                    borderRadius: 12,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-card)",
+                    color: "var(--text-main)",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}
+                  className="dashboard-card"
+                >
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 8,
+                      background: "var(--bg-pill)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      flexShrink: 0,
+                    }}
+                  >
+                    ⚖️
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+                      Сверка закупа
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      Остаток у снабженца и проверка, все ли накладные за наличные внесены
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {hasAccess(loggedInUser.baseRole, "reports") && (
                 <button
                   onClick={() => setTab("reports")}
@@ -2933,6 +2986,7 @@ export default function LocmacoApp() {
           />
         )}
         {tab === "cashback" && <CashbackView showToast={showToast} />}
+        {tab === "bazaar" && <BazaarView showToast={showToast} loggedInUser={loggedInUser} />}
         {tab === "employees" && (
           <EmployeesView
             stores={visibleStores}
@@ -9256,6 +9310,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       cashier: "Кассир",
       manager: "Менеджер",
       hall: "Зал",
+      accountant: "Бухгалтер",
     };
     return labels[base] || base;
   };
@@ -9272,6 +9327,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
       cashier: { bg: "#fef9c3", text: "#ca8a04" }, // yellow
       manager: { bg: "#ccfbf1", text: "#0f766e" }, // teal
       hall: { bg: "#f0fdf4", text: "#15803d" }, // green for hall
+      accountant: { bg: "#fae8ff", text: "#a21caf" }, // fuchsia
     };
     return colors[base] || { bg: "#f1f5f9", text: "#475569" };
   };
@@ -9803,6 +9859,7 @@ function EmployeesView({ stores, showToast, loggedInUser }) {
               <option value="bar">Бармен</option>
               <option value="cashier">Кассир</option>
               <option value="hall">Зал</option>
+              <option value="accountant">Бухгалтер (кешбэк и сверка закупа)</option>
             </select>
           </div>
 
@@ -20350,6 +20407,325 @@ function CashbackView({ showToast }) {
                   {[...registered, ...expired].map(card)}
                 </div>
               )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Сверка закупа: бухгалтер вносит остаток, который снабженец вернул с базара,
+ * а сайт проверяет, хватает ли накладных «Наличные» на потраченную сумму.
+ */
+function BazaarView({ showToast, loggedInUser }) {
+  const todayTashkent = () =>
+    new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const yesterday = () =>
+    new Date(Date.now() + 5 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [date, setDate] = useState(yesterday());
+  const [leftover, setLeftover] = useState("");
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(null);
+
+  const isAdmin = loggedInUser?.baseRole === "admin";
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch("/api/iiko/bazaar");
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.success) throw new Error(j?.error || `Ошибка ${r.status}`);
+      setData(j);
+    } catch (e) {
+      setError(e.message || "Не удалось загрузить");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = async () => {
+    const amount = Number(String(leftover).replace(/\s/g, "").replace(",", "."));
+    if (leftover === "" || !Number.isFinite(amount) || amount < 0) {
+      showToast("Введите остаток числом (0, если денег не осталось)", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await fetch("/api/iiko/bazaar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, leftover: amount, comment }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.success) throw new Error(j?.error || `Ошибка ${r.status}`);
+      showToast(j.updated ? "✅ Остаток исправлен" : "✅ Остаток внесён");
+      setLeftover("");
+      setComment("");
+      await load();
+    } catch (e) {
+      showToast(e.message || "Не удалось сохранить", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Убрать эту отметку? Сверка пересчитается без неё.")) return;
+    try {
+      const r = await fetch("/api/iiko/bazaar", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.success) throw new Error(j?.error || `Ошибка ${r.status}`);
+      showToast("Отметка убрана");
+      await load();
+    } catch (e) {
+      showToast(e.message || "Не удалось убрать", "error");
+    }
+  };
+
+  const dm = (d) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : "");
+  const money = (n) => `${Math.round(n).toLocaleString("ru-RU")} сум`;
+
+  const STATUS = {
+    ok: { label: "✅ Сходится", color: "#166534", bg: "#dcfce7", border: "var(--border-color)" },
+    missing: { label: "⚠️ Не хватает накладных", color: "#b91c1c", bg: "#fee2e2", border: "#fca5a5" },
+    over: { label: "↗ Накладных больше", color: "#92400e", bg: "#fef3c7", border: "#fde68a" },
+  };
+
+  const row = (label, value, strong) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, padding: "3px 0" }}>
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ fontWeight: strong ? 800 : 600, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>{value}</span>
+    </div>
+  );
+
+  const inp = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-main)",
+    color: "var(--text-main)",
+    fontSize: 15,
+  };
+
+  const windows = data?.windows || [];
+  const counts = data?.counts || [];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>⚖️ Сверка закупа</h2>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Хватает ли накладных «Наличные» на деньги, потраченные на базаре
+          </div>
+        </div>
+        <Btn outline onClick={load} disabled={loading}>
+          {loading ? "…" : "Обновить"}
+        </Btn>
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          lineHeight: 1.6,
+          color: "var(--text-muted)",
+          background: "var(--bg-hover)",
+          border: "1px solid var(--border-color)",
+          borderRadius: 10,
+          padding: "10px 12px",
+          marginBottom: 14,
+        }}
+      >
+        Внесите остаток, который снабженец вернул после закупа, — <b>со слов снабженца</b>, не считая сами. Сайт
+        возьмёт, сколько кассир выдал на базар («бозор»/«базар» в расходах смены), вычтет остаток и сравнит с
+        накладными «Наличные» за те же дни. Разница — это накладные, которых нет в базе.
+      </div>
+
+      <div
+        style={{
+          border: "1px solid var(--border-color)",
+          borderRadius: 12,
+          padding: 14,
+          background: "var(--bg-card)",
+          marginBottom: 18,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Внести остаток</div>
+        <div className="stack-mobile" style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
+            Остаток на конец дня закупа
+            <input type="date" value={date} max={todayTashkent()} onChange={(e) => setDate(e.target.value)} style={{ ...inp, marginTop: 4 }} />
+          </label>
+          <label style={{ flex: 1, fontSize: 11, color: "var(--text-muted)" }}>
+            Остаток у снабженца, сум
+            <input
+              value={leftover}
+              onChange={(e) => setLeftover(e.target.value)}
+              inputMode="numeric"
+              placeholder="500000"
+              autoComplete="off"
+              style={{ ...inp, marginTop: 4, fontFamily: "monospace" }}
+            />
+          </label>
+        </div>
+        <input
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Комментарий (необязательно)"
+          style={{ ...inp, marginBottom: 10 }}
+        />
+        <Btn onClick={save} disabled={saving} style={{ width: "100%" }}>
+          {saving ? "Сохраняю…" : "Внести остаток"}
+        </Btn>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+          Повторный ввод на ту же дату исправляет запись. Первая отметка — отправная точка, сверка начинается со второй.
+        </div>
+      </div>
+
+      {loading && !data ? (
+        <LoadingBlock text="Считаю сверку..." />
+      ) : error ? (
+        <ErrorBlock text={error} onRetry={load} />
+      ) : (
+        <>
+          {windows.length === 0 ? (
+            <Empty
+              icon="⚖️"
+              text={
+                counts.length === 0
+                  ? "Отметок пока нет. Внесите остаток — это будет отправная точка"
+                  : "Есть одна отметка. Внесите следующую — и появится первая сверка"
+              }
+            />
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {windows.map((w) => {
+                const st = STATUS[w.status];
+                const expanded = open === w.countId;
+                return (
+                  <div
+                    key={w.countId}
+                    style={{
+                      border: `1px solid ${st.border}`,
+                      borderRadius: 12,
+                      padding: 14,
+                      background: "var(--bg-card)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800 }}>
+                        {dm(w.from)} → {dm(w.to)}
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: st.color, background: st.bg, borderRadius: 999, padding: "4px 10px" }}>
+                        {st.label}
+                        {w.status === "missing" ? `: ${money(w.diff)}` : w.status === "over" ? `: ${money(-w.diff)}` : ""}
+                      </span>
+                    </div>
+
+                    {w.suspicious && (
+                      <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", marginBottom: 8 }}>
+                        ⚠️ Остаток больше, чем было денег у снабженца, — проверьте, нет ли опечатки в сумме.
+                      </div>
+                    )}
+
+                    {row("Было у снабженца с прошлой отметки", money(w.openingLeftover))}
+                    {row("Выдал кассир на базар", money(w.givenSum))}
+                    {row("Остаток вернулся", money(w.leftover))}
+                    {row("Потрачено", money(w.spent), true)}
+                    {row(`Внесено накладных «Наличные» (${w.invoiceCount} шт.)`, money(w.entered), true)}
+
+                    <button
+                      type="button"
+                      onClick={() => setOpen(expanded ? null : w.countId)}
+                      className="touch-btn"
+                      style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "8px 0 0" }}
+                    >
+                      {expanded ? "▾" : "▸"} Подробности по дням
+                    </button>
+                    {expanded && (
+                      <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7 }}>
+                        <div style={{ fontWeight: 700, marginTop: 4 }}>Выдано (по датам смен)</div>
+                        {w.given.length === 0 ? (
+                          <div style={{ color: "var(--text-muted)" }}>выдач в этом периоде нет</div>
+                        ) : (
+                          w.given.map((g, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span>{dm(g.date)} · {g.name}</span>
+                              <span>{money(g.amount)}</span>
+                            </div>
+                          ))
+                        )}
+                        <div style={{ fontWeight: 700, marginTop: 8 }}>Приходы «Наличные» (по дням)</div>
+                        {w.byDay.length === 0 ? (
+                          <div style={{ color: "#b91c1c" }}>за эти дни не внесено ни одного прихода</div>
+                        ) : (
+                          w.byDay.map((d) => (
+                            <div key={d.date} style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span>{dm(d.date)} · {d.count} шт.</span>
+                              <span>{money(d.total)}</span>
+                            </div>
+                          ))
+                        )}
+                        {w.comment && <div style={{ marginTop: 8, color: "var(--text-muted)" }}>💬 {w.comment}{w.by ? ` — ${w.by}` : ""}</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {counts.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Внесённые остатки</div>
+              <div style={{ border: "1px solid var(--border-color)", borderRadius: 10, overflow: "hidden" }}>
+                {counts.map((c, i) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      borderTop: i ? "1px solid var(--border-color)" : "none",
+                    }}
+                  >
+                    <span>{dm(c.date)}{c.by ? <span style={{ color: "var(--text-muted)" }}> · {c.by}</span> : null}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <b style={{ fontVariantNumeric: "tabular-nums" }}>{money(c.leftover)}</b>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => remove(c.id)}
+                          title="Убрать отметку"
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 16 }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

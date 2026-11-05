@@ -7,13 +7,13 @@ export const maxDuration = 60;
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 
-/** Только админ: реквизиты чеков видит он, снабженец о кешбэке не знает. */
+/** Админ и бухгалтер: реквизиты чеков видят они, снабженец о кешбэке не знает. */
 function guard(request) {
   const userId = request.headers.get("x-user-id");
   const [baseRole] = (request.headers.get("x-user-role") || "").split(":");
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (baseRole !== "admin") {
-    return Response.json({ error: "Доступ только для администратора" }, { status: 403 });
+  if (!["admin", "accountant"].includes(baseRole)) {
+    return Response.json({ error: "Доступ только для администратора и бухгалтера" }, { status: 403 });
   }
   return null;
 }
